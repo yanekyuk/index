@@ -5,7 +5,7 @@
  * ChatDatabaseAdapter do not interfere with ContactService integration tests.
  */
 
-import { eq, and, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
+import { asc, eq, and, inArray, isNull, isNotNull, or, ilike, sql } from 'drizzle-orm';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 
@@ -254,6 +254,51 @@ export class ContactDatabaseAdapter {
     return rows.map(row => ({
       userId: row.userId,
       user: { id: row.userId, name: row.userName, email: row.userEmail, avatar: row.userAvatar, isGhost: row.userIsGhost },
+    }));
+  }
+
+  async searchContactMembers(
+    ownerId: string,
+    q: string,
+    limit: number,
+  ): Promise<Array<{
+    contactId: string;
+    name: string;
+    email: string;
+    avatar: string | null;
+    isGhost: boolean;
+  }>> {
+    const personalIndexId = await getPersonalIndexId(ownerId);
+    if (!personalIndexId) return [];
+
+    const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+    const rows = await db
+      .select({
+        userId: schema.networkMembers.userId,
+        userName: schema.users.name,
+        userEmail: schema.users.email,
+        userAvatar: schema.users.avatar,
+        userIsGhost: schema.users.isGhost,
+      })
+      .from(schema.networkMembers)
+      .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
+      .where(and(
+        eq(schema.networkMembers.networkId, personalIndexId),
+        sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+        isNull(schema.networkMembers.deletedAt),
+        isNull(schema.users.deletedAt),
+        or(ilike(schema.users.name, pattern), ilike(schema.users.email, pattern)),
+      ))
+      .orderBy(asc(schema.users.name), asc(schema.users.email))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      contactId: row.userId,
+      name: row.userName,
+      email: row.userEmail,
+      avatar: row.userAvatar,
+      isGhost: row.userIsGhost,
     }));
   }
 

@@ -7,7 +7,7 @@ import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inAr
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
-import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
+import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
 import type {
   Conversation,
   ConversationParticipant,
@@ -840,6 +840,31 @@ export class ChatDatabaseAdapter {
       logger.error('ChatDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
+  }
+
+  async searchOwnIntents(
+    userId: string,
+    q: string,
+    limit: number,
+  ): Promise<Array<{ id: string; payload: string; summary: string | null; createdAt: Date }>> {
+    const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    return db
+      .select({
+        id: schema.intents.id,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        createdAt: schema.intents.createdAt,
+      })
+      .from(schema.intents)
+      .where(
+        and(
+          eq(schema.intents.userId, userId),
+          isNull(schema.intents.archivedAt),
+          or(ilike(schema.intents.payload, pattern), ilike(schema.intents.summary, pattern)),
+        ),
+      )
+      .orderBy(desc(schema.intents.createdAt))
+      .limit(limit);
   }
 
   async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
@@ -2577,7 +2602,7 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
@@ -2587,12 +2612,12 @@ export class ChatDatabaseAdapter {
   async getOpportunityBetweenActors(
     actorIds: string[],
     networkId: string
-  ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired' } | null> {
+  ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
     return this.opportunityAdapter.getOpportunityBetweenActors(actorIds, networkId);
   }
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
+    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.findOverlappingOpportunities(actorUserIds, options);
   }
@@ -3492,7 +3517,7 @@ interface OpportunityRow {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -3505,7 +3530,7 @@ interface CreateOpportunityInput {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status?: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status?: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
 }
 
@@ -3665,7 +3690,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     const [row] = await db
       .update(opportunities)
@@ -3807,12 +3832,12 @@ export class OpportunityDatabaseAdapter {
 
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
+    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
     if (actorUserIds.length === 0) return [];
     const mergedExcludeStatuses = [
       ...new Set([...(options?.excludeStatuses ?? [])]),
-    ] as ('latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
+    ] as ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
     const statusCondition =
       mergedExcludeStatuses.length > 0
         ? notInArray(opportunities.status, mergedExcludeStatuses)
@@ -4480,6 +4505,86 @@ export class UserDatabaseAdapter {
     }
   }
 
+  /**
+   * Get the stored Telegram connection prefs for a user.
+   * Returns null when the user has no Telegram connection.
+   * @param userId - The user whose Telegram prefs to retrieve
+   * @returns The TelegramPrefs or null if not connected
+   */
+  async getTelegramPrefs(userId: string): Promise<TelegramPrefs | null> {
+    const result = await db
+      .select({ preferences: userNotificationSettings.preferences })
+      .from(userNotificationSettings)
+      .where(eq(userNotificationSettings.userId, userId))
+      .limit(1);
+    return (result[0]?.preferences as NotificationPreferences | undefined)?.telegram ?? null;
+  }
+
+  /**
+   * Upsert the telegram key inside user_notification_settings.preferences,
+   * preserving existing connectionUpdates / weeklyNewsletter values.
+   * @param userId - The user whose Telegram prefs to update
+   * @param telegramPrefs - The new Telegram prefs to store
+   */
+  async updateTelegramPrefs(userId: string, telegramPrefs: TelegramPrefs): Promise<void> {
+    const existing = await db
+      .select({ preferences: userNotificationSettings.preferences })
+      .from(userNotificationSettings)
+      .where(eq(userNotificationSettings.userId, userId))
+      .limit(1);
+    const current = (existing[0]?.preferences as NotificationPreferences | undefined) ?? {
+      connectionUpdates: true,
+      weeklyNewsletter: true,
+    };
+    const updated: NotificationPreferences = { ...current, telegram: telegramPrefs };
+    await db
+      .insert(userNotificationSettings)
+      .values({ userId, preferences: updated })
+      .onConflictDoUpdate({
+        target: userNotificationSettings.userId,
+        set: { preferences: updated, updatedAt: new Date() },
+      });
+  }
+
+  /**
+   * Remove the telegram key from user_notification_settings.preferences.
+   * No-op if the user has no notification settings row.
+   * @param userId - The user whose Telegram prefs to clear
+   */
+  async clearTelegramPrefs(userId: string): Promise<void> {
+    const existing = await db
+      .select({ preferences: userNotificationSettings.preferences })
+      .from(userNotificationSettings)
+      .where(eq(userNotificationSettings.userId, userId))
+      .limit(1);
+    if (!existing[0]) return;
+    const { telegram: _removed, ...rest } = (existing[0].preferences as NotificationPreferences | null) ?? {};
+    await db
+      .update(userNotificationSettings)
+      .set({ preferences: rest as NotificationPreferences, updatedAt: new Date() })
+      .where(eq(userNotificationSettings.userId, userId));
+  }
+
+  /**
+   * Find a user by their stored Telegram chatId.
+   * Used by the gateway to route inbound messages.
+   * @param chatId - The Telegram chat ID to look up
+   * @returns The userId and optional sessionId, or null if not found
+   */
+  async findByTelegramChatId(chatId: string): Promise<{ userId: string; sessionId?: string } | null> {
+    const result = await db
+      .select({
+        userId: userNotificationSettings.userId,
+        preferences: userNotificationSettings.preferences,
+      })
+      .from(userNotificationSettings)
+      .where(sql`${userNotificationSettings.preferences}->'telegram'->>'chatId' = ${chatId}`)
+      .limit(1);
+    if (!result[0]) return null;
+    const telegram = (result[0].preferences as NotificationPreferences | undefined)?.telegram;
+    return { userId: result[0].userId, sessionId: telegram?.sessionId };
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4818,6 +4923,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // Intent Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getActiveIntents: () => db.getActiveIntents(authUserId),
+    searchOwnIntents: (q: string, limit: number) => db.searchOwnIntents(authUserId, q, limit),
     getIntent: async (intentId: string) => {
       // Enforce ownership by checking userId on returned intent
       const intent = await db.getIntent(intentId);
@@ -6346,6 +6452,191 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * List chat session summaries for a user, ordered by most recent activity.
+   * Mirrors `getUserChatSessions` but returns the `ChatSessionSummary` shape
+   * expected by `ChatSessionReader`.
+   *
+   * @param userId - The user whose sessions to list
+   * @param limit - Maximum number of sessions to return (default 25)
+   * @returns Array of chat session summaries
+   */
+  async listChatSessionSummaries(
+    userId: string,
+    limit = 25,
+  ): Promise<Array<{ sessionId: string; title: string | null; messageCount: number; lastMessageAt: Date | null; createdAt: Date }>> {
+    // Subquery: conversation IDs that include the system agent
+    const chatSessionIds = db
+      .select({ conversationId: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
+          eq(schema.conversationParticipants.participantType, 'agent'),
+        ),
+      );
+
+    const rows = await db
+      .select({
+        id: schema.conversations.id,
+        lastMessageAt: schema.conversations.lastMessageAt,
+        createdAt: schema.conversations.createdAt,
+        updatedAt: schema.conversations.updatedAt,
+      })
+      .from(schema.conversationParticipants)
+      .innerJoin(
+        schema.conversations,
+        eq(schema.conversationParticipants.conversationId, schema.conversations.id),
+      )
+      .where(
+        and(
+          eq(schema.conversationParticipants.participantId, userId),
+          eq(schema.conversationParticipants.participantType, 'user'),
+          or(
+            isNull(schema.conversationParticipants.hiddenAt),
+            gt(schema.conversations.lastMessageAt, schema.conversationParticipants.hiddenAt),
+          ),
+          inArray(schema.conversations.id, chatSessionIds),
+        ),
+      )
+      .orderBy(desc(schema.conversations.updatedAt))
+      .limit(limit);
+
+    if (rows.length === 0) return [];
+
+    const convIds = rows.map((r) => r.id);
+
+    // Batch-fetch metadata (titles)
+    const metaRows = await db
+      .select()
+      .from(schema.conversationMetadata)
+      .where(inArray(schema.conversationMetadata.conversationId, convIds));
+    const metaMap = new Map<string, ChatConversationMeta>(
+      metaRows.map((m) => [m.conversationId, m.metadata as ChatConversationMeta]),
+    );
+
+    // Batch-fetch message counts
+    const countRows = await db
+      .select({
+        conversationId: schema.messages.conversationId,
+        cnt: count(schema.messages.id),
+      })
+      .from(schema.messages)
+      .where(inArray(schema.messages.conversationId, convIds))
+      .groupBy(schema.messages.conversationId);
+    const countMap = new Map<string, number>(countRows.map((r) => [r.conversationId, Number(r.cnt)]));
+
+    return rows.map((conv) => ({
+      sessionId: conv.id,
+      title: (metaMap.get(conv.id)?.title) ?? null,
+      messageCount: countMap.get(conv.id) ?? 0,
+      lastMessageAt: conv.lastMessageAt ?? conv.updatedAt,
+      createdAt: conv.createdAt,
+    }));
+  }
+
+  /**
+   * Get full detail for a single chat session, including messages.
+   * Returns null if the user does not participate or it is not a chat session.
+   *
+   * @param userId - The requesting user
+   * @param sessionId - The conversation ID
+   * @param messageLimit - Maximum messages to return (default 50)
+   * @returns Session detail or null
+   */
+  async getChatSessionDetail(
+    userId: string,
+    sessionId: string,
+    messageLimit = 50,
+  ): Promise<{
+    sessionId: string;
+    title: string | null;
+    messageCount: number;
+    lastMessageAt: Date | null;
+    createdAt: Date;
+    messages: Array<{ role: string; content: string; createdAt: Date }>;
+  } | null> {
+    // Verify user participation
+    const [userParticipant] = await db
+      .select({ participantId: schema.conversationParticipants.participantId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, sessionId),
+          eq(schema.conversationParticipants.participantId, userId),
+          eq(schema.conversationParticipants.participantType, 'user'),
+        ),
+      )
+      .limit(1);
+
+    if (!userParticipant) return null;
+
+    // Verify system agent participation (i.e. it's a chat session, not a DM)
+    const [agentParticipant] = await db
+      .select({ participantId: schema.conversationParticipants.participantId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, sessionId),
+          eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
+          eq(schema.conversationParticipants.participantType, 'agent'),
+        ),
+      )
+      .limit(1);
+
+    if (!agentParticipant) return null;
+
+    // Fetch conversation row
+    const [conv] = await db
+      .select({
+        id: schema.conversations.id,
+        lastMessageAt: schema.conversations.lastMessageAt,
+        createdAt: schema.conversations.createdAt,
+        updatedAt: schema.conversations.updatedAt,
+      })
+      .from(schema.conversations)
+      .where(eq(schema.conversations.id, sessionId))
+      .limit(1);
+
+    if (!conv) return null;
+
+    // Fetch metadata
+    const meta = await this._getConvMeta(sessionId);
+
+    // Fetch messages (limited)
+    const msgRows = await db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, sessionId))
+      .orderBy(desc(schema.messages.createdAt))
+      .limit(messageLimit);
+
+    const messages = msgRows.reverse().map((msg) => {
+      const parts = msg.parts as Array<{ type?: string; text?: string }>;
+      const content =
+        parts?.find((p) => p?.type === 'text' && typeof p.text === 'string')?.text
+        ?? parts?.find((p) => typeof p?.text === 'string')?.text
+        ?? '';
+      const role = msg.role === 'agent' ? 'assistant' : msg.role;
+      return { role, content, createdAt: msg.createdAt };
+    });
+
+    // Count all messages (not limited)
+    const [{ totalCount }] = await db
+      .select({ totalCount: count(schema.messages.id) })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, sessionId));
+
+    return {
+      sessionId: conv.id,
+      title: meta?.title ?? null,
+      messageCount: Number(totalCount),
+      lastMessageAt: conv.lastMessageAt ?? conv.updatedAt,
+      createdAt: conv.createdAt,
+      messages,
+    };
+  }
+
+  /**
    * Update chat session index scope.
    */
   async updateChatSessionIndex(sessionId: string, networkId: string | null): Promise<void> {
@@ -6627,6 +6918,25 @@ export class ConversationDatabaseAdapter {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
+  }
+
+  /**
+   * Update the status of an opportunity. Used by the negotiation graph/timeout queues
+   * to advance the opportunity lifecycle (negotiating → pending/rejected/stalled).
+   * @param id - Opportunity ID
+   * @param status - New status
+   * @returns The updated opportunity id+status, or null if not found
+   */
+  async updateOpportunityStatus(
+    id: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+  ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+    const [row] = await db
+      .update(opportunities)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(opportunities.id, id))
+      .returning({ id: opportunities.id, status: opportunities.status });
+    return row ?? null;
   }
 }
 

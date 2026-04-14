@@ -1,0 +1,26 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "indexnetwork-claude-plugin",
+  "metadata": {
+    "description": "Index Network — find the right people and let them find you. Manages intents, discovers opportunities, and connects communities."
+  },
+  "owner": {
+    "name": "Index Network",
+    "url": "https://index.network"
+  },
+  "plugins": [
+    {
+      "name": "index-network",
+      "description": "Index Network — find the right people and let them find you.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Index Network",
+        "url": "https://index.network"
+      },
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://index.network",
+      "tags": ["discovery", "intents", "agents", "opportunities"]
+    }
+  ]
+}

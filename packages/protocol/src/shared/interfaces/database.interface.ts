@@ -382,7 +382,7 @@ export interface CreateHydeDocumentData {
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type OpportunityStatus = 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired';
 
 export interface Opportunity {
   id: string;
@@ -1296,6 +1296,15 @@ export interface UserDatabase {
   /** Get ALL active intents for the authenticated user (not index-filtered). */
   getActiveIntents(): Promise<ActiveIntent[]>;
 
+  /**
+   * Case-insensitive substring search over the authenticated user's own
+   * active intents. Matches against `payload` and `summary`. Most recent first.
+   */
+  searchOwnIntents(
+    q: string,
+    limit: number,
+  ): Promise<Array<{ id: string; payload: string; summary: string | null; createdAt: Date }>>;
+
   /** Get a single intent by ID (ownership enforced). */
   getIntent(intentId: string): Promise<IntentRecord | null>;
 
@@ -1830,6 +1839,18 @@ export interface NegotiationDatabase {
     parts: unknown[];
     metadata: Record<string, unknown> | null;
   }>>;
+
+  /**
+   * Update the status of an opportunity. Called from the negotiation graph to
+   * advance the opportunity lifecycle (negotiating → pending/rejected/stalled).
+   * @param id - Opportunity ID
+   * @param status - New status
+   * @returns The updated opportunity or null if not found
+   */
+  updateOpportunityStatus(
+    id: string,
+    status: OpportunityStatus,
+  ): Promise<{ id: string; status: OpportunityStatus } | null>;
 }
 
 /**

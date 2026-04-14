@@ -8,7 +8,7 @@ export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'accepted', 'rejected', 'expired']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
 export const transportChannelEnum = pgEnum('transport_channel', ['webhook', 'mcp']);
@@ -29,9 +29,19 @@ export interface UserSocials {
   websites?: string[];
 }
 
+export interface TelegramPrefs {
+  chatId: string;
+  sessionId?: string;       // lazily created on first outbound message
+  connectedAt: string;      // ISO timestamp
+  notifications: {
+    opportunityAccepted: boolean;
+  };
+}
+
 export interface NotificationPreferences {
   connectionUpdates: boolean;
   weeklyNewsletter: boolean;
+  telegram?: TelegramPrefs;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

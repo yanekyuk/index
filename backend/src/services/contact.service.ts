@@ -125,7 +125,7 @@ export class ContactService {
     // Look up existing user
     let user = await this.db.getUserByEmail(normalizedEmail);
     let isNew = false;
-    let isGhost = false;
+    let isGhost: boolean;
 
     if (!user) {
       // Create ghost user (handles concurrency, creates profile)
@@ -304,6 +304,23 @@ export class ContactService {
     user: { id: string; name: string; email: string; avatar: string | null; isGhost: boolean };
   }>> {
     return this.db.getContactMembers(ownerId);
+  }
+
+  /**
+   * Search the owner's contacts by name or email (case-insensitive ILIKE).
+   *
+   * @param ownerId - The user whose contacts to search
+   * @param q - Free-text query
+   * @param limit - Maximum rows to return (default 25)
+   */
+  async searchContacts(ownerId: string, q: string, limit = 25): Promise<Array<{
+    contactId: string;
+    name: string;
+    email: string;
+    avatar: string | null;
+    isGhost: boolean;
+  }>> {
+    return this.db.searchContactMembers(ownerId, q, limit);
   }
 
   /**

@@ -100,6 +100,18 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
+  it("accepts 'stalled' status and does NOT create a contact membership", async () => {
+    const db = createMockDb(twoActorOpportunity);
+    const service = new OpportunityService(db);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, "stalled", USER_A);
+
+    expect(result).not.toHaveProperty("error");
+    expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, "stalled");
+    expect(db.upsertContactMembership).not.toHaveBeenCalled();
+    expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when opportunity not found", async () => {
     const db = createMockDb(null);
     const service = new OpportunityService(db);

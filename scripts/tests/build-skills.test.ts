@@ -20,6 +20,8 @@ import { join } from 'node:path';
 import {
   resolveTargetEnv,
   substituteTokens,
+  injectPartials,
+  resolveClaudePluginOutputs,
   build,
   resolveOutputPaths,
   TOKENS,
@@ -114,6 +116,33 @@ describe('substituteTokens', () => {
   });
 });
 
+describe('injectPartials', () => {
+  test('replaces a known partial key', () => {
+    const result = injectPartials('before {{CORE_GUIDANCE}} after', { CORE_GUIDANCE: 'injected' });
+    expect(result).toBe('before injected after');
+  });
+
+  test('replaces the same partial multiple times', () => {
+    const result = injectPartials('{{CORE_GUIDANCE}} and {{CORE_GUIDANCE}}', { CORE_GUIDANCE: 'x' });
+    expect(result).toBe('x and x');
+  });
+
+  test('leaves unmatched keys untouched (substituteTokens handles them)', () => {
+    const result = injectPartials('{{UNKNOWN}}', { CORE_GUIDANCE: 'x' });
+    expect(result).toBe('{{UNKNOWN}}');
+  });
+
+  test('handles empty partials map', () => {
+    const result = injectPartials('{{FOO}}', {});
+    expect(result).toBe('{{FOO}}');
+  });
+
+  test('partial value containing braces does not cause false token errors', () => {
+    const result = injectPartials('{{CORE_GUIDANCE}}', { CORE_GUIDANCE: 'plain text, no tokens' });
+    expect(result).toBe('plain text, no tokens');
+  });
+});
+
 describe('build', () => {
   let tmpDir: string;
   let templatePath: string;
@@ -179,5 +208,57 @@ describe('resolveOutputPaths', () => {
       '/repo/skills/index-network-dev/SKILL.md',
       '/repo/packages/openclaw-plugin/skills/index-network-dev/SKILL.md',
     ]);
+  });
+});
+
+describe('resolveClaudePluginOutputs', () => {
+  test('returns correct paths for orchestrator, negotiator, and pluginJson', () => {
+    const outputs = resolveClaudePluginOutputs('/repo');
+    expect(outputs.orchestrator).toEqual([
+      '/repo/packages/claude-plugin/skills/index-orchestrator/SKILL.md',
+    ]);
+    expect(outputs.negotiator).toEqual([
+      '/repo/packages/claude-plugin/skills/index-negotiator/SKILL.md',
+    ]);
+    expect(outputs.pluginJson).toEqual([
+      '/repo/packages/claude-plugin/.claude-plugin/plugin.json',
+    ]);
+  });
+});
+
+describe('build with partials', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'build-skills-partials-'));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('injects partial before token substitution', () => {
+    const templatePath = join(tmpDir, 'tpl.md');
+    const output = join(tmpDir, 'out/SKILL.md');
+    writeFileSync(templatePath, '{{CORE_GUIDANCE}}\nurl: {{MCP_URL}}');
+    build('main', templatePath, [output], { CORE_GUIDANCE: '## Core' });
+    const content = readFileSync(output, 'utf8');
+    expect(content).toBe('## Core\nurl: https://protocol.index.network/mcp');
+  });
+
+  test('works with empty partials (backward compatible)', () => {
+    const templatePath = join(tmpDir, 'tpl.md');
+    const output = join(tmpDir, 'out/SKILL.md');
+    writeFileSync(templatePath, 'name: {{MCP_NAME}}');
+    build('main', templatePath, [output]);
+    expect(readFileSync(output, 'utf8')).toBe('name: index-network');
+  });
+
+  test('template with only CORE_GUIDANCE (no env tokens) builds successfully', () => {
+    const templatePath = join(tmpDir, 'tpl.md');
+    const output = join(tmpDir, 'out/SKILL.md');
+    writeFileSync(templatePath, '{{CORE_GUIDANCE}}');
+    build('main', templatePath, [output], { CORE_GUIDANCE: 'content' });
+    expect(readFileSync(output, 'utf8')).toBe('content');
   });
 });

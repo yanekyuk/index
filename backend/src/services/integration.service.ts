@@ -1,11 +1,28 @@
 import { log } from '../lib/log';
 import type { IntegrationAdapter } from '@indexnetwork/protocol';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.adapter';
+import { getRedisClient } from '../adapters/cache.adapter';
 
 import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
 import type { ContactImporter, ImportResult } from '../types/integrations.types';
+import type { TelegramPrefs } from '../schemas/database.schema';
+import type { IntegrationConnection } from '../adapters/integration.adapter';
 
 const logger = log.service.from('IntegrationService');
+
+const CONNECT_TOKEN_PREFIX = 'telegram:connect:';
+const CONNECT_TOKEN_TTL_SEC = 15 * 60;
+
+interface RedisWriter {
+  set(key: string, value: string, ex: string, ttl: number): Promise<void>;
+  get(key: string): Promise<string | null>;
+}
+
+interface TelegramDb {
+  getTelegramPrefs(userId: string): Promise<TelegramPrefs | null>;
+  updateTelegramPrefs(userId: string, prefs: TelegramPrefs): Promise<void>;
+  clearTelegramPrefs(userId: string): Promise<void>;
+}
 
 /** A single contact entry returned by the Gmail People API. */
 interface GmailContact {
@@ -33,13 +50,25 @@ type Toolkit = 'gmail' | 'slack';
  */
 export class IntegrationService {
   private db: ChatDatabaseAdapter;
+  private redis: RedisWriter;
+  private telegramDb: TelegramDb;
 
   constructor(
     private adapter: IntegrationAdapter,
     private contactImporter: ContactImporter,
     db?: ChatDatabaseAdapter,
+    redis?: RedisWriter,
+    telegramDb?: TelegramDb,
   ) {
     this.db = db ?? new ChatDatabaseAdapter();
+    this.redis = redis ?? (() => {
+      const r = getRedisClient();
+      return {
+        set: (key: string, value: string, _ex: string, ttl: number) => r.set(key, value, 'EX', ttl).then(() => undefined),
+        get: (key: string) => r.get(key),
+      };
+    })();
+    this.telegramDb = telegramDb ?? userDatabaseAdapter;
   }
 
   /**
@@ -162,10 +191,22 @@ export class IntegrationService {
   }
 
   /**
-   * List all connected accounts for a user.
+   * List all connected accounts for a user, including a synthetic Telegram entry if connected.
+   * @param userId - The authenticated user ID
+   * @returns Array of integration connections (Composio + optional Telegram)
    */
-  async listConnections(userId: string) {
-    return this.adapter.listConnections(userId);
+  async listConnections(userId: string): Promise<IntegrationConnection[]> {
+    const composioConnections = await this.adapter.listConnections(userId);
+    const telegramPrefs = await this.telegramDb.getTelegramPrefs(userId);
+    if (!telegramPrefs) return composioConnections;
+
+    const telegramEntry: IntegrationConnection = {
+      id: `telegram:${userId}`,
+      toolkit: 'telegram',
+      status: 'active',
+      createdAt: telegramPrefs.connectedAt,
+    };
+    return [...composioConnections, telegramEntry];
   }
 
   /**
@@ -234,6 +275,30 @@ export class IntegrationService {
     } while (nextPageToken);
 
     return contacts;
+  }
+
+  /**
+   * Generate a one-time deep link for connecting a Telegram account.
+   * Stores a 15-minute Redis token mapping token → userId.
+   *
+   * @param userId - The Index user ID to associate with the Telegram account
+   * @returns Object containing the Telegram deep link URL
+   */
+  async connectTelegram(userId: string): Promise<{ deepLink: string }> {
+    const token = crypto.randomUUID();
+    await this.redis.set(`${CONNECT_TOKEN_PREFIX}${token}`, userId, 'EX', CONNECT_TOKEN_TTL_SEC);
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? '';
+    return { deepLink: `https://t.me/${botUsername}?start=${token}` };
+  }
+
+  /**
+   * Remove the Telegram connection for a user.
+   *
+   * @param userId - The Index user ID whose Telegram connection should be removed
+   */
+  async disconnectTelegram(userId: string): Promise<void> {
+    await this.telegramDb.clearTelegramPrefs(userId);
+    logger.info('Telegram disconnected', { userId });
   }
 
   /**

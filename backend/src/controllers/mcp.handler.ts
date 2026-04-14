@@ -93,7 +93,7 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
 }
 
 const authResolver: McpAuthResolver = {
-  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string }> {
+  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean }> {
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
 
@@ -104,8 +104,8 @@ const authResolver: McpAuthResolver = {
         // JWT path: verify with JWKS (issued by the jwt() plugin for CLI/API use)
         try {
           const { payload } = await jwtVerify(token, JWKS);
-          if (typeof payload.id === 'string') return { userId: payload.id };
-          if (typeof payload.sub === 'string') return { userId: payload.sub };
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -123,7 +123,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return { userId: data.userId };
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -241,6 +241,7 @@ function getOrCreateMcpServer(): McpServer {
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
+    chatSession: deps.chatSession,
     graphs,
   };
 

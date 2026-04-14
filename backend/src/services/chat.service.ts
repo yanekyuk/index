@@ -53,7 +53,13 @@ export class ChatSessionService {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { createDefaultProtocolDeps } = require('../protocol-init');
       const protocolDeps = createDefaultProtocolDeps();
-      this._factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper, this, protocolDeps);
+      const chatSessionReader = {
+        getSessionMessages: (sessionId: string, limit?: number) => this.getSessionMessages(sessionId, limit),
+        listSessions: (userId: string, limit?: number) => this.db.listChatSessionSummaries(userId, limit),
+        getSession: (userId: string, sessionId: string, messageLimit?: number) =>
+          this.db.getChatSessionDetail(userId, sessionId, messageLimit),
+      };
+      this._factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper, chatSessionReader, protocolDeps);
     }
     return this._factory;
   }

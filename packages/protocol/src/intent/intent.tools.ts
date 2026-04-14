@@ -31,7 +31,7 @@ async function ensureScopedMembership(
 }
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { graphs } = deps;
+  const { graphs, userDb } = deps;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // INTENT CRUD
@@ -159,7 +159,20 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Returns:** An intent_proposal code block that MUST be included verbatim in the response. The frontend renders it as an interactive " +
       "card the user can approve or skip. On approval, the intent is persisted, indexed, and discovery begins.\n\n" +
       "**Next steps after approval:** The intent is automatically linked to relevant indexes. Call create_opportunities(searchQuery) to explicitly trigger discovery, " +
-      "or wait for background processing to find matches.",
+      "or wait for background processing to find matches.\n\n" +
+      "**Specificity gate.** Before calling this tool, judge whether the description is concrete enough to be " +
+      "useful for matching. If the user says \"find a job\", \"meet people\", or \"learn something\", that's too " +
+      "vague — FIRST call read_user_profiles() + read_intents() to understand their context, THEN propose a " +
+      "refined version (\"Based on your background in X, did you mean 'Y'?\") and wait for confirmation before " +
+      "calling create_intent. Specific asks (\"senior UX design role at a tech company in Berlin\") can go " +
+      "directly to create_intent.\n\n" +
+      "**URL handling.** If the user pastes a URL describing the intent (e.g. a job posting), call scrape_url " +
+      "first with objective=\"Extract key details for an intent\", synthesize a conceptual description from the " +
+      "content, then call create_intent with the synthesis. Exception: profile URLs (LinkedIn, GitHub, X) passed " +
+      "to create_user_profile are handled by that tool directly — do not scrape first.\n\n" +
+      "**Proposal card contract.** The response contains an ```intent_proposal code block. Include that block " +
+      "VERBATIM in your reply to the user — do not summarize it, do not write an intent_proposal block yourself. " +
+      "Only this tool returns valid blocks (they embed a proposalId the UI needs to persist the intent on approval).",
     querySchema: z.object({
       description: z.string().describe("A clear, specific description of what the user is looking for. Should be concept-based, not a raw URL. If the user shared a URL, scrape it first with scrape_url and pass the synthesized content here. Vague descriptions will be rejected — include what kind, what for, and/or timeframe."),
       networkId: z.string().optional().describe("Index UUID to link the intent to upon creation. Defaults to the scoped index in index-scoped chats. Get index IDs from read_networks. If omitted, the system auto-assigns to relevant indexes based on their prompts."),
@@ -494,8 +507,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
+          const alreadyExisted = result.mutationResult.message?.includes('already in this network') ?? false;
           return success({
-            created: true,
+            created: !alreadyExisted,
             message: result.mutationResult.message,
             _graphTimings: [{ name: 'intent_network', durationMs: _createIntentIndexGraphMs, agents: result.agentTimings ?? [] }],
           });
@@ -637,5 +651,31 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readIntents, createIntent, updateIntent, deleteIntent, createIntentIndex, readIntentIndexes, deleteIntentIndex] as const;
+  const searchIntents = defineTool({
+    name: "search_intents",
+    description:
+      "Text-searches the authenticated user's own active signals by description. Case-insensitive substring " +
+      "match over the signal's payload and summary. Use when the user references a past signal they wrote " +
+      '("find my signal about React mentorship") or wants to audit what they\'ve posted.\n\n' +
+      "For discovery of OTHER users' signals that match a query, use create_opportunities(searchQuery=...) " +
+      "instead — that runs semantic matching across the user's networks.\n\n" +
+      "**Returns:** `intents: [{ id, payload, summary, createdAt }]`, most recent first, up to `limit` (default 25).",
+    querySchema: z.object({
+      q: z.string().min(1).describe("Text to match against payload and summary (case-insensitive)."),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .max(100)
+        .optional()
+        .describe("Maximum intents to return (default 25, max 100)."),
+    }),
+    handler: async ({ context, query }) => {
+      const rows = await userDb.searchOwnIntents(query.q, query.limit ?? 25);
+      logger.verbose("search_intents", { userId: context.userId, q: query.q, matched: rows.length });
+      return success({ intents: rows });
+    },
+  });
+
+  return [readIntents, createIntent, updateIntent, deleteIntent, createIntentIndex, readIntentIndexes, deleteIntentIndex, searchIntents] as const;
 }

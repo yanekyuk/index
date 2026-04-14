@@ -8,7 +8,7 @@ updated: 2026-04-11
 
 # Negotiation
 
-Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate over proposed matches. Two AI agents -- one representing each user -- debate whether a connection genuinely serves both parties. An opportunity is created before negotiation begins (with `negotiating` status) so users have real-time visibility; the negotiation then gates whether it transitions to `accepted` or is rejected.
+Negotiation is a bilateral agent-to-agent protocol that acts as a quality gate over proposed matches. Two AI agents -- one representing each user -- debate whether a connection genuinely serves both parties. An opportunity is created before negotiation begins (with `negotiating` status) so users have real-time visibility; the negotiation then gates whether it transitions to `pending` (awaiting human acceptance), `rejected`, or `stalled` (turn cap hit without consensus).
 
 This mechanism prevents the system from surfacing low-quality connections that passed the initial scoring threshold but would not withstand scrutiny from an advocate for each side.
 
@@ -82,7 +82,7 @@ Negotiations have a maximum turn limit that depends on the participant types:
 | Mixed (system + personal agent) | 8 turns |
 | Personal agent vs Personal agent | Unlimited (24-hour timeout safety valve) |
 
-If the cap is reached without accept or reject, the negotiation ends with no opportunity. The outcome records `reason: "turn_cap"` to distinguish this from explicit rejection. Likewise, if 24 hours elapse in a personal-vs-personal negotiation without resolution, the outcome records `reason: "timeout"`.
+If the cap is reached without accept or reject, the opportunity transitions to `stalled`. The outcome records `reason: "turn_cap"` to distinguish this from explicit rejection. Likewise, if 24 hours elapse in a personal-vs-personal negotiation without resolution, the opportunity transitions to `stalled` and the outcome records `reason: "timeout"`.
 
 ---
 
@@ -90,10 +90,10 @@ If the cap is reached without accept or reject, the negotiation ends with no opp
 
 The finalization logic examines the negotiation history to determine the outcome:
 
-- **Has opportunity**: The last action was "accept". The opportunity transitions to `accepted`.
-- **Rejected**: The last action was "reject". The opportunity is discarded.
-- **Turn cap**: The maximum turns were exhausted. The opportunity is discarded; `reason: "turn_cap"`.
-- **Timeout**: 24 hours elapsed without resolution (personal-vs-personal only). The opportunity is discarded; `reason: "timeout"`.
+- **Has opportunity**: The last action was "accept". The opportunity transitions to `pending` (awaiting human acceptance via the UI).
+- **Rejected**: The last action was "reject". The opportunity transitions to `rejected`.
+- **Turn cap**: The maximum turns were exhausted. The opportunity transitions to `stalled`; `reason: "turn_cap"`.
+- **Timeout**: 24 hours elapsed without resolution (personal-vs-personal only). The opportunity transitions to `stalled`; `reason: "timeout"`.
 
 ### Outcome fields
 
@@ -185,8 +185,8 @@ Negotiation gates whether a proposed match becomes a visible opportunity:
 1. The opportunity evaluator identifies candidates with scores above threshold
 2. Each qualifying candidate is persisted immediately as an opportunity with `negotiating` status (for real-time visibility)
 3. Bilateral negotiation runs over the candidate
-4. If negotiation produces an outcome with `hasOpportunity: true`, the opportunity transitions to `accepted` with the agreed roles
-5. If negotiation rejects or times out, the opportunity is discarded
+4. If negotiation produces an outcome with `hasOpportunity: true`, the opportunity transitions to `pending` with the agreed roles, awaiting a human to confirm acceptance
+5. If negotiation rejects, the opportunity transitions to `rejected`. If it stalls (turn cap or timeout without consensus), it transitions to `stalled`
 
 Negotiation does not re-score the opportunity. The evaluator's score remains as the opportunity's initial score; negotiation only determines accept/reject and the agreed roles.
 

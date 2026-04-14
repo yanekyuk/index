@@ -426,10 +426,11 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 | Tool File | Tools | Subgraph(s) Invoked |
 |-----------|-------|---------------------|
 | `profile.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Profile Graph |
-| `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
+| `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, search_intents, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
 | `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
 | `opportunity.tools.ts` | create_opportunities, list_my_opportunities, send_opportunity | Opportunity Graph |
-| `contact.tools.ts` | add_contact, list_contacts | (direct service calls) |
+| `contact.tools.ts` | add_contact, list_contacts, search_contacts | (direct service calls) |
+| `chat.tools.ts` | list_conversations, get_conversation | (direct `ChatSessionReader` calls) |
 | `utility.tools.ts` | scrape_url, confirm_action, cancel_action | (direct scraper call, pending action state) |
 | `integration.tools.ts` | list_integrations, sync_integration | (service calls) |
 
@@ -488,7 +489,7 @@ Errors are trapped and returned as MCP error responses so a single failing tool 
 
 ### MCP_INSTRUCTIONS — the canonical behavioral contract
 
-`MCP_INSTRUCTIONS` is a long template string passed into the `McpServer` constructor as `instructions`. Every MCP client that connects receives it automatically and is expected to follow it for the session. It is the **single canonical home** for Index Network agent behavior — voice, banned vocabulary, the entity model, the discovery-first rule, personal-index scoping, output rules, and the **Negotiation turn mode** block. Plugin skill files, CLI wrappers, and marketplace manifests do not redefine this guidance; they defer to what ships in `MCP_INSTRUCTIONS`.
+`MCP_INSTRUCTIONS` is a template string passed into the `McpServer` constructor as `instructions`. Every MCP client that connects receives it automatically and is expected to follow it for the session. It carries the **global** contract: voice, banned vocabulary, the entity model, output rules, and pointers to tool descriptions for per-pattern behavior. Per-tool guidance (discovery-first, personal-index scoping, intent specificity, silent-subagent negotiation stance) lives in each tool's own description so it surfaces alongside the tool in MCP tool listings. Plugin skill files, CLI wrappers, and marketplace manifests do not redefine this guidance; they defer to what ships with the MCP server.
 
 When `MCP_INSTRUCTIONS` changes, every connected runtime picks up the new guidance on its next session — no plugin or skill release is needed.
 

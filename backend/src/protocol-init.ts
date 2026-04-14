@@ -53,7 +53,16 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     integration,
     intentQueue,
     contactService,
-    chatSession: chatSessionService,
+    chatSession: {
+      getSessionMessages: async (sessionId, limit) => {
+        const rows = await chatSessionService.getSessionMessages(sessionId, limit);
+        return rows.map((m) => ({ role: m.role, content: m.content }));
+      },
+      listSessions: (userId, limit) =>
+        conversationDatabaseAdapter.listChatSessionSummaries(userId, limit),
+      getSession: (userId, sessionId, messageLimit) =>
+        conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
+    },
     enricher: { enrichUserProfile },
     negotiationDatabase: conversationDatabaseAdapter as unknown as ProtocolDeps['negotiationDatabase'],
     integrationImporter: integrationService,

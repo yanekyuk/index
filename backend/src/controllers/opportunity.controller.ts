@@ -14,7 +14,7 @@ const discoverBodySchema = z.object({
   limit: z.number().int().positive().optional(),
 });
 
-const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
+const listStatusSchema = z.enum(['pending', 'stalled', 'accepted', 'rejected', 'expired']);
 
 /** Route params when path has :id or :networkId */
 type RouteParams = Record<string, string>;
@@ -202,8 +202,8 @@ export class OpportunityController {
       });
     }
     
-    const status = body.status as 'latent' | 'draft' | 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['latent', 'draft', 'pending', 'negotiating', 'accepted', 'rejected', 'expired'];
+    const status = body.status as 'latent' | 'draft' | 'pending' | 'negotiating' | 'stalled' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['latent', 'draft', 'pending', 'negotiating', 'stalled', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return new Response(JSON.stringify({ error: 'Invalid status; use one of: ' + allowed.join(', ') }), {
         status: 400,

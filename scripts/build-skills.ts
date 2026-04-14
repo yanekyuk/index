@@ -51,6 +51,22 @@ const TEMPLATE_PATH = join(
   REPO_ROOT,
   'packages/protocol/skills/openclaw/SKILL.md.template',
 );
+const CORE_GUIDANCE_PATH = join(
+  REPO_ROOT,
+  'packages/protocol/skills/core-guidance.partial.md',
+);
+const ORCHESTRATOR_TEMPLATE_PATH = join(
+  REPO_ROOT,
+  'packages/protocol/skills/claude-plugin/index-orchestrator.template.md',
+);
+const NEGOTIATOR_TEMPLATE_PATH = join(
+  REPO_ROOT,
+  'packages/protocol/skills/claude-plugin/index-negotiator.template.md',
+);
+const PLUGIN_JSON_TEMPLATE_PATH = join(
+  REPO_ROOT,
+  'packages/protocol/skills/claude-plugin/plugin.json.template',
+);
 function isTargetEnv(value: string): value is TargetEnv {
   return value === 'main' || value === 'dev';
 }
@@ -64,6 +80,18 @@ export function resolveOutputPaths(
     join(repoRoot, 'skills', skillName, 'SKILL.md'),
     join(repoRoot, 'packages/openclaw-plugin/skills', skillName, 'SKILL.md'),
   ];
+}
+
+export function resolveClaudePluginOutputs(repoRoot = REPO_ROOT): {
+  orchestrator: string[];
+  negotiator: string[];
+  pluginJson: string[];
+} {
+  return {
+    orchestrator: [join(repoRoot, 'packages/claude-plugin/skills/index-orchestrator/SKILL.md')],
+    negotiator: [join(repoRoot, 'packages/claude-plugin/skills/index-negotiator/SKILL.md')],
+    pluginJson: [join(repoRoot, 'packages/claude-plugin/.claude-plugin/plugin.json')],
+  };
 }
 
 export function resolveTargetEnv(
@@ -101,12 +129,27 @@ export function substituteTokens(template: string, tokens: TokenSet): string {
   return output;
 }
 
+/**
+ * Replaces partial placeholders (e.g. {{CORE_GUIDANCE}}) with their content
+ * before env-specific token substitution runs. Unknown keys are left as-is so
+ * substituteTokens can catch genuinely unreplaced tokens.
+ */
+export function injectPartials(template: string, partials: Record<string, string>): string {
+  let output = template;
+  for (const [key, value] of Object.entries(partials)) {
+    output = output.replaceAll(`{{${key}}}`, value);
+  }
+  return output;
+}
+
 export function build(
   targetEnv: TargetEnv,
   templatePath: string,
   outputPaths: string[],
+  partials: Record<string, string> = {},
 ): void {
-  const template = readFileSync(templatePath, 'utf8');
+  let template = readFileSync(templatePath, 'utf8');
+  template = injectPartials(template, partials);
   const content = substituteTokens(template, TOKENS[targetEnv]);
   for (const outputPath of outputPaths) {
     const dir = dirname(outputPath);
@@ -121,5 +164,18 @@ export function build(
 if (import.meta.main) {
   const targetEnv = resolveTargetEnv(process.argv.slice(2), process.env);
   console.log(`[build-skills] target env: ${targetEnv}`);
-  build(targetEnv, TEMPLATE_PATH, resolveOutputPaths(targetEnv));
+
+  const coreGuidance = readFileSync(CORE_GUIDANCE_PATH, 'utf8');
+  const partials = { CORE_GUIDANCE: coreGuidance };
+
+  // Openclaw skill
+  build(targetEnv, TEMPLATE_PATH, resolveOutputPaths(targetEnv), partials);
+
+  // Claude-plugin skills (skill content is env-agnostic; only plugin.json uses MCP_URL)
+  const claudeOutputs = resolveClaudePluginOutputs();
+  build(targetEnv, ORCHESTRATOR_TEMPLATE_PATH, claudeOutputs.orchestrator, partials);
+  build(targetEnv, NEGOTIATOR_TEMPLATE_PATH, claudeOutputs.negotiator, partials);
+
+  // Plugin manifest (env-specific MCP_URL, no partials)
+  build(targetEnv, PLUGIN_JSON_TEMPLATE_PATH, claudeOutputs.pluginJson);
 }
