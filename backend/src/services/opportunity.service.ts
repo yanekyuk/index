@@ -118,7 +118,7 @@ export class OpportunityService {
    */
   async getHomeView(
     userId: string,
-    options?: { networkId?: string; limit?: number; noCache?: boolean }
+    options?: { networkId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[] }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
@@ -130,6 +130,7 @@ export class OpportunityService {
         networkId: options?.networkId,
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
+        statuses: options?.statuses,
       });
       if (result.error) {
         return { error: result.error };
