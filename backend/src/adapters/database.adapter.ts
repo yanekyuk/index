@@ -2590,7 +2590,7 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
   }
@@ -3619,7 +3619,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
     const visibilityGuard = sql`(
@@ -3659,6 +3659,9 @@ export class OpportunityDatabaseAdapter {
           WHERE actor->>'networkId' = ${options.networkId}
         )
       )`);
+    }
+    if (options?.statuses?.length) {
+      conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
     }
     let q = db
       .select()
