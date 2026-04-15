@@ -358,6 +358,13 @@
       "when": 1776207319692,
       "tag": "0050_add_opportunity_deliveries",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1776220600908,
+      "tag": "0051_index_tasks_metadata_opportunity_id",
+      "breakpoints": true
     }
   ]
 }

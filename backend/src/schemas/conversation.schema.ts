@@ -8,7 +8,7 @@ import {
   primaryKey,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums
@@ -92,6 +92,9 @@ export const tasks = pgTable(
   (table) => ({
     conversationIdIdx: index('tasks_conversation_id_idx').on(table.conversationId),
     stateIdx: index('tasks_state_idx').on(table.state),
+    metadataOpportunityIdIdx: index('tasks_metadata_opportunity_id_idx')
+      .on(sql`(${table.metadata}->>'opportunityId')`)
+      .where(sql`${table.metadata}->>'type' = 'negotiation'`),
   }),
 );
 

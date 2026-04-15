@@ -23,6 +23,7 @@ import {
   type HomeSectionItem,
 } from './feed.state.js';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../opportunity.presenter.js';
+import { loadNegotiationContext } from '../negotiation-context.loader.js';
 import { HomeCategorizerAgent } from './feed.categorizer.js';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../opportunity.utils.js';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../../shared/ui/lucide.icon-catalog.js';
@@ -222,20 +223,31 @@ export class HomeGraphFactory {
         }
 
         try {
-          const keys = opportunities.map(
-            (opp) => `home:card:${opp.id}:${userId}`
+          // Negotiating cards are templated (no LLM call) and their text
+          // depends on the live turn count, which changes between requests
+          // without changing the opportunity status. Skip cache entirely
+          // for them so each render reflects the current turn.
+          //
+          // For all other statuses, include status in the key so status
+          // transitions (e.g. negotiating → pending) don't serve stale cards.
+          const cacheable = opportunities.filter((opp) => opp.status !== 'negotiating');
+          const liveNegotiating = opportunities.filter((opp) => opp.status === 'negotiating');
+
+          const keys = cacheable.map(
+            (opp) => `home:card:${opp.id}:${opp.status}:${userId}`
           );
-          const results = await this.cache.mget<HomeCardItem>(keys);
+          const results = keys.length > 0 ? await this.cache.mget<HomeCardItem>(keys) : [];
 
           const cachedCards = new Map<string, HomeCardItem>();
-          const uncachedOpportunities: typeof opportunities = [];
+          const uncachedOpportunities: typeof opportunities = [...liveNegotiating];
 
-          for (let i = 0; i < opportunities.length; i++) {
+          for (let i = 0; i < cacheable.length; i++) {
             const cached = results[i];
             if (cached) {
-              cachedCards.set(opportunities[i].id, { ...cached, _cardIndex: i });
+              const originalIndex = opportunities.indexOf(cacheable[i]);
+              cachedCards.set(cacheable[i].id, { ...cached, _cardIndex: originalIndex });
             } else {
-              uncachedOpportunities.push(opportunities[i]);
+              uncachedOpportunities.push(cacheable[i]);
             }
           }
 
@@ -271,7 +283,7 @@ export class HomeGraphFactory {
         logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
         return { cards: [], agentTimings: [], meta: { totalOpportunities: 0, totalSections: 0 } };
       }
-      const db = this.database as PresenterDatabase;
+      const db = this.database as PresenterDatabase & HomeGraphDb;
       const cards: HomeCardItem[] = [];
       const relevantActorIds = new Set<string>();
       for (const opp of opportunities) {
@@ -390,16 +402,20 @@ export class HomeGraphFactory {
             });
 
             try {
-              const ctx = await gatherPresenterContext(
-                db,
-                opportunity,
-                state.userId,
-                otherActor?.userId,
-              );
+              const [ctx, negotiationContext] = await Promise.all([
+                gatherPresenterContext(
+                  db,
+                  opportunity,
+                  state.userId,
+                  otherActor?.userId,
+                ),
+                loadNegotiationContext(db, opportunity.id, opportunity.status),
+              ]);
               const homeInput = {
                 ...ctx,
                 mutualIntentCount: undefined,
                 opportunityStatus: opportunity.status,
+                ...(negotiationContext ? { negotiationContext } : {}),
               };
               const _traceEmitterPresenter = requestContext.getStore()?.traceEmitter;
               const presenterStart = Date.now();
@@ -462,20 +478,24 @@ export class HomeGraphFactory {
 
     const cachePresenterResultsNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.cachePresenterResults", async () => {
-        const { cards, cachedCards, userId } = state;
+        const { cards, cachedCards, userId, opportunities } = state;
 
         // Only cache cards that weren't already from cache
         const newCards = cards.filter((card) => !cachedCards.has(card.opportunityId));
+        const statusById = new Map(opportunities.map((opp) => [opp.id, opp.status]));
 
         try {
           await Promise.all(
-            newCards.map((card) =>
-              this.cache.set(
-                `home:card:${card.opportunityId}:${userId}`,
+            newCards.map((card) => {
+              const status = statusById.get(card.opportunityId);
+              // Skip persisting negotiating cards — see read-side note.
+              if (!status || status === 'negotiating') return Promise.resolve();
+              return this.cache.set(
+                `home:card:${card.opportunityId}:${status}:${userId}`,
                 card,
                 { ttl: HOME_CACHE_TTL }
-              )
-            )
+              );
+            })
           );
         } catch (e) {
           logger.warn('[HomeGraph:cachePresenterResults] cache write failed, continuing', { error: e });
