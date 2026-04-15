@@ -449,14 +449,19 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      onClick={(e) => {
+      onClick={async (e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // Clipboard unavailable (e.g. non-secure context)
+        }
       }}
       className="shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
       title="Copy"
+      aria-label="Copy value"
     >
       {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
     </button>

@@ -52,8 +52,9 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     return;
   }
 
+  const normalizedUrl = baseUrl.replace(/\/+$/, '');
   const expected = {
-    url: `${baseUrl}/mcp`,
+    url: `${normalizedUrl}/mcp`,
     transport: 'streamable-http',
     headers: { 'x-api-key': apiKey },
   };
@@ -62,15 +63,16 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
   const needsUpdate =
     !current ||
     current.url !== expected.url ||
+    current.transport !== expected.transport ||
     current.headers?.['x-api-key'] !== apiKey;
 
   if (needsUpdate) {
-    api.configSet('mcp.servers.index-network', expected).catch((err) => {
-      api.logger.warn(
+    api.configSet('mcp.servers.index-network', expected).then(
+      () => api.logger.info('Index Network MCP server registered/updated.'),
+      (err) => api.logger.warn(
         `Failed to auto-register MCP server: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-    api.logger.info('Index Network MCP server registered/updated.');
+      ),
+    );
   }
 }
 

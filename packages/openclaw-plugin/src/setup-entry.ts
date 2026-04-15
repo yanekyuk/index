@@ -94,8 +94,9 @@ export default async function setup(ctx: SetupContext): Promise<void> {
   }
 
   // --- Register MCP server ---
+  const normalizedUrl = protocolUrl.replace(/\/+$/, '');
   const mcpDef = {
-    url: `${protocolUrl}/mcp`,
+    url: `${normalizedUrl}/mcp`,
     transport: 'streamable-http',
     headers: { 'x-api-key': apiKey },
   };
