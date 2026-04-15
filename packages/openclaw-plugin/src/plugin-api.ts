@@ -59,6 +59,13 @@ export interface OpenClawConfigSlice {
       token?: string;
     };
   };
+  mcp?: {
+    servers?: Record<string, {
+      url?: string;
+      transport?: string;
+      headers?: Record<string, string>;
+    }>;
+  };
 }
 
 export interface OpenClawPluginApi {
@@ -70,4 +77,6 @@ export interface OpenClawPluginApi {
   runtime: PluginRuntime;
   logger: PluginLogger;
   registerHttpRoute(options: RouteOptions): void;
+  /** Write a value into the OpenClaw config. Available since OpenClaw >=0.1.0. */
+  configSet?(path: string, value: unknown): Promise<void>;
 }

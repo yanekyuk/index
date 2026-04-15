@@ -43,6 +43,38 @@ let backoffMultiplier = 1;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
+ * Ensures the `index-network` MCP server definition in OpenClaw config
+ * matches the current plugin config. Creates or updates as needed.
+ */
+function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string): void {
+  if (!api.configSet) {
+    api.logger.debug('configSet not available — skipping MCP auto-registration.');
+    return;
+  }
+
+  const expected = {
+    url: `${baseUrl}/mcp`,
+    transport: 'streamable-http',
+    headers: { 'x-api-key': apiKey },
+  };
+
+  const current = api.config?.mcp?.servers?.['index-network'];
+  const needsUpdate =
+    !current ||
+    current.url !== expected.url ||
+    current.headers?.['x-api-key'] !== apiKey;
+
+  if (needsUpdate) {
+    api.configSet('mcp.servers.index-network', expected).catch((err) => {
+      api.logger.warn(
+        `Failed to auto-register MCP server: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+    api.logger.info('Index Network MCP server registered/updated.');
+  }
+}
+
+/**
  * OpenClaw plugin entry point. Registers an internal HTTP route for polling
  * and starts a background interval that triggers it.
  *
@@ -60,12 +92,13 @@ export default function register(api: OpenClawPluginApi): void {
 
   if (!agentId || !apiKey) {
     api.logger.warn(
-      'Index Network polling requires agentId and apiKey in plugin config. Polling will not start.',
+      'Index Network plugin not configured. Run `openclaw configure` to complete setup.',
     );
     return;
   }
 
-  const baseUrl = readConfig(api, 'protocolUrl') || 'http://localhost:3001';
+  const baseUrl = readConfig(api, 'protocolUrl') || 'https://protocol.index.network';
+  ensureMcpServer(api, baseUrl, apiKey);
   const gatewayPort = api.config?.gateway?.port ?? 18789;
   const gatewayToken = api.config?.gateway?.auth?.token ?? '';
 
