@@ -120,6 +120,11 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
     `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl ${protocolUrl}`,
   ].join('\n');
 
+  const openclawDelivery = [
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel telegram`,
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget <your-telegram-chat-id>`,
+  ].join('\n');
+
   return (
     <div className="border border-gray-200 rounded-sm" onClick={(e) => e.stopPropagation()}>
       <button
@@ -143,6 +148,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
             <CodeBlock code={openclawInstall} label="1. Install plugin" />
             <CodeBlock code={openclawMcp} label="2. Register MCP server" />
             <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables polling)" />
+            <CodeBlock code={openclawDelivery} label="4. Configure delivery (route opportunities + test messages to Telegram)" />
           </div>
         </div>
       )}
