@@ -2,10 +2,14 @@
 /**
  * Rediscover opportunities for a specific user.
  *
- * Hard-deletes existing opportunities involving the user (the persist-node dedup
- * only skips status='draft', so any other existing opportunity blocks rediscovery)
- * then enqueues a fresh discovery job per active intent with a unique jobId
- * to bypass the 6h queue-level dedupe key.
+ * Wipes the user's prior discovery state so the new run isn't dedup-skipped or
+ * polluted by stale negotiation tasks, then enqueues a fresh discovery job per
+ * active intent with a unique jobId to bypass the 6h queue-level dedupe key.
+ *
+ * Cleanup order (FK-safe):
+ *   1. Delete negotiation tasks tied to those opportunities (artifacts cascade,
+ *      messages set NULL on task_id). Done by matching metadata->>'opportunityId'.
+ *   2. Delete the opportunity rows themselves (opportunity_deliveries cascade).
  *
  * Usage:
  *   bun src/cli/rediscover-user-opportunities.ts <userId>
@@ -17,10 +21,11 @@ import path from 'path';
 const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env.production';
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { intents, opportunities, users } from '../schemas/database.schema';
+import { tasks } from '../schemas/conversation.schema';
 import { opportunityQueue } from '../queues/opportunity.queue';
 
 async function main() {
@@ -38,6 +43,27 @@ async function main() {
   if (userRows.length === 0) {
     console.error(`[rediscover] User ${userId} not found (or soft-deleted).`);
     process.exit(1);
+  }
+
+  const oppRows = await db
+    .select({ id: opportunities.id })
+    .from(opportunities)
+    .where(sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`);
+  const oppIds = oppRows.map((o) => o.id);
+
+  if (oppIds.length > 0) {
+    const deletedTasks = await db
+      .delete(tasks)
+      .where(
+        and(
+          sql`${tasks.metadata}->>'type' = 'negotiation'`,
+          inArray(sql`${tasks.metadata}->>'opportunityId'`, oppIds),
+        ),
+      )
+      .returning({ id: tasks.id });
+    console.log(
+      `[rediscover] Deleted ${deletedTasks.length} negotiation task(s) tied to those opportunities.`,
+    );
   }
 
   const deleted = await db
