@@ -29,11 +29,7 @@
     "linear@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "railway@claude-plugins-official": true,
-    "impeccable@impeccable": true,
     "typescript-lsp@claude-plugins-official": true,
-    "context7@claude-plugins-official": true,
-    "claude-code-setup@claude-plugins-official": true,
-    "swe@arcana": false,
-    "index-network@indexnetwork-claude-plugin": true
+    "context7@claude-plugins-official": true
   }
 }
