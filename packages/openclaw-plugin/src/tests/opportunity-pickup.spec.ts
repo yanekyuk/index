@@ -26,7 +26,7 @@ function buildFakeApi(): FakeApi {
   const api: OpenClawPluginApi = {
     id: 'indexnetwork-openclaw-plugin',
     name: 'Index Network',
-    pluginConfig: {},
+    pluginConfig: { deliveryChannel: 'telegram', deliveryTarget: '69340471' },
     runtime: {
       subagent: {
         run: async (opts) => {
@@ -159,7 +159,7 @@ describe('handleOpportunityPickup', () => {
     await handleOpportunityPickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
     const call = fake.subagentCalls[0];
-    expect(call.sessionKey).toBe(`index:delivery:opportunity:${SAMPLE_PAYLOAD.opportunityId}`);
+    expect(call.sessionKey).toBe('agent:main:telegram:direct:69340471');
     expect(call.idempotencyKey).toBe(
       `index:delivery:opportunity:${SAMPLE_PAYLOAD.opportunityId}:${SAMPLE_PAYLOAD.reservationToken}`,
     );

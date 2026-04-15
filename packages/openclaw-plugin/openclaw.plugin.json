@@ -24,6 +24,14 @@
         "enum": ["enabled", "disabled"],
         "default": "enabled",
         "description": "When set to \"disabled\", pending turns are skipped — Index Network falls back to its system negotiator."
+      },
+      "deliveryChannel": {
+        "type": "string",
+        "description": "OpenClaw channel id for delivering Index Network notifications (e.g. \"telegram\"). Required to receive opportunity and test-message deliveries."
+      },
+      "deliveryTarget": {
+        "type": "string",
+        "description": "Channel-specific recipient identifier (e.g. your Telegram chat ID). Required to receive opportunity and test-message deliveries."
       }
     },
     "required": [],

@@ -276,14 +276,18 @@ export async function handleOpportunityPickup(
     };
   };
 
-  await dispatchDelivery(api, {
+  const dispatchResult = await dispatchDelivery(api, {
     rendered: {
       headline: payload.rendered.headline,
       body: opportunityDeliveryBody(payload.rendered),
     },
-    sessionKey: `index:delivery:opportunity:${payload.opportunityId}`,
     idempotencyKey: `index:delivery:opportunity:${payload.opportunityId}:${payload.reservationToken}`,
   });
+
+  // If delivery routing wasn't configured, don't confirm — let reservation expire so we can retry once configured.
+  if (dispatchResult === null) {
+    return false;
+  }
 
   // Confirm delivery — failures are warnings only, dispatch already happened
   const confirmUrl = `${baseUrl}/api/agents/${agentId}/opportunities/${payload.opportunityId}/delivered`;
@@ -339,11 +343,15 @@ export async function handleTestMessagePickup(
     reservationToken: string;
   };
 
-  await dispatchDelivery(api, {
+  const dispatchResult = await dispatchDelivery(api, {
     rendered: { headline: 'Test message', body: body.content },
-    sessionKey: `index:delivery:test:${body.id}`,
     idempotencyKey: `index:delivery:test:${body.id}:${body.reservationToken}`,
   });
+
+  // If delivery routing wasn't configured, don't confirm — let reservation expire so we can retry once configured.
+  if (dispatchResult === null) {
+    return false;
+  }
 
   // Confirm delivery — failures are warnings only, dispatch already happened
   const confirmUrl = `${baseUrl}/api/agents/${agentId}/test-messages/${body.id}/delivered`;
