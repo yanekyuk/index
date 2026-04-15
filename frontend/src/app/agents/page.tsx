@@ -149,6 +149,11 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
             <CodeBlock code={openclawMcp} label="2. Register MCP server" />
             <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables polling)" />
             <CodeBlock code={openclawDelivery} label="4. Configure delivery (route opportunities + test messages to Telegram)" />
+            <p className="text-xs text-gray-500 font-ibm-plex-mono">
+              Replace <code className="px-1 bg-gray-100 rounded">&lt;your-telegram-chat-id&gt;</code> with your numeric Telegram chat ID. To find it, message{' '}
+              <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="underline">@userinfobot</a>
+              {' '}on Telegram — it will reply with your ID.
+            </p>
           </div>
         </div>
       )}
