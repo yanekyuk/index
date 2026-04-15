@@ -10,7 +10,7 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { OpportunityGraphFactory, HydeGraphFactory, HydeGenerator, LensInferrer } from '@indexnetwork/protocol';
-import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache } from '@indexnetwork/protocol';
+import type { OpportunityGraphDatabase, HydeGraphDatabase, Embedder, HydeCache, NegotiationGraphLike, AgentDispatcher } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for opportunity discovery jobs. */
 export const QUEUE_NAME = 'opportunity-discovery-queue';
@@ -47,6 +47,15 @@ export interface OpportunityGraphInvokeOptions {
 export interface OpportunityQueueDeps {
   database?: OpportunityQueueDatabase;
   invokeOpportunityGraph?: (opts: OpportunityGraphInvokeOptions) => Promise<void>;
+  /**
+   * Negotiation graph for bilateral filtering inside the opportunity discovery graph.
+   * Without it, `negotiateNode` short-circuits and every evaluated candidate is persisted —
+   * defeating the protocol invariant that opportunities must be negotiated regardless of source.
+   * Server-side, inject via {@link OpportunityQueue.setRuntimeDeps} before {@link OpportunityQueue.startWorker}.
+   */
+  negotiationGraph?: NegotiationGraphLike;
+  /** Used by the opportunity graph to decide long-vs-short negotiation timeout per candidate. */
+  agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
 }
 
 /**
@@ -68,7 +77,7 @@ export class OpportunityQueue {
   private readonly queueLogger = log.queue.from('OpportunityQueue');
   private readonly database: OpportunityQueueDatabase | ChatDatabaseAdapter;
   private readonly graphDb: OpportunityGraphDatabase & HydeGraphDatabase;
-  private readonly deps: OpportunityQueueDeps | undefined;
+  private deps: OpportunityQueueDeps | undefined;
   private worker: ReturnType<typeof QueueFactory.createWorker<OpportunityJobData>> | null = null;
 
   /**
@@ -79,6 +88,18 @@ export class OpportunityQueue {
     this.database = deps?.database ?? new ChatDatabaseAdapter();
     this.graphDb = (this.database as ChatDatabaseAdapter) as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
     // When deps is omitted, default adapter implements the same interface.
+  }
+
+  /**
+   * Inject runtime dependencies that are constructed at server startup
+   * (negotiation graph, agent dispatcher). The composition root in `main.ts`
+   * calls this before {@link startWorker} so background discovery jobs run
+   * the negotiate node instead of short-circuiting.
+   *
+   * Idempotent — call sites that omit a field leave the existing value intact.
+   */
+  setRuntimeDeps(runtimeDeps: Pick<OpportunityQueueDeps, 'negotiationGraph' | 'agentDispatcher'>): void {
+    this.deps = { ...(this.deps ?? {}), ...runtimeDeps };
   }
 
   /**
@@ -234,7 +255,11 @@ export class OpportunityQueue {
       const opportunityGraph = new OpportunityGraphFactory(
         this.graphDb as OpportunityGraphDatabase,
         embedder,
-        hydeGraph
+        hydeGraph,
+        undefined,
+        undefined,
+        this.deps?.negotiationGraph,
+        this.deps?.agentDispatcher,
       ).createGraph();
       const result = await opportunityGraph.invoke(invokeOpts);
 
