@@ -490,7 +490,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
 
   const openclawDelivery = [
     `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel telegram`,
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget <your-telegram-chat-id>`,
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget '"<your-telegram-chat-id>"'`,
   ].join("\n");
 
   return (
