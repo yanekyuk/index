@@ -426,7 +426,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
             isNull(schema.apikeys.expiresAt),
             sql`${schema.apikeys.expiresAt} > now()`,
           ),
-          sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId') = ANY(${agentIds})`,
+          inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
         ),
       );
     return new Set(rows.map((r) => r.agentId).filter((id): id is string => !!id));
