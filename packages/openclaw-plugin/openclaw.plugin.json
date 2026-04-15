@@ -17,7 +17,8 @@
       "protocolUrl": {
         "type": "string",
         "format": "uri",
-        "description": "Base URL of the Index Network backend. Defaults to http://localhost:3001."
+        "default": "https://protocol.index.network",
+        "description": "Base URL of the Index Network backend."
       },
       "negotiationMode": {
         "type": "string",
