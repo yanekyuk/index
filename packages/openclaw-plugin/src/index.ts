@@ -66,8 +66,8 @@ export default function register(api: OpenClawPluginApi): void {
   }
 
   const baseUrl = readConfig(api, 'protocolUrl') || 'http://localhost:3001';
-  const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || '18789';
-  const gatewayToken = readGatewayToken();
+  const gatewayPort = api.config?.gateway?.port ?? 18789;
+  const gatewayToken = api.config?.gateway?.auth?.token ?? '';
 
   // Route MUST use auth: 'gateway' (not 'plugin') — subagent.run() requires
   // operator.write scope, which only gateway-authed routes receive.
@@ -389,18 +389,6 @@ function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void
 function readConfig(api: OpenClawPluginApi, key: string): string {
   const val = api.pluginConfig[key];
   return typeof val === 'string' ? val : '';
-}
-
-function readGatewayToken(): string {
-  try {
-    const fs = require('node:fs');
-    const path = require('node:path');
-    const configPath = path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    return config?.gateway?.auth?.token ?? '';
-  } catch {
-    return '';
-  }
 }
 
 /**
