@@ -6140,6 +6140,46 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Looks up the negotiation task attached to an opportunity, preferring the
+   * most-recently-created row if multiple exist (shouldn't, but defensive).
+   *
+   * @param opportunityId - Opportunity id stored on task metadata
+   * @returns The task record or null
+   */
+  async getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt))
+      .limit(1);
+
+    const [row] = rows;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      conversationId: row.conversationId,
+      state: row.state as string,
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
    * Gets all messages for a conversation, ordered by creation time (ascending).
    * Used by negotiation tools to reconstruct turn history.
    * @param conversationId - The conversation to fetch messages for
