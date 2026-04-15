@@ -142,7 +142,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <CodeBlock code={openclawInstall} label="1. Install plugin" />
             <CodeBlock code={openclawMcp} label="2. Register MCP server" />
-            <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables negotiation polling)" />
+            <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables polling)" />
           </div>
         </div>
       )}
