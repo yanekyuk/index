@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
+import { AgentTestMessageService } from '../services/agent-test-message.service';
 import { agentService } from '../services/agent.service';
 import {
   negotiationPollingService,
@@ -10,6 +11,10 @@ import {
   ConflictError,
   UnauthorizedError,
 } from '../services/negotiation-polling.service';
+import { OpportunityDeliveryService } from '../services/opportunity-delivery.service';
+
+const agentTestMessageService = new AgentTestMessageService();
+const opportunityDeliveryService = new OpportunityDeliveryService();
 
 const logger = log.controller.from('agent');
 
@@ -44,6 +49,18 @@ const grantPermissionSchema = z.object({
 
 const createTokenSchema = z.object({
   name: z.string().optional(),
+});
+
+const enqueueTestMessageSchema = z.object({
+  content: z.string().trim().min(1, 'content is required'),
+});
+
+const confirmTestMessageDeliveredSchema = z.object({
+  reservationToken: z.string().min(1, 'reservationToken is required'),
+});
+
+const confirmOpportunityDeliveredSchema = z.object({
+  reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
 const respondNegotiationSchema = z.object({
@@ -399,6 +416,123 @@ export class AgentController {
         return jsonError(err.message, 409);
       }
       return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/test-messages')
+  @UseGuards(AuthGuard)
+  async enqueueTestMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    const body = await parseBody(req, enqueueTestMessageSchema);
+    if (body instanceof Response) {
+      return body;
+    }
+
+    try {
+      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
+      await agentService.getById(agentId, user.id);
+      const result = await agentTestMessageService.enqueue(agentId, user.id, body.content);
+      return Response.json(result, { status: 201 });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/test-messages/pickup')
+  @UseGuards(AuthOrApiKeyGuard)
+  async pickupTestMessage(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    try {
+      const result = await agentTestMessageService.pickup(agentId);
+      if (!result) {
+        return new Response(null, { status: 204 });
+      }
+      return Response.json(result);
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/test-messages/:messageId/delivered')
+  @UseGuards(AuthOrApiKeyGuard)
+  async confirmTestMessageDelivered(req: Request, _user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    const messageId = params?.messageId;
+    if (!agentId || !messageId) {
+      return jsonError('Agent ID and message ID are required', 400);
+    }
+
+    const body = await parseBody(req, confirmTestMessageDeliveredSchema);
+    if (body instanceof Response) {
+      return body;
+    }
+
+    try {
+      await agentTestMessageService.confirmDelivered(messageId, body.reservationToken);
+      return Response.json({ ok: true });
+    } catch (err) {
+      const msg = parseErrorMessage(err);
+      if (msg === 'invalid_reservation_token_or_already_delivered') {
+        return jsonError('Invalid or expired reservation token', 404);
+      }
+      return jsonError(msg, errorStatus(err));
+    }
+  }
+
+  @Post('/:id/opportunities/pickup')
+  @UseGuards(AuthOrApiKeyGuard)
+  async pickupOpportunity(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    try {
+      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
+      await agentService.getById(agentId, user.id);
+      const result = await opportunityDeliveryService.pickupPending(agentId);
+      if (!result) {
+        return new Response(null, { status: 204 });
+      }
+      return Response.json(result);
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/opportunities/:opportunityId/delivered')
+  @UseGuards(AuthOrApiKeyGuard)
+  async confirmOpportunityDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    const opportunityId = params?.opportunityId;
+    if (!agentId || !opportunityId) {
+      return jsonError('Agent ID and opportunity ID are required', 400);
+    }
+
+    const body = await parseBody(req, confirmOpportunityDeliveredSchema);
+    if (body instanceof Response) {
+      return body;
+    }
+
+    try {
+      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
+      await agentService.getById(agentId, user.id);
+      await opportunityDeliveryService.confirmDelivered(opportunityId, user.id, body.reservationToken);
+      return Response.json({ ok: true });
+    } catch (err) {
+      const msg = parseErrorMessage(err);
+      if (msg === 'invalid_reservation_token_or_already_delivered') {
+        return jsonError('Invalid or expired reservation token', 404);
+      }
+      return jsonError(msg, errorStatus(err));
     }
   }
 }

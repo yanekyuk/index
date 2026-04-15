@@ -2,3 +2,8 @@
 
 # Exclude dist/ from test discovery to avoid running stale compiled files
 ignore = ["dist/"]
+
+# Preload .env.development before any test module runs so integration tests
+# that touch the live database get the correct DATABASE_URL. Bun auto-loads
+# .env.test (which points to a stale test schema), so we override here.
+preload = ["./src/preload.test.ts"]

@@ -48,10 +48,25 @@ export interface RouteOptions {
   handler: RouteHandler;
 }
 
+/**
+ * Narrow slice of OpenClawConfig that the plugin reads at register time.
+ * Matches the shape exposed by `api.config` per the OpenClaw plugin SDK.
+ */
+export interface OpenClawConfigSlice {
+  gateway?: {
+    port?: number;
+    auth?: {
+      token?: string;
+    };
+  };
+}
+
 export interface OpenClawPluginApi {
   id: string;
   name: string;
   pluginConfig: Record<string, unknown>;
+  /** Live OpenClaw config snapshot (same shape as `~/.openclaw/openclaw.json`). */
+  config?: OpenClawConfigSlice;
   runtime: PluginRuntime;
   logger: PluginLogger;
   registerHttpRoute(options: RouteOptions): void;

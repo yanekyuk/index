@@ -131,4 +131,9 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
   revokeToken: async (agentId: string, tokenId: string): Promise<void> => {
     await api.delete<void>(`/agents/${agentId}/tokens/${tokenId}`);
   },
+
+  sendTestMessage: async (agentId: string, content: string): Promise<{ id: string }> => {
+    const response = await api.post<{ id: string }>(`/agents/${agentId}/test-messages`, { content });
+    return response;
+  },
 });

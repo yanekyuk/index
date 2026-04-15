@@ -2,7 +2,12 @@
 
 Index Network — find the right people and let them find you.
 
-This plugin wires the [Index Network](https://index.network) MCP server into your OpenClaw workspace and polls for negotiation turns in the background. On first use the bootstrap skill registers the MCP server and guides you through auth; after that, the MCP server's own instructions carry all the behavioral guidance.
+This plugin wires the [Index Network](https://index.network) MCP server into your OpenClaw workspace and polls for background work in two categories:
+
+- **Opportunity and test-message deliveries (v1)** — the plugin picks up pending deliveries and announces them to the user via the configured OpenClaw channel.
+- **Negotiation turns (alpha)** — the plugin picks up pending negotiation turns assigned to your agent and responds silently on your behalf.
+
+On first use the bootstrap skill registers the MCP server and guides you through auth; after that, the MCP server's own instructions carry all the behavioral guidance.
 
 ## Install
 
@@ -35,15 +40,23 @@ and asks you to pick an auth mode.
 
 The skill then re-registers the MCP server with an `x-api-key` header so every tool call is authenticated automatically.
 
-## Automatic negotiations
+## Automatic opportunity delivery (v1)
 
-Once the plugin is configured with an `agentId` and `apiKey`, it polls the Index Network backend every 30 seconds for pending negotiation turns assigned to your agent. When a turn is found, the plugin:
+Once the plugin is configured with an `agentId`, `apiKey`, `deliveryChannel`, and `deliveryTarget`, it polls the Index Network backend every 30 seconds for pending opportunities and test messages. When one is found, the plugin:
 
-1. Picks up the turn via `POST /agents/:agentId/negotiations/pickup`.
-2. Launches a silent subagent (`deliver: false`) with a task prompt that tells it to read the negotiation via `get_negotiation`, ground itself in your profile and intents, and submit a response via `respond_to_negotiation`.
-3. Tracks in-flight turns to avoid duplicate subagent launches.
+1. Picks it up via `POST /agents/:agentId/opportunities/pickup` or `POST /agents/:agentId/test-messages/pickup` (reservation-based, 60 s TTL).
+2. Dispatches a subagent with `deliver: true`, routed to `agent:main:<deliveryChannel>:direct:<deliveryTarget>`, so the rendered card is announced to the user on the configured channel.
+3. Confirms delivery via `POST .../delivered` so the opportunity is marked delivered in the backend's ledger.
+
+When routing is not configured, the plugin logs a warning and skips the announce without confirming delivery — the backend holds the reservation until it expires and retries on the next poll cycle.
+
+## Automatic negotiations (alpha)
+
+When `negotiationMode` is `enabled` (the default), the same poll loop also pulls pending negotiation turns assigned to your agent via `POST /agents/:agentId/negotiations/pickup`, and launches a silent subagent (`deliver: false`) to read the negotiation, ground itself in your profile and intents, and respond via `respond_to_negotiation`. In-flight turns are deduplicated across poll cycles.
 
 You never see the turns. The subagent speaks on your behalf. The only user-facing message you receive is when a negotiation is **accepted** — a single short line telling you who you're now connected with and why.
+
+This capability is still alpha — if you want to opt out, set `negotiationMode` to `"disabled"` and Index Network falls back to its system `Index Negotiator` after the turn times out.
 
 ### Configuration
 
@@ -51,14 +64,18 @@ The plugin reads these config keys under `plugins.entries.indexnetwork-openclaw-
 
 - `agentId` (string, required) — your Index Network agent ID. Find it at https://index.network/agents.
 - `apiKey` (string, required) — API key linked to your agent.
+- `deliveryChannel` (string, required for deliveries) — OpenClaw channel id for announcing opportunity and test-message cards (e.g. `"telegram"`).
+- `deliveryTarget` (string, required for deliveries) — channel-specific recipient id (e.g. your Telegram chat ID).
 - `protocolUrl` (string, optional) — backend base URL. Defaults to `http://localhost:3001`.
-- `negotiationMode` (`"enabled"` | `"disabled"`, default `"enabled"`) — when set to `"disabled"`, polling skips turn pickup. Index Network's side falls back to its system `Index Negotiator` after the turn times out.
+- `negotiationMode` (`"enabled"` | `"disabled"`, default `"enabled"`) — when set to `"disabled"`, polling skips negotiation turn pickup. Index Network's side falls back to its system `Index Negotiator` after the turn times out.
 
 Configure via CLI:
 
 ```bash
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId YOUR_AGENT_ID
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey YOUR_API_KEY
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel telegram
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget YOUR_CHAT_ID
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
 ```
 
@@ -110,6 +127,8 @@ Behavioral guidance (voice, vocabulary, entity model, discovery-first rule, outp
 **OAuth never opens a browser** — switch to persistent session mode.
 
 **`openclaw mcp set` fails with "command not found"** — make sure you have OpenClaw CLI ≥0.1.0 installed.
+
+**Opportunities picked up but never delivered** — confirm `deliveryChannel` and `deliveryTarget` are set. Without them the plugin logs a warning, skips the announce, and leaves the reservation to expire so the backend can retry.
 
 **Automatic negotiations never fire** — confirm the plugin has `agentId` and `apiKey` configured. Check OpenClaw gateway logs for poll errors. Verify your agent exists at https://index.network/agents.
 
