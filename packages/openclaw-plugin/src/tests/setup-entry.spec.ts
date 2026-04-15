@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import setup from '../setup-entry.js';
+import { runSetup as setup } from '../setup.cli.js';
 
 interface FakeCtx {
   ctx: Parameters<typeof setup>[0];

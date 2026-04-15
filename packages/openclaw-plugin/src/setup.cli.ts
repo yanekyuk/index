@@ -1,11 +1,15 @@
 /**
- * Index Network — OpenClaw setup entry point.
+ * Index Network — OpenClaw CLI setup command.
  *
- * Interactive wizard that runs during `openclaw plugins install` or
- * `openclaw configure`. Collects protocolUrl, agentId, apiKey, and
- * optional delivery routing, then writes plugin config and registers
- * the MCP server.
+ * Registered via `api.registerCli()` and invoked as:
+ *
+ *   openclaw index-network setup
+ *
+ * Collects protocolUrl, agentId, apiKey, and optional delivery routing,
+ * then writes plugin config and registers the MCP server.
  */
+
+import * as readline from 'node:readline/promises';
 
 const PLUGIN_ID = 'indexnetwork-openclaw-plugin';
 const DEFAULT_PROTOCOL_URL = 'https://protocol.index.network';
@@ -30,7 +34,11 @@ const TARGET_PROMPTS: Record<string, string> = {
   matrix: 'Matrix room ID',
 };
 
-interface SetupContext {
+/**
+ * Abstraction over user I/O and config writes. The CLI command injects
+ * a real readline-backed implementation; tests inject fakes.
+ */
+export interface SetupContext {
   /** Full OpenClaw config snapshot. */
   cfg: Record<string, unknown>;
   /** Prompt the user for free-text input. */
@@ -41,7 +49,10 @@ interface SetupContext {
   configSet(path: string, value: unknown): Promise<void>;
 }
 
-export default async function setup(ctx: SetupContext): Promise<void> {
+/**
+ * Core setup logic — testable via injected `SetupContext`.
+ */
+export async function runSetup(ctx: SetupContext): Promise<void> {
   // --- Server URL ---
   const protocolUrl = await ctx.prompt('Server URL', {
     default: DEFAULT_PROTOCOL_URL,
@@ -100,5 +111,56 @@ export default async function setup(ctx: SetupContext): Promise<void> {
     transport: 'streamable-http',
     headers: { 'x-api-key': apiKey },
   };
-  await ctx.configSet(`mcp.servers.index-network`, mcpDef);
+  await ctx.configSet('mcp.servers.index-network', mcpDef);
+}
+
+/**
+ * Registers the `openclaw index-network setup` CLI command.
+ *
+ * @param program - Commander program instance provided by OpenClaw's `registerCli`.
+ * @param api     - Plugin API for reading config and calling `configSet`.
+ */
+export function registerSetupCli(
+  program: { command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } } },
+  api: { config?: Record<string, unknown>; configSet?(path: string, value: unknown): Promise<void> },
+): void {
+  program
+    .command('setup')
+    .description('Interactive setup wizard for Index Network')
+    .action(async () => {
+      if (!api.configSet) {
+        console.error('configSet not available — cannot write config.');
+        process.exitCode = 1;
+        return;
+      }
+
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+      const ctx: SetupContext = {
+        cfg: api.config || {},
+        prompt: async (label, opts) => {
+          const defaultSuffix = opts?.default ? ` [${opts.default}]` : '';
+          const answer = await rl.question(`${label}${defaultSuffix}: `);
+          return answer.trim() || opts?.default || '';
+        },
+        select: async (label, choices) => {
+          console.log(`\n${label}:`);
+          choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.label}`));
+          const answer = await rl.question('Selection: ');
+          const idx = parseInt(answer.trim(), 10) - 1;
+          return choices[idx]?.value ?? '';
+        },
+        configSet: api.configSet.bind(api),
+      };
+
+      try {
+        await runSetup(ctx);
+        console.log('\nSetup complete. Restart the gateway to apply changes.');
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      } finally {
+        rl.close();
+      }
+    });
 }

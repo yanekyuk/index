@@ -21,6 +21,7 @@ import type { OpenClawPluginApi } from './plugin-api.js';
 import { dispatchDelivery } from './delivery.dispatcher.js';
 import { opportunityDeliveryBody } from './prompts/opportunity-delivery.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
+import { registerSetupCli } from './setup.cli.js';
 
 /** Base polling interval: 30 seconds. */
 const POLL_INTERVAL_MS = 30_000;
@@ -41,6 +42,32 @@ let backoffMultiplier = 1;
 
 /** Handle returned by setInterval, stored so tests can inspect or clear it. */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Registers the `openclaw index-network setup` CLI command if the host
+ * supports `registerCli`. Safe to call even when the plugin is unconfigured.
+ */
+function registerSetupCommand(api: OpenClawPluginApi): void {
+  if (!api.registerCli) {
+    api.logger.debug('registerCli not available — skipping CLI setup command.');
+    return;
+  }
+
+  api.registerCli(
+    async ({ program }) => {
+      registerSetupCli(program as Parameters<typeof registerSetupCli>[0], api);
+    },
+    {
+      descriptors: [
+        {
+          name: 'index-network',
+          description: 'Manage Index Network plugin configuration',
+          hasSubcommands: true,
+        },
+      ],
+    },
+  );
+}
 
 /**
  * Ensures the `index-network` MCP server definition in OpenClaw config
@@ -89,12 +116,15 @@ export default function register(api: OpenClawPluginApi): void {
   }
   registered = true;
 
+  // Register `openclaw index-network setup` CLI command unconditionally
+  registerSetupCommand(api);
+
   const agentId = readConfig(api, 'agentId');
   const apiKey = readConfig(api, 'apiKey');
 
   if (!agentId || !apiKey) {
     api.logger.warn(
-      'Index Network plugin not configured. Run `openclaw configure` to complete setup.',
+      'Index Network plugin not configured. Run `openclaw index-network setup` to complete setup.',
     );
     return;
   }

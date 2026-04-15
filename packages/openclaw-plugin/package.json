@@ -23,7 +23,6 @@
   },
   "openclaw": {
     "extensions": ["./src/index.ts"],
-    "setupEntry": "./src/setup-entry.ts",
     "compat": {
       "openclaw": ">=0.1.0"
     }

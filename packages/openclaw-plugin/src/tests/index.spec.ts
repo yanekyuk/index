@@ -43,6 +43,7 @@ function buildFakeApi(
     },
     logger,
     registerHttpRoute: mock(() => {}),
+    registerCli: mock(() => {}),
     configSet: mock(async (path: string, value: unknown) => {
       configSetCalls.push({ path, value });
     }),
@@ -151,11 +152,11 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
   });
 
-  test('warns user to run openclaw configure when not configured', () => {
+  test('warns user to run openclaw index-network setup when not configured', () => {
     const fake = buildFakeApi({});
     register(fake.api);
 
     const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
-    expect(warnMsg).toContain('openclaw configure');
+    expect(warnMsg).toContain('openclaw index-network setup');
   });
 });

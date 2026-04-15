@@ -68,6 +68,13 @@ export interface OpenClawConfigSlice {
   };
 }
 
+export interface CliRegistration {
+  (
+    factory: (ctx: { program: unknown }) => void | Promise<void>,
+    opts?: { descriptors?: Array<{ name: string; description: string; hasSubcommands?: boolean }> },
+  ): void;
+}
+
 export interface OpenClawPluginApi {
   id: string;
   name: string;
@@ -79,4 +86,6 @@ export interface OpenClawPluginApi {
   registerHttpRoute(options: RouteOptions): void;
   /** Write a value into the OpenClaw config. Available since OpenClaw >=0.1.0. */
   configSet?(path: string, value: unknown): Promise<void>;
+  /** Register a CLI subcommand (e.g. `openclaw index-network setup`). */
+  registerCli?: CliRegistration;
 }

@@ -132,6 +132,8 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
 
+  const openclawSetup = `openclaw index-network setup`;
+
   return (
     <div className="border border-gray-200 rounded-sm" onClick={(e) => e.stopPropagation()}>
       <button
@@ -152,10 +154,11 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <CodeBlock code={openclawInstall} label="Install plugin" />
+            <CodeBlock code={openclawInstall} label="1. Install plugin" />
+            <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
             <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
               <p className="text-xs text-gray-500 font-ibm-plex-mono">
-                The setup wizard will prompt for these values during installation:
+                The setup wizard will prompt for these values:
               </p>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Agent ID</span>
