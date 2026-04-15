@@ -121,9 +121,15 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
  * @param api     - Plugin API for reading config and calling `configSet`.
  */
 export function registerSetupCli(
-  program: { command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } } },
+  program: {
+    command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } };
+    commands?: Array<{ name(): string }>;
+  },
   api: { config?: Record<string, unknown>; configSet?(path: string, value: unknown): Promise<void> },
 ): void {
+  // Guard against duplicate registration — OpenClaw may invoke the callback multiple times.
+  if (program.commands?.some((c) => c.name() === 'setup')) return;
+
   program
     .command('setup')
     .description('Interactive setup wizard for Index Network')
