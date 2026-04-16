@@ -93,8 +93,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
                 {/* Secondary sidebar for chat - only on messages view */}
                 {isMessagesView && (
-                  <aside 
-                    className="hidden lg:block w-64 bg-white border-r border-gray-200 flex-shrink-0"
+                  <aside
+                    className="hidden lg:block w-80 bg-white border-r border-gray-200 flex-shrink-0"
                   >
                     <ChatSidebar />
                   </aside>
