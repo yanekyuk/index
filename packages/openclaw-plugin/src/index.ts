@@ -13,9 +13,10 @@
  * When a turn is found, dispatches a silent subagent that calls
  * `get_negotiation` + `respond_to_negotiation` on the parent's Index Network
  * MCP pool to decide and submit the response.
+ *
+ * Uses `definePluginEntry` from the OpenClaw plugin SDK so that CLI commands
+ * (e.g. `openclaw index-network setup`) are properly registered.
  */
-
-import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { OpenClawPluginApi } from './plugin-api.js';
 import { dispatchDelivery } from './delivery.dispatcher.js';
@@ -104,12 +105,10 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
 }
 
 /**
- * OpenClaw plugin entry point. Registers an internal HTTP route for polling
- * and starts a background interval that triggers it.
- *
- * @param api - The OpenClaw plugin API provided by the host.
+ * Core plugin registration logic. Called by both `definePluginEntry` (production)
+ * and directly in tests.
  */
-export default function register(api: OpenClawPluginApi): void {
+export function register(api: OpenClawPluginApi): void {
   if (registered) {
     api.logger.debug('Index Network plugin already registered, skipping duplicate call.');
     return;
@@ -193,6 +192,27 @@ export default function register(api: OpenClawPluginApi): void {
     triggerPoll();
   }, 5_000);
 }
+
+// --- SDK entry point ---
+// Try to use definePluginEntry from the OpenClaw SDK (available at runtime).
+// Falls back to bare export for environments without the SDK (e.g. tests).
+let _default: unknown;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { definePluginEntry } = require('openclaw/plugin-sdk/plugin-entry');
+  _default = definePluginEntry({
+    id: 'indexnetwork-openclaw-plugin',
+    name: 'Index Network',
+    description: 'Find the right people and let them find you.',
+    register(api: OpenClawPluginApi) {
+      register(api);
+    },
+  });
+} catch {
+  // SDK not available (e.g. unit tests) — export register directly
+  _default = register;
+}
+export default _default as (api: OpenClawPluginApi) => void;
 
 async function poll(
   api: OpenClawPluginApi,

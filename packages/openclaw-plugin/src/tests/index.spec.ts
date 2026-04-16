@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import register, { _resetForTesting } from '../index.js';
+import { register, _resetForTesting } from '../index.js';
 import type {
   OpenClawPluginApi,
   SubagentRunOptions,
