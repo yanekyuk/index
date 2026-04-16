@@ -71,7 +71,10 @@ export default function ChatSidebar() {
         const participants = conv.participants ?? [];
         return participants.length === 2 && participants.every((p) => p.participantType === 'user');
       })
-    : negotiations;
+    // Negotiations with zero messages are orphaned conversation rows (no turns
+    // ever landed, or the task parked and never completed) — hide them.
+    // Still show ones whose only content is an internal assessment.reasoning.
+    : negotiations.filter((conv) => !!conv.lastMessage);
   const recentChats: RecentChat[] = filteredConversations.map((conv) => {
     if (mode === 'a2a') {
       const counterparts = (conv.participants ?? []).filter((p) => p.participantId !== `agent:${user?.id}`);
