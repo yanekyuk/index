@@ -9,9 +9,13 @@
  * then writes plugin config and registers the MCP server.
  */
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as readline from 'node:readline/promises';
 
 const PLUGIN_ID = 'indexnetwork-openclaw-plugin';
+const CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json');
 const DEFAULT_PROTOCOL_URL = 'https://protocol.index.network';
 
 /** Human-readable labels for known channel IDs. */
@@ -120,12 +124,39 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
  * @param program - Commander program instance provided by OpenClaw's `registerCli`.
  * @param api     - Plugin API for reading config and calling `configSet`.
  */
+/**
+ * Read the OpenClaw config file, or return an empty object if missing.
+ */
+function readOpenClawConfig(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Set a dot-path key in the OpenClaw config and write it back to disk.
+ * E.g. `setConfigValue(cfg, "plugins.entries.foo.config.bar", 123)`.
+ */
+function setConfigValue(cfg: Record<string, unknown>, dotPath: string, value: unknown): void {
+  const parts = dotPath.split('.');
+  let obj: Record<string, unknown> = cfg;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (typeof obj[key] !== 'object' || obj[key] === null) {
+      obj[key] = {};
+    }
+    obj = obj[key] as Record<string, unknown>;
+  }
+  obj[parts[parts.length - 1]] = value;
+}
+
 export function registerSetupCli(
   program: {
     command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } };
     commands?: Array<{ name(): string }>;
   },
-  api: { config?: Record<string, unknown>; configSet?(path: string, value: unknown): Promise<void> },
 ): void {
   // Guard against duplicate registration — OpenClaw may invoke the callback multiple times.
   if (program.commands?.some((c) => c.name() === 'setup')) return;
@@ -134,16 +165,11 @@ export function registerSetupCli(
     .command('setup')
     .description('Interactive setup wizard for Index Network')
     .action(async () => {
-      if (!api.configSet) {
-        console.error('configSet not available — cannot write config.');
-        process.exitCode = 1;
-        return;
-      }
-
+      const cfg = readOpenClawConfig();
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
       const ctx: SetupContext = {
-        cfg: api.config || {},
+        cfg,
         prompt: async (label, opts) => {
           const defaultSuffix = opts?.default ? ` [${opts.default}]` : '';
           const answer = await rl.question(`${label}${defaultSuffix}: `);
@@ -156,12 +182,17 @@ export function registerSetupCli(
           const idx = parseInt(answer.trim(), 10) - 1;
           return choices[idx]?.value ?? '';
         },
-        configSet: api.configSet.bind(api),
+        configSet: async (dotPath, value) => {
+          setConfigValue(cfg, dotPath, value);
+        },
       };
 
       try {
         await runSetup(ctx);
-        console.log('\nSetup complete. Restart the gateway to apply changes.');
+        // Write the entire config back in one atomic operation
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+        console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
+        console.log('Restart the gateway to apply changes: openclaw gateway restart');
       } catch (err) {
         console.error(err instanceof Error ? err.message : String(err));
         process.exitCode = 1;
