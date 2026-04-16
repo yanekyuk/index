@@ -11,6 +11,7 @@ interface RecentChat {
   peerAvatar: string | null;
   name: string;
   lastMessage: string;
+  lastMessageIsInternal: boolean;
   sortTimestamp: number;
 }
 
@@ -66,16 +67,20 @@ export default function ChatSidebar() {
     if (mode === 'a2a') {
       const counterparts = (conv.participants ?? []).filter((p) => p.participantId !== `agent:${user?.id}`);
       const counterpartLabels = counterparts.map((p) => p.ownerName ?? p.name ?? p.participantId.replace('agent:', ''));
-      const lastParts = conv.lastMessage?.parts as { kind?: string; text?: string; data?: { message?: string } }[] | undefined;
+      const lastParts = conv.lastMessage?.parts as { kind?: string; text?: string; data?: { message?: string; assessment?: { reasoning?: string } } }[] | undefined;
       const dataPart = lastParts?.find(p => p.kind === 'data');
       const textPart = lastParts?.find(p => p.text);
-      const preview = dataPart?.data?.message ?? textPart?.text ?? '';
+      const messageText = dataPart?.data?.message;
+      const reasoningText = dataPart?.data?.assessment?.reasoning;
+      const fallbackText = textPart?.text ?? '';
+      const preview = messageText ?? reasoningText ?? fallbackText;
       return {
         groupId: conv.id,
         peerUserId: null,
         peerAvatar: counterparts[0]?.avatar ?? null,
         name: conv.metadata?.title ?? counterpartLabels.join(', '),
         lastMessage: preview,
+        lastMessageIsInternal: !messageText && !!reasoningText,
         sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
       };
     }
@@ -87,6 +92,7 @@ export default function ChatSidebar() {
       peerAvatar: peer?.avatar ?? null,
       name: conv.metadata?.title ?? peer?.name ?? 'Conversation',
       lastMessage: lastText,
+      lastMessageIsInternal: false,
       sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
     };
   }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
@@ -141,7 +147,12 @@ export default function ChatSidebar() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-black">{chat.name}</p>
                     <p className="truncate text-sm font-normal text-gray-500">
-                      {chat.lastMessage.replace(/[*_~`#>]/g, '')}
+                      {chat.lastMessageIsInternal && (
+                        <span className="mr-1 italic text-gray-400">Internal:</span>
+                      )}
+                      <span className={chat.lastMessageIsInternal ? 'italic text-gray-400' : undefined}>
+                        {chat.lastMessage.replace(/[*_~`#>]/g, '')}
+                      </span>
                     </p>
                   </div>
                 </button>

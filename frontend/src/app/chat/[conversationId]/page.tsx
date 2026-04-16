@@ -91,10 +91,13 @@ export default function NegotiationDetailPage() {
               const info = participantInfo.get(message.senderId);
 
               // Extract text content from message parts — use `message` field from data part, or text part
-              const parts = message.parts as { kind?: string; text?: string; data?: { message?: string } }[];
+              const parts = message.parts as { kind?: string; text?: string; data?: { message?: string; assessment?: { reasoning?: string } } }[];
               const dataPart = parts?.find((p) => p.kind === 'data');
               const textPart = parts?.find((p) => p.text);
-              const content = dataPart?.data?.message ?? textPart?.text ?? '';
+              const messageText = dataPart?.data?.message;
+              const reasoningText = dataPart?.data?.assessment?.reasoning;
+              const content = messageText ?? reasoningText ?? textPart?.text ?? '';
+              const isInternal = !messageText && !!reasoningText;
               if (!content.trim()) return null;
 
               const prevMessage = conversationMessages[index - 1];
@@ -128,8 +131,22 @@ export default function NegotiationDetailPage() {
                           {info.agentName} <span className="text-gray-300">for</span> {info.ownerName}
                         </p>
                       )}
-                      <div className={cn('rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
-                        <article className={cn('text-sm', isOwn && 'text-white')}>
+                      <div
+                        className={cn(
+                          'rounded-2xl px-4 py-2',
+                          isInternal
+                            ? 'bg-transparent border border-dashed border-gray-300 text-gray-500 italic'
+                            : isOwn
+                              ? 'bg-gray-900 text-white'
+                              : 'bg-gray-100 text-gray-900',
+                        )}
+                      >
+                        {isInternal && (
+                          <p className="not-italic text-[10px] uppercase tracking-wider text-gray-400 mb-1">
+                            Internal assessment
+                          </p>
+                        )}
+                        <article className={cn('text-sm', !isInternal && isOwn && 'text-white')}>
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
                         </article>
                       </div>
