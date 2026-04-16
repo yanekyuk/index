@@ -55,18 +55,13 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
   }
 
   api.registerCli(
-    async ({ program }) => {
-      registerSetupCli(program as Parameters<typeof registerSetupCli>[0], api);
+    ({ program }) => {
+      const cmd = (program as { command(n: string): { description(d: string): unknown } })
+        .command('index-network')
+        .description('Manage Index Network plugin configuration');
+      registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0], api);
     },
-    {
-      descriptors: [
-        {
-          name: 'index-network',
-          description: 'Manage Index Network plugin configuration',
-          hasSubcommands: true,
-        },
-      ],
-    },
+    { commands: ['index-network'] },
   );
 }
 
@@ -193,26 +188,15 @@ export function register(api: OpenClawPluginApi): void {
   }, 5_000);
 }
 
-// --- SDK entry point ---
-// Try to use definePluginEntry from the OpenClaw SDK (available at runtime).
-// Falls back to bare export for environments without the SDK (e.g. tests).
-let _default: unknown;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { definePluginEntry } = require('openclaw/plugin-sdk/plugin-entry');
-  _default = definePluginEntry({
-    id: 'indexnetwork-openclaw-plugin',
-    name: 'Index Network',
-    description: 'Find the right people and let them find you.',
-    register(api: OpenClawPluginApi) {
-      register(api);
-    },
-  });
-} catch {
-  // SDK not available (e.g. unit tests) — export register directly
-  _default = register;
-}
-export default _default as (api: OpenClawPluginApi) => void;
+// --- Plugin entry ---
+// Plain object export matching OpenClaw's expected plugin shape.
+// Works with or without definePluginEntry — OpenClaw recognizes { id, register }.
+export default {
+  id: 'indexnetwork-openclaw-plugin',
+  name: 'Index Network',
+  description: 'Find the right people and let them find you.',
+  register,
+};
 
 async function poll(
   api: OpenClawPluginApi,
