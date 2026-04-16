@@ -529,13 +529,18 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
                 The setup wizard will prompt for these values:
               </p>
               <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Server URL</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{protocolUrl}</code>
+                <CopyButton text={protocolUrl} />
+              </div>
+              <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Agent ID</span>
-                <code className="text-xs bg-white border border-gray-200 rounded px-2 py-1 font-mono flex-1 select-all">{agentPlaceholder}</code>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{agentPlaceholder}</code>
                 <CopyButton text={agentPlaceholder} />
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">API Key</span>
-                <code className="text-xs bg-white border border-gray-200 rounded px-2 py-1 font-mono flex-1 select-all">{keyPlaceholder}</code>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{keyPlaceholder}</code>
                 <CopyButton text={keyPlaceholder} />
               </div>
             </div>

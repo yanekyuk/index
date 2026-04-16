@@ -30,7 +30,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 /** Channel-specific prompts for the delivery target input. */
 const TARGET_PROMPTS: Record<string, string> = {
-  telegram: 'Telegram chat ID',
+  telegram: 'Telegram chat ID (message @userinfobot on Telegram to find yours)',
   discord: 'Discord channel ID',
   slack: 'Slack channel ID',
   whatsapp: 'WhatsApp number',

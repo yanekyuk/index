@@ -154,7 +154,7 @@ describe('setup wizard', () => {
       promptResponses: {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
-        'Telegram chat ID': '99887766',
+        'Telegram chat ID (message @userinfobot on Telegram to find yours)': '99887766',
       },
       selectResponse: 'telegram',
     });
