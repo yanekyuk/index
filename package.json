@@ -12,6 +12,8 @@
     "dev:frontend": "cd frontend && bun run dev",
     "dev:backend": "cd backend && bun run dev",
     "build:skills": "bun scripts/build-skills.ts",
+    "build:dev": "bun scripts/build-skills.ts --env=dev",
+    "build:local": "bun scripts/build-skills.ts --env=local",
     "build": "bun run build:skills && bun run build:package:protocol && bun run build:backend && bun run build:frontend",
     "build:frontend": "cd frontend && bun install && bun run build",
     "build:backend": "cd backend && bun install && bun run build",
@@ -28,6 +30,9 @@
   },
   "devDependencies": {
     "lint-staged": "^16.4.0"
+  },
+  "overrides": {
+    "@better-auth/utils": "0.4.0"
   },
   "lint-staged": {
     "backend/src/**/*.ts": "bash -c 'cd backend && bunx eslint --no-warn-ignored \"$@\"' --",

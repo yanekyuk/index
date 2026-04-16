@@ -87,6 +87,7 @@
   "resolutions": {
     "jws": "^4.0.1",
     "esbuild": "^0.25.0",
-    "ioredis": "5.9.1"
+    "ioredis": "5.9.1",
+    "@better-auth/utils": "0.4.0"
   }
 }
