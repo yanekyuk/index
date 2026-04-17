@@ -188,9 +188,14 @@ export class NegotiationPollingService {
         agentId,
         taskId: existingClaim.id,
       });
-      // For an already-claimed task the pre-previous-park timestamp is not
-      // readily available; use updatedAt (the claim time) as a best-effort
-      // proxy — the deadline will be slightly pessimistic but never wrong.
+      // Idempotent repick path: the pre-park timestamp is not readily available
+      // once a task is claimed, so we fall back to updatedAt (the claim time).
+      // The resulting deadline is OPTIMISTIC — it can be later than when the
+      // already-armed claim-timer will actually fire (parkStart + 5min), because
+      // claimTime > parkStart. Agents may briefly see more time than they have.
+      // TODO(plan-b): persist park-start on task metadata at waiting_for_agent
+      // transition so both initial pickup and idempotent repick derive deadlines
+      // from the same origin. Tracked alongside the per-turn park-window work.
       return this.buildPickupResult(existingClaim, userId, existingClaim.updatedAt ?? new Date());
     }
 
@@ -249,6 +254,12 @@ export class NegotiationPollingService {
     // NOTE: claimed.updatedAt is the post-update value (Drizzle RETURNING returns
     // the updated row). The pre-claim updatedAt — the park-start time — lives in
     // pendingTask.updatedAt, captured from the SELECT before the CAS transition.
+    // TODO(plan-b): the dispatcher accepts `options.timeoutMs` per call (5 min
+    // ambient today, 60s orchestrator after Plan B), but the originating window
+    // is not persisted on the task. Until it is, this path assumes every parked
+    // turn used AMBIENT_PARK_WINDOW_MS; the orchestrator trigger will over-report
+    // remaining budget until the per-turn window is threaded through the timeout
+    // job payload or task metadata. Safe for this PR (ambient-only parking).
     const messages = await conversationDatabaseAdapter.getMessagesForConversation(claimed.conversationId);
     const turnNumber = messages.length;
     const remainingMs = computeRemainingBudgetMs(pendingTask.updatedAt, AMBIENT_PARK_WINDOW_MS);

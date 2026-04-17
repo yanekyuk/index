@@ -22,9 +22,12 @@ export interface NegotiationTimeoutQueueDeps {
 /**
  * NegotiationTimeoutQueue: BullMQ queue + worker for handling negotiation timeouts.
  *
- * When an external agent doesn't respond within the deadline (default 24h),
- * the timeout worker runs the AI agent for that turn and continues the
- * negotiation evaluation (evaluate -> next turn or finalize).
+ * When an external agent doesn't respond within the park-window budget (the
+ * dispatcher-provided `timeoutMs`, currently `AMBIENT_PARK_WINDOW_MS` / 5 min
+ * for the ambient trigger), the timeout worker runs the AI agent for that turn
+ * and continues the negotiation evaluation (evaluate -> next turn or finalize).
+ * If the AI counter-responds, the re-arm path uses `AMBIENT_PARK_WINDOW_MS`
+ * again for the next speaker.
  *
  * Workers are started only by the protocol server via {@link NegotiationTimeoutQueue.startWorker}.
  */
