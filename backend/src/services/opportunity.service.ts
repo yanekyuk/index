@@ -482,6 +482,14 @@ export class OpportunityService {
         error: err,
       });
     });
+    await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
+      logger.error('[OpportunityService.startChat] upsertContactMembership (counterpart) failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
 
     return {
       conversationId: conversation.id,

@@ -71,6 +71,11 @@ describe('OpportunityService.startChat', () => {
     expect(result.counterpartUserId).toBe(PEER_ID);
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, 'accepted');
     expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+
+    // Both-way contact membership: accepter (restore:true) + counterpart (restore:false)
+    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
+    expect(db.upsertContactMembership).toHaveBeenCalledWith(VIEWER_ID, PEER_ID, { restore: true });
+    expect(db.upsertContactMembership).toHaveBeenCalledWith(PEER_ID, VIEWER_ID, { restore: false });
   });
 
   it('flips draft → accepted for the orchestrator path', async () => {
