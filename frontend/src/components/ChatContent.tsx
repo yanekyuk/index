@@ -43,6 +43,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useNetworkFilter } from "@/contexts/IndexFilterContext";
 import { useNetworksState } from "@/contexts/IndexesContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
 
@@ -361,6 +362,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
+  const { refreshConversations } = useConversation();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -791,6 +793,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       try {
         const result = await opportunitiesService.startChat(opportunityId);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
+        refreshConversations();
         if (result.conversationId) {
           navigate(`/chat/${result.conversationId}`);
         } else {
@@ -802,7 +805,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError],
+    [opportunitiesService, navigate, showError, refreshConversations],
   );
 
   const archiveProposalIntent = useCallback(
