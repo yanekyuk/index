@@ -17,7 +17,7 @@ if [ -d "$WORKTREES_DIR" ] && [ -n "$(ls -A "$WORKTREES_DIR" 2>/dev/null)" ]; th
     name="$(basename "$wt")"
     WORKTREE_NAMES+=("$name")
     setup="not set up"
-    for ws in backend frontend evaluator; do
+    for ws in backend frontend; do
       if [ -d "$wt$ws/node_modules" ]; then
         setup="set up"
         break
@@ -45,7 +45,6 @@ select opt in "${CHOICES[@]}"; do
     echo "Starting dev servers at root..."
     bun run dev:backend &
     bun run dev:frontend &
-    bun run dev:evaluator &
     wait
     exit 0
   fi

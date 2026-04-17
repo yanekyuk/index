@@ -44,7 +44,7 @@ Additionally, indexes can allow **guest vibe checks** (`allowGuestVibeCheck`), w
 
 ## Permissions Model
 
-Index membership is tracked in the `index_members` table with a composite primary key of (indexId, userId). Each membership carries a permissions array and optional configuration.
+Index membership is tracked in the `network_members` table with a composite primary key of (networkId, userId). Each membership carries a permissions array and optional configuration.
 
 ### Permission levels
 
@@ -54,7 +54,7 @@ Index membership is tracked in the `index_members` table with a composite primar
 | **member** | Standard access: read/write intents within the index. |
 | **contact** | Special permission indicating a contact relationship (see Contacts below). |
 
-Ownership is determined through the `index_members` table's `permissions` array containing `'owner'`, not through a denormalized column on the index itself.
+Ownership is determined through the `network_members` table's `permissions` array containing `'owner'`, not through a denormalized column on the index itself.
 
 ### Member prompts and auto-assignment
 
@@ -68,7 +68,7 @@ Each member can customize their relationship with an index:
 
 ## Personal Indexes
 
-Every user has exactly one personal index, created automatically on registration. Personal indexes are identified by `isPersonal: true` on the index and enforced by the `personal_indexes` mapping table (primary key on `userId`, unique constraint on `indexId`).
+Every user has exactly one personal index, created automatically on registration. Personal indexes are identified by `isPersonal: true` on the `networks` row and enforced by the `personal_networks` mapping table (primary key on `userId`, unique constraint on `networkId`).
 
 Personal indexes serve as the user's private workspace:
 - They cannot be deleted, renamed, or listed publicly
@@ -80,12 +80,12 @@ Personal indexes serve as the user's private workspace:
 
 ## Contacts as Members
 
-Index Network does not have a separate contacts table. Instead, contacts are stored as `index_members` rows with the `'contact'` permission on the owner's personal index.
+Index Network does not have a separate contacts table. Instead, contacts are stored as `network_members` rows with the `'contact'` permission on the owner's personal index.
 
 When a user adds a contact (by email), the system:
 1. Looks up the email to find an existing user
 2. If no user exists, creates a **ghost user** (see below)
-3. Creates an `index_members` row on the owner's personal index with `permissions: ['contact']`
+3. Creates a `network_members` row on the owner's personal index with `permissions: ['contact']`
 
 When a user accepts an opportunity, the counterpart is automatically added as a contact via this same mechanism with `restore: true` (which re-activates a previously soft-deleted contact if one exists).
 
@@ -105,7 +105,7 @@ Ghost users participate in the data model (they can be members of indexes, they 
 
 ## Intent-Index Junction
 
-The `intent_indexes` table tracks which intents belong to which indexes, with a composite primary key of (intentId, indexId). Each row can carry a `relevancyScore` (0.0-1.0) that measures how well the intent fits the index's purpose.
+The `intent_networks` table tracks which intents belong to which indexes, with a composite primary key of (intentId, networkId). Each row can carry a `relevancyScore` (0.0-1.0) that measures how well the intent fits the index's purpose.
 
 This score is used during opportunity discovery to break ties when a candidate appears across multiple shared indexes. The index with the highest relevancy score to the trigger intent is preferred. Indexes without prompts default to a relevancy score of 1.0.
 
@@ -121,7 +121,7 @@ This enables focused discovery within communities: a new member joining an index
 
 ## Index Integrations
 
-Indexes can be connected to external services (Slack channels, Notion workspaces, Gmail) through the `index_integrations` table. Each integration links an index to a connected account and toolkit identifier. Intents generated from integration sync are tagged with `sourceType: 'integration'` and the corresponding `sourceId`.
+Indexes can be connected to external services (Slack channels, Notion workspaces, Gmail) through the `network_integrations` table. Each integration links an index to a connected account and toolkit identifier. Intents generated from integration sync are tagged with `sourceType: 'integration'` and the corresponding `sourceId`.
 
 ---
 

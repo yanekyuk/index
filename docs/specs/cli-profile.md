@@ -26,8 +26,9 @@ The `index profile` command lets users view, create, update, and search profiles
 ### `index profile sync`
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
-2. Call `POST /api/profiles/sync` to trigger profile regeneration.
-3. Print a success confirmation message.
+2. Calls the `read_user_profiles` MCP tool via the Tool HTTP API to check whether a profile exists.
+3. If one exists, calls `update_user_profile` with `{ action: "regenerate" }`; otherwise calls `create_user_profile` with `{ confirm: true }`.
+4. Print a success confirmation message.
 
 ### `index profile create [--linkedin <url>] [--github <url>] [--twitter <url>]`
 
@@ -45,13 +46,13 @@ The `index profile` command lets users view, create, update, and search profiles
 
 1. Load credentials via `requireAuth`. Exit with error if not logged in.
 2. Calls `read_user_profiles` tool via Tool HTTP API with the search query.
-3. Renders a table of matching user profiles.
+3. Renders a heading followed by each match as `name (userId)` with a short bio snippet — the output is a list rather than a formatted table.
 
 ## Constraints
 
 - The CLI must not import protocol internals. All data comes via HTTP.
 - Auth tokens are loaded from `~/.index/credentials.json` (existing pattern).
-- 401 responses produce "Session expired. Run `index login` again."
+- 401 responses produce "Session expired or invalid. Run `index login` to re-authenticate."
 - Network errors produce a clear error message.
 - The profile card must gracefully handle missing fields (null name, no socials, ghost users).
 - No external CLI framework dependency -- uses the existing `parseArgs` system.

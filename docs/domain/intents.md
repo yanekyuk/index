@@ -126,9 +126,9 @@ An archived intent (with an `archivedAt` timestamp) is effectively removed from 
 
 ## Confidence Scoring
 
-Each inferred intent carries a confidence level (high, medium, or low) reflecting how certain the inference is. This is distinct from the felicity scores, which measure the quality of the intent itself rather than the certainty of extraction.
+Each inferred intent carries a `semanticEntropy` score (0.0–1.0, stored as a double) reflecting how certain the inference is. Lower values mean higher certainty (less semantic entropy across candidate extractions); values near 1.0 mean the inference is ambiguous. This is distinct from the felicity scores, which measure the quality of the intent itself rather than the certainty of extraction.
 
-During reconciliation, the confidence influences whether an action is taken: a low-confidence inference is less likely to trigger creation of a new intent if an existing intent already covers similar ground.
+During reconciliation, this score influences whether an action is taken: a highly entropic (low-confidence) inference is less likely to trigger creation of a new intent if an existing intent already covers similar ground.
 
 ---
 
@@ -152,13 +152,13 @@ Every intent tracks its origin through a polymorphic source system:
 | **discovery_form** | Created through the onboarding or discovery form flow |
 | **enrichment** | Added through intent enrichment (system-generated elaboration) |
 
-The `sourceId` field references the originating record in the corresponding table (files, index_integrations, links). This enables filtering intents by source and bulk re-processing when a source is updated or removed.
+The `sourceId` field references the originating record in the corresponding table (files, network_integrations, links). This enables filtering intents by source and bulk re-processing when a source is updated or removed.
 
 ---
 
 ## Intent-Index Assignment and Relevancy Scoring
 
-Intents do not exist in isolation -- they are assigned to one or more indexes (communities). The many-to-many relationship between intents and indexes is tracked in the `intent_indexes` junction table, which carries an optional `relevancyScore` (0.0-1.0).
+Intents do not exist in isolation -- they are assigned to one or more indexes (communities). The many-to-many relationship between intents and indexes is tracked in the `intent_networks` junction table, which carries an optional `relevancyScore` (0.0-1.0).
 
 ### How assignment works
 

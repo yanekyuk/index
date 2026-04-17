@@ -32,11 +32,11 @@ Leaves a network. Calls `POST /api/indexes/:id/leave`. Prints confirmation. Retu
 
 ### `index network update <id> [--title <t>] [--prompt <p>]`
 
-Updates network settings. Calls `PUT /api/indexes/:id` with provided fields (`title`, `prompt`). Prints confirmation with the updated network title.
+Updates network settings. Calls the `update_index` MCP tool via the Tool HTTP API with the provided fields (`title`, `prompt`). Prints confirmation with the updated network title.
 
 ### `index network delete <id>`
 
-Deletes a network. Calls `DELETE /api/indexes/:id`. Prints confirmation on success.
+Deletes a network. Calls the `delete_index` MCP tool via the Tool HTTP API. Prints confirmation on success.
 
 ### `index network invite <id> <email>`
 

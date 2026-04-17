@@ -609,6 +609,19 @@ Revoke a permission from an agent.
 
 **Response**: `204 No Content`
 
+### GET /api/agents/:id/tokens
+
+List API keys bound to an owned personal agent. Raw key values are never returned — only stored metadata (id, name, creation timestamp).
+
+**Response**:
+```json
+{
+  "tokens": [
+    { "id": "...", "name": "My Claude Agent API Key", "createdAt": "..." }
+  ]
+}
+```
+
 ### POST /api/agents/:id/tokens
 
 Create an API key bound to an owned personal agent. The backend issues the key through Better Auth and stores `metadata.agentId` automatically.
@@ -737,6 +750,19 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 ### GET /api/conversations
 
 List all conversations for the authenticated user.
+
+**Auth**: AuthGuard
+
+**Response**:
+```json
+{
+  "conversations": [...]
+}
+```
+
+### GET /api/conversations/negotiations
+
+List A2A agent-to-agent negotiation conversations for the authenticated user.
 
 **Auth**: AuthGuard
 
@@ -2258,6 +2284,40 @@ Manually add a contact by email (creates ghost user if not registered).
 ```json
 {
   "result": { ... }
+}
+```
+
+### DELETE /api/users/contacts/:contactId
+
+Remove a contact from the authenticated user's personal network (soft delete of the `'contact'` membership).
+
+**Auth**: AuthGuard
+
+**Response**: `{ "success": true }` on success, `404` if the contact is not a member.
+
+### POST /api/users/:userId/negotiations
+
+Trigger a discovery negotiation between the authenticated viewer and the target user. Responds with `400` if the viewer targets themselves, `404` if the target does not exist, `409` if a negotiation between the two parties is already in flight.
+
+**Auth**: AuthGuard
+
+**Response** (`201`):
+```json
+{
+  "negotiation": {
+    "id": "...",
+    "counterparty": { "id": "...", "name": "...", "avatar": null },
+    "outcome": {
+      "hasOpportunity": true,
+      "role": "agent",
+      "turnCount": 4,
+      "reason": "accepted"
+    },
+    "turns": [
+      { "speaker": { "id": "...", "name": "...", "avatar": null }, "action": "propose", "reasoning": "...", "suggestedRoles": null, "createdAt": "..." }
+    ],
+    "createdAt": "..."
+  }
 }
 ```
 

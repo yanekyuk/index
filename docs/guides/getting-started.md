@@ -66,7 +66,7 @@ bun install
 
 ```
 index/
-├── backend/             # Backend API and agent engine (Bun, Express, TypeScript)
+├── backend/             # Backend API and agent engine (Bun, TypeScript)
 ├── frontend/            # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package (graphs, agents, tools)

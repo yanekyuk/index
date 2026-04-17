@@ -52,6 +52,10 @@ The candidate NEEDS something from the other party. Example: the source is a men
 
 Neither party is primarily helping or seeking -- both contribute and benefit equally. Both parties see the opportunity immediately, and either can initiate contact.
 
+### Introducer
+
+A third party who created the opportunity on behalf of two other users (e.g. "I think these two should meet"). Introducers are always actors on the opportunity but they are not participating in the connection itself — they sit outside the visibility matrix as perpetual observers of the introduction they triggered.
+
 ### Role derivation
 
 Roles can be derived from how a candidate was found:
@@ -100,15 +104,17 @@ When the discovery request mentions a specific location:
 
 ## Status Lifecycle
 
-Opportunities follow a six-state lifecycle:
+Opportunities follow an eight-state lifecycle:
 
 | Status | Meaning |
 |---|---|
 | **latent** | Detected but not yet surfaced to any user. The system knows this coordination point exists. |
-| **draft** | Under construction (used during negotiation). Not yet visible. |
-| **pending** | Surfaced to the appropriate party based on role visibility rules. Awaiting user action. |
+| **draft** | Under construction or awaiting user review (e.g. orchestrator-produced drafts in chat). Not yet visible to counterparties. |
+| **negotiating** | Bilateral agent-to-agent negotiation is in flight. The opportunity is persisted but not yet visible to either party. |
+| **pending** | Negotiation accepted (or negotiation was skipped); opportunity is surfaced to the appropriate party based on role visibility rules. Awaiting user action. |
+| **stalled** | Negotiation reached its turn cap or timed out without resolution. Surfaced as an inconclusive match (not confidently accepted or rejected). |
 | **accepted** | The user has accepted the connection. Triggers contact creation and notification to the other party. |
-| **rejected** | The user has declined the connection. |
+| **rejected** | The user has declined the connection (or negotiation finished with a rejection). |
 | **expired** | The timing window has passed or the underlying intents are no longer active. |
 
 ---
@@ -117,12 +123,14 @@ Opportunities follow a six-state lifecycle:
 
 Who sees an opportunity and when is governed by the actor roles and the opportunity's current status. This is the role-visibility matrix:
 
+In-flight statuses (`latent`, `draft`, `negotiating`) are never visible to any actor. The matrix below governs the surfaced statuses (`pending`, `stalled`, `accepted`, `rejected`, `expired`).
+
 ### With an introducer present
 
 | Role | Sees when |
 |---|---|
 | Introducer | Always (they created the introduction) |
-| Patient / Party | Status is pending |
+| Patient / Party | Status is pending or stalled |
 | Agent | Status is accepted, rejected, or expired |
 | Peer | Always |
 
@@ -130,8 +138,8 @@ Who sees an opportunity and when is governed by the actor roles and the opportun
 
 | Role | Sees when |
 |---|---|
-| Patient / Party | Status is not latent |
-| Agent | Status is not latent |
+| Patient / Party | Surfaced statuses only |
+| Agent | Surfaced statuses only |
 | Peer | Always |
 
 The key design principle: agents (helpers/providers) are shielded from noise. They only learn about opportunities after the seeking party has committed, ensuring that connections are high-intent by the time the agent sees them.
@@ -167,7 +175,7 @@ Each opportunity record contains four JSONB fields that capture the full context
 
 Provenance information: what triggered the discovery, who or what caused it, and when.
 
-- `source`: How the opportunity was detected (opportunity_graph, chat, manual, cron, member_added, enrichment)
+- `source`: How the opportunity was detected (`opportunity_graph`, `chat`, `manual`, `member_added`, `enrichment`, `introducer_discovery`)
 - `triggeredBy`: The intent ID that caused detection (if intent-driven)
 - `createdBy` / `createdByName`: The user who triggered it (for attribution)
 - `timestamp`: When detection occurred
@@ -198,6 +206,10 @@ Additional metadata:
 
 ## Negotiation Gate
 
-Before an opportunity is persisted, it may pass through bilateral agent-to-agent negotiation (see [Negotiation](negotiation.md)). Negotiation acts as a quality gate: only matches where both agents agree are persisted as opportunities. If negotiation rejects the match, the opportunity is not created.
+Once the evaluator clears an opportunity, the graph persists it and then runs bilateral agent-to-agent negotiation (see [Negotiation](negotiation.md)) as a quality gate before surfacing. The opportunity is first written with status `negotiating` (or `draft` in the orchestrator trigger path) and remains invisible to either party while negotiation is in flight. Negotiation then drives the status to one of:
 
-This prevents low-quality matches from reaching users even when the initial evaluator score is above threshold.
+- **pending** — both agents agreed; the opportunity becomes visible per the visibility matrix.
+- **rejected** — at least one agent rejected; the opportunity stays persisted but hidden from both parties.
+- **stalled** — negotiation reached its turn cap without a decision; surfaced inconclusively so the user can decide.
+
+Persisting before negotiation (rather than gating persistence on negotiation) lets the system keep an audit trail of discovered-but-not-surfaced matches and lets the orchestrator stream partial results into chat as each candidate's negotiation resolves.

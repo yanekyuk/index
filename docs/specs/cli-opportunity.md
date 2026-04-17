@@ -14,7 +14,7 @@ The `index opportunity` command exposes subcommands for managing opportunities f
 
 1. Reads credentials from `~/.index/credentials.json`. Exits with error if not logged in.
 2. Calls `GET /api/opportunities` with optional query params (`status`, `limit`).
-3. Renders a table with columns: counterparty name, category, status, confidence, createdAt.
+3. Renders a table with columns: ID (short), counterparty name, category, status, confidence, createdAt.
 4. Supports `--status <pending|accepted|rejected|expired>` filter and `--limit <n>`.
 
 ### `index opportunity show <id>`
@@ -31,19 +31,19 @@ The `index opportunity` command exposes subcommands for managing opportunities f
 ### `index opportunity accept <id>`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls `PATCH /api/opportunities/:id/status` with `{ status: "accepted" }`.
+2. Calls the `update_opportunity` MCP tool via the Tool HTTP API with `{ opportunityId, status: "accepted" }`.
 3. Prints confirmation message.
 
 ### `index opportunity reject <id>`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls `PATCH /api/opportunities/:id/status` with `{ status: "rejected" }`.
+2. Calls the `update_opportunity` MCP tool via the Tool HTTP API with `{ opportunityId, status: "rejected" }`.
 3. Prints confirmation message.
 
 ### `index opportunity discover <query>`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls `create_opportunities` tool via Tool HTTP API with `{ query }`.
+2. Calls the `create_opportunities` MCP tool via the Tool HTTP API with `{ searchQuery }`.
 3. Renders a table of discovered opportunities.
 
 Supports optional flags:
@@ -54,7 +54,7 @@ Supports optional flags:
 
 - The CLI must not import any protocol internals. It is a pure HTTP client.
 - Auth tokens are loaded from `~/.index/credentials.json` via the existing `CredentialStore`.
-- 401 responses trigger "Session expired. Run `index login` to re-authenticate."
+- 401 responses trigger "Session expired or invalid. Run `index login` to re-authenticate."
 - The `--status` flag only accepts values the API supports: pending, accepted, rejected, expired.
 - Valency role display uses friendly labels: agent = "Helper", patient = "Seeker", peer = "Peer".
 - The argument parser follows the same pattern as existing commands (no external CLI framework).

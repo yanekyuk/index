@@ -8,7 +8,7 @@ updated: 2026-04-06
 
 ## Behavior
 
-The `index` CLI (v0.9.2) is a standalone Bun-based binary in a `packages/cli/` workspace under `packages/`. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
+The `index` CLI (v0.9.5) is a standalone Bun-based binary in a `packages/cli/` workspace under `packages/`. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
 
 ### `index login`
 
@@ -66,7 +66,7 @@ H2H messaging subcommands. See `cli-conversation.md` for full details.
 
 - The CLI must not import any protocol internals. It is a pure HTTP client.
 - Auth tokens are stored in the user's home directory, not in the project.
-- The CLI must handle expired/invalid tokens gracefully (print "Session expired. Run `index login` again." on 401).
+- The CLI must handle expired/invalid tokens gracefully (print "Session expired or invalid. Run `index login` to re-authenticate." on 401).
 - SSE parsing must handle partial chunks (tokens may arrive mid-line).
 - The CLI must work on macOS and Linux. Windows is not required for v1.
 - No external CLI framework dependency — argument parsing uses a hand-rolled parser in `args.parser.ts`.

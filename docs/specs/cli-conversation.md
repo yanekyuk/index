@@ -1,14 +1,19 @@
 ---
-title: "CLI conversation command — H2H direct messaging"
+title: "CLI conversation command — chat and DM"
 type: spec
-tags: [cli, conversation, dm, h2h, message, command]
+tags: [cli, conversation, dm, h2h, h2a, chat, message, command]
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-04-17
 ---
 
 ## Behavior
 
-The `index conversation` command enables Human-to-Human (H2H) direct messaging from the CLI. It communicates with the unified `/api/conversations/*` endpoints.
+The `index conversation` command is the unified entry point for everything in the conversation surface. It serves both:
+
+- **Human-to-Agent (H2A) chat** — the default mode: an SSE-streaming REPL against the Index chat orchestrator (`/api/chat/stream`), plus session listing and one-shot messages via positional args.
+- **Human-to-Human (H2H) direct messaging** — via the `list`/`with`/`show`/`send`/`stream` subcommands backed by `/api/conversations/*`.
+
+Everything is a conversation: the H2A and H2H surfaces live under one command because chat sessions and DMs share the same message model.
 
 ### `index conversation list`
 
@@ -45,7 +50,7 @@ The `index conversation` command enables Human-to-Human (H2H) direct messaging f
 
 - The CLI is a pure HTTP client; it must not import protocol internals.
 - Auth tokens are loaded from `~/.index/credentials.json` via the existing `CredentialStore`.
-- 401 responses produce "Session expired. Run `index login` to re-authenticate."
+- 401 responses produce "Session expired or invalid. Run `index login` to re-authenticate."
 - Network errors produce a clear error message.
 - No external CLI framework -- argument parsing uses the existing hand-rolled parser in `args.parser.ts`.
 - Follows the same command handler pattern as `network.command.ts` (exported `handleConversation` function).
