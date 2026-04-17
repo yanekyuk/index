@@ -365,6 +365,13 @@
       "when": 1776220600908,
       "tag": "0051_index_tasks_metadata_opportunity_id",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1776387698099,
+      "tag": "0052_add_agents_last_seen_at",
+      "breakpoints": true
     }
   ]
 }
