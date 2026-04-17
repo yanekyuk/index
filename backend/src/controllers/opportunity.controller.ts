@@ -228,6 +228,14 @@ export class OpportunityController {
    * opportunity and resolve (find-or-create) the h2h conversation for the
    * actor pair. Used by the frontend's Start Chat button; returns the
    * conversationId to navigate to.
+   *
+   * @param _req - Incoming request (body is ignored).
+   * @param user - Authenticated user from AuthGuard.
+   * @param params - Route params; `id` is the opportunity ID (full UUID or
+   *   short prefix, resolved via `opportunityService.resolveId`).
+   * @returns JSON with `{ conversationId, counterpartUserId, opportunity }`
+   *   on success, or a structured error (400 on bad status / missing
+   *   counterpart, 403 for non-actors, 404 when the opp does not exist).
    */
   @Post('/:id/start-chat')
   @UseGuards(AuthGuard)

@@ -3289,6 +3289,13 @@ export class ChatDatabaseAdapter {
    * OpportunityService can satisfy the OpportunityControllerDatabase
    * interface without importing another service (per the services-must-not-
    * import-services rule). Used by the Start Chat endpoint (Plan B Task 8).
+   *
+   * @param userA - First participant user ID.
+   * @param userB - Second participant user ID.
+   * @returns The existing or newly-created DM conversation (only the id).
+   * @throws Error when both IDs match (self-DMs are rejected) or when the
+   *   insert fails and no pre-existing row can be found after a unique
+   *   constraint collision (surfaced by the underlying ConversationDatabaseAdapter).
    */
   async getOrCreateDM(userA: string, userB: string): Promise<{ id: string }> {
     const conversationAdapter = new ConversationDatabaseAdapter();
