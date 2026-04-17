@@ -350,6 +350,7 @@ export class ChatSessionService {
     userId?: string;
     traceEvents?: unknown;
     debugMeta?: unknown;
+    streamingDrafts?: unknown;
   }): Promise<void> {
     if (params.userId) {
       const isOwner = await this.db.verifyChatMessageOwnership(params.messageId, params.userId);
@@ -361,6 +362,7 @@ export class ChatSessionService {
       messageId: params.messageId,
       traceEvents: params.traceEvents,
       debugMeta: params.debugMeta,
+      streamingDrafts: params.streamingDrafts,
     });
   }
 

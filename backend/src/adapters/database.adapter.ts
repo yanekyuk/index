@@ -719,6 +719,13 @@ export interface ChatMessageMeta {
   tokenCount?: number | null;
   traceEvents?: unknown;
   debugMeta?: unknown;
+  /**
+   * Orchestrator-driven draft opportunities streamed back via
+   * `opportunity_draft_ready` events during the response. Persisted so the
+   * rendered chat cards survive session reload — the frontend rehydrates
+   * these into message.streamingDrafts on loadSession.
+   */
+  streamingDrafts?: unknown;
   [key: string]: unknown;
 }
 
@@ -791,9 +798,9 @@ export class ChatDatabaseAdapter {
   /** @deprecated Use conversationDatabaseAdapter.verifyChatMessageOwnership */
   async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> { return _convDb().verifyChatMessageOwnership(messageId, userId); }
   /** @deprecated Use conversationDatabaseAdapter.upsertChatMessageMetadata */
-  async upsertMessageMetadata(params: { id: string; messageId: string; traceEvents?: unknown; debugMeta?: unknown }): Promise<void> { return _convDb().upsertChatMessageMetadata(params); }
+  async upsertMessageMetadata(params: { id: string; messageId: string; traceEvents?: unknown; debugMeta?: unknown; streamingDrafts?: unknown }): Promise<void> { return _convDb().upsertChatMessageMetadata(params); }
   /** @deprecated Use conversationDatabaseAdapter.getChatMessageMetadataByIds */
-  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
+  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
   /** @deprecated Use conversationDatabaseAdapter.upsertChatSessionMetadata */
   async upsertSessionMetadata(params: { id: string; sessionId: string; metadata: unknown }): Promise<void> { return _convDb().upsertChatSessionMetadata(params); }
   /** @deprecated Use conversationDatabaseAdapter.getChatSessionMetadata */
@@ -6894,8 +6901,13 @@ export class ConversationDatabaseAdapter {
     messageId: string;
     traceEvents?: unknown;
     debugMeta?: unknown;
+    streamingDrafts?: unknown;
   }): Promise<void> {
-    if (params.traceEvents === undefined && params.debugMeta === undefined) return;
+    if (
+      params.traceEvents === undefined &&
+      params.debugMeta === undefined &&
+      params.streamingDrafts === undefined
+    ) return;
 
     const [msg] = await db
       .select({ metadata: schema.messages.metadata })
@@ -6909,6 +6921,7 @@ export class ConversationDatabaseAdapter {
     const merged: ChatMessageMeta = { ...existing };
     if (params.traceEvents !== undefined) merged.traceEvents = params.traceEvents;
     if (params.debugMeta !== undefined) merged.debugMeta = params.debugMeta;
+    if (params.streamingDrafts !== undefined) merged.streamingDrafts = params.streamingDrafts;
 
     await db
       .update(schema.messages)
@@ -6919,7 +6932,7 @@ export class ConversationDatabaseAdapter {
   /**
    * Get message metadata (traceEvents, debugMeta) for a list of message IDs.
    */
-  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> {
+  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> {
     if (messageIds.length === 0) return [];
     const rows = await db
       .select({ id: schema.messages.id, metadata: schema.messages.metadata, createdAt: schema.messages.createdAt })
@@ -6933,6 +6946,7 @@ export class ConversationDatabaseAdapter {
         messageId: r.id,
         traceEvents: meta.traceEvents ?? null,
         debugMeta: meta.debugMeta ?? null,
+        streamingDrafts: meta.streamingDrafts ?? null,
         createdAt: r.createdAt,
       };
     });

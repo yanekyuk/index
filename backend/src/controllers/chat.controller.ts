@@ -477,7 +477,7 @@ export class ChatController {
       .filter((m: { role: string }) => m.role === 'assistant')
       .map((m: { id: string }) => m.id);
 
-    let metaMap = new Map<string, { traceEvents?: unknown; debugMeta?: unknown }>();
+    let metaMap = new Map<string, { traceEvents?: unknown; debugMeta?: unknown; streamingDrafts?: unknown }>();
     if (assistantIds.length > 0) {
       const metadataRows = await chatSessionService.getMessageMetadataByMessageIds(assistantIds);
       metaMap = new Map(metadataRows.map((m) => [m.messageId, m]));
@@ -490,6 +490,7 @@ export class ChatController {
         ...m,
         traceEvents: meta?.traceEvents ?? null,
         debugMeta: meta?.debugMeta ?? null,
+        streamingDrafts: meta?.streamingDrafts ?? null,
       };
     });
 
@@ -656,18 +657,33 @@ export class ChatController {
       return Response.json({ error: "Message ID required" }, { status: 400 });
     }
 
-    let body: { traceEvents?: unknown };
+    let body: { traceEvents?: unknown; streamingDrafts?: unknown };
     try {
-      body = (await req.json()) as { traceEvents?: unknown };
+      body = (await req.json()) as { traceEvents?: unknown; streamingDrafts?: unknown };
     } catch {
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
 
     const traceEventsSchema = z.array(z.unknown()).max(2000);
-    const parsed = traceEventsSchema.safeParse(body.traceEvents);
-    if (!parsed.success) {
+    const traceEventsParsed =
+      body.traceEvents === undefined
+        ? { success: true as const, data: undefined }
+        : traceEventsSchema.safeParse(body.traceEvents);
+    if (!traceEventsParsed.success) {
       return Response.json(
         { error: "Invalid traceEvents payload" },
+        { status: 400 },
+      );
+    }
+
+    const streamingDraftsSchema = z.array(z.unknown()).max(200);
+    const draftsParsed =
+      body.streamingDrafts === undefined
+        ? { success: true as const, data: undefined }
+        : streamingDraftsSchema.safeParse(body.streamingDrafts);
+    if (!draftsParsed.success) {
+      return Response.json(
+        { error: "Invalid streamingDrafts payload" },
         { status: 400 },
       );
     }
@@ -676,7 +692,8 @@ export class ChatController {
       await chatSessionService.saveMessageMetadata({
         messageId,
         userId: user.id,
-        traceEvents: parsed.data,
+        traceEvents: traceEventsParsed.data,
+        streamingDrafts: draftsParsed.data,
       });
       return Response.json({ success: true });
     } catch (error) {

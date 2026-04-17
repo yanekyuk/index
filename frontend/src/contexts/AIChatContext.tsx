@@ -281,6 +281,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       abortControllerRef.current = new AbortController();
       /** Local trace buffer scoped to this sendMessage call — avoids cross-message corruption. */
       const streamTraceEvents: TraceEvent[] = [];
+      /**
+       * Local streaming-draft buffer scoped to this sendMessage call. Flushed
+       * to the server on `done` so cards survive session reload.
+       */
+      const streamingDraftsBuffer: StreamingDraft[] = [];
 
       try {
         const bodyPayload: Record<string, unknown> = {
@@ -520,22 +525,15 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     // can render cards progressively. Append to the
                     // message's streamingDrafts list; the message-list
                     // component renders them inline alongside the LLM text.
-                    //
-                    // TODO(plan-b-ui-followup): these drafts are currently
-                    // transient — they live only in React state and are not
-                    // persisted with message metadata, so reopening the chat
-                    // drops them. Persistence requires a new column on the
-                    // message metadata record (or carrying them inside
-                    // `debugMeta`) plus rehydration in loadSession. Lands
-                    // with the inline-card-rendering follow-up noted in the
-                    // PR description; doing it now would ship dead state
-                    // since the rendering path hasn't been wired.
+                    // The buffer is flushed to message metadata on `done`
+                    // so cards survive session reload.
                     const draft: StreamingDraft = {
                       opportunityId: event.opportunityId,
                       opportunity: event.opportunity,
                       counterparty: event.counterparty,
                       receivedAt: Date.now(),
                     };
+                    streamingDraftsBuffer.push(draft);
                     setMessages((prev) =>
                       prev.map((msg) => {
                         if (msg.id !== assistantMessageId) return msg;
@@ -574,19 +572,29 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     // Refetch sessions after streaming completes (title is generated on backend)
                     refetchSessions();
-                    // Persist trace events for this message (non-blocking)
+                    // Persist trace events and streamed drafts for this
+                    // message (non-blocking). One POST carries both payloads
+                    // so rehydration on reload reproduces the full turn.
                     {
                       const serverMessageId = event.messageId as
                         | string
                         | undefined;
-                      if (serverMessageId && streamTraceEvents.length > 0) {
+                      const hasTrace = streamTraceEvents.length > 0;
+                      const hasDrafts = streamingDraftsBuffer.length > 0;
+                      if (serverMessageId && (hasTrace || hasDrafts)) {
+                        const payload: {
+                          traceEvents?: TraceEvent[];
+                          streamingDrafts?: StreamingDraft[];
+                        } = {};
+                        if (hasTrace) payload.traceEvents = streamTraceEvents;
+                        if (hasDrafts) payload.streamingDrafts = streamingDraftsBuffer;
                         apiClient
                           .post(
                             `/chat/message/${serverMessageId}/metadata`,
-                            { traceEvents: streamTraceEvents },
+                            payload,
                           )
                           .catch(() => {
-                            // Non-critical — trace persistence failure shouldn't break the chat
+                            // Non-critical — metadata persistence failure shouldn't break the chat
                           });
                       }
                     }
@@ -693,6 +701,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           content: string;
           createdAt: string;
           traceEvents?: TraceEvent[];
+          streamingDrafts?: StreamingDraft[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -719,6 +728,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           timestamp: new Date(m.createdAt),
           isStreaming: false,
           traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
+          ...(Array.isArray(m.streamingDrafts) && m.streamingDrafts.length > 0
+            ? { streamingDrafts: m.streamingDrafts }
+            : {}),
         })),
       );
     } catch (err) {
