@@ -343,6 +343,15 @@ export class AgentService {
     }
   }
 
+  /**
+   * Bump the agent's lastSeenAt timestamp. Called by pickup endpoints.
+   *
+   * @param agentId - The agent whose heartbeat to update.
+   */
+  async touchLastSeen(agentId: string): Promise<void> {
+    return this.db.touchLastSeen(agentId);
+  }
+
   async hasPermission(
     agentId: string,
     userId: string,

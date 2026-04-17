@@ -378,6 +378,9 @@ export class AgentController {
     }
 
     try {
+      // Heartbeat: record that this personal agent is actively polling
+      await agentService.touchLastSeen(agentId);
+
       const result = await negotiationPollingService.pickup(agentId, user.id);
       if (!result) {
         return new Response(null, { status: 204 });
@@ -451,6 +454,9 @@ export class AgentController {
     }
 
     try {
+      // Heartbeat: record that this personal agent is actively polling
+      await agentService.touchLastSeen(agentId);
+
       const result = await agentTestMessageService.pickup(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
@@ -498,6 +504,10 @@ export class AgentController {
     try {
       // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
       await agentService.getById(agentId, user.id);
+
+      // Heartbeat: record that this personal agent is actively polling
+      await agentService.touchLastSeen(agentId);
+
       const result = await opportunityDeliveryService.pickupPending(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
