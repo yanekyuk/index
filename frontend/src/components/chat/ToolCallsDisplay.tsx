@@ -1105,6 +1105,67 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   );
 }
 
+function outcomeIcon(o: NegotiationNode["outcome"]): string {
+  if (o === "accepted") return "🟢";
+  if (o === "waiting_for_agent") return "⏳";
+  return "🔴";
+}
+
+function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) {
+  const [openIdxs, setOpenIdxs] = useState<Set<number>>(new Set());
+
+  if (negotiations.length === 0) return null;
+
+  return (
+    <div className="mt-2 pl-3 border-l border-gray-200">
+      <div className="text-xs text-gray-500 mb-1">Negotiations ({negotiations.length})</div>
+      {negotiations.map((n, i) => {
+        const isOpen = openIdxs.has(i);
+        const toggle = () => {
+          const next = new Set(openIdxs);
+          if (isOpen) next.delete(i); else next.add(i);
+          setOpenIdxs(next);
+        };
+        return (
+          <div key={`${n.opportunityId}-${i}`} className="mb-1">
+            <button
+              type="button"
+              onClick={toggle}
+              className="flex items-center gap-1 text-xs text-gray-700 hover:text-gray-900"
+              title={n.outcomeReasoning ?? ""}
+            >
+              <span>{isOpen ? "▾" : "▸"}</span>
+              <span>{outcomeIcon(n.outcome)}</span>
+              <span className="font-medium">{n.candidateName ?? n.candidateUserId}</span>
+              <span className="text-gray-500">
+                {" — "}{n.outcome ?? (n.isRunning ? "running" : "unknown")}
+                {" ("}{n.turns.length} turn{n.turns.length === 1 ? "" : "s"}
+                {n.durationMs != null ? `, ${n.durationMs}ms` : ""}
+                {")"}
+              </span>
+            </button>
+            {isOpen && (
+              <ol className="ml-5 mt-1 space-y-0.5 text-xs text-gray-700">
+                {n.turns.map((t) => (
+                  <li key={t.turnIndex}>
+                    <span className="text-gray-500">{t.turnIndex + 1}.</span>{" "}
+                    <span className="font-mono text-[10px] text-gray-500">[{t.actor}]</span>{" "}
+                    <span className="font-medium">{t.action}</span>
+                    {t.message && <span> — {t.message}</span>}
+                    {t.reasoning && (
+                      <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ToolRowProps {
   tool: ToolNode;
   toolIdx: number;
@@ -1202,6 +1263,11 @@ function ToolRow({
           stoppedAt={stoppedAt}
         />
       ))}
+
+      {/* Negotiations nested under this tool */}
+      {tool.negotiations.length > 0 && (
+        <NegotiationTree negotiations={tool.negotiations} />
+      )}
 
       {/* Expandable steps detail */}
       {hasSteps && isToolExpanded && (
