@@ -161,12 +161,12 @@ describe('OpportunityDeliveryService.pickupPending', () => {
     expect(result).toBeNull();
   });
 
-  // ── 5. Draft opp with null detection.createdBy throws ───────────────────
+  // ── 5. Draft opp with null detection.createdBy is excluded by the SQL guard ─
 
-  it('throws orchestrator_opp_missing_creator when a draft opp has null detection.createdBy', async () => {
+  it('does not return a draft opp whose detection.createdBy is null, and does not throw', async () => {
     const userA = await seedUser();
     const agentA = await seedAgent(userA, true);
-    // seed a draft opp with createdBy explicitly null (omit from detection)
+    // seed a draft opp with createdBy absent from detection
     const [opp] = await db
       .insert(opportunities)
       .values({
@@ -180,6 +180,7 @@ describe('OpportunityDeliveryService.pickupPending', () => {
       .returning({ id: opportunities.id });
     expect(opp.id).toBeTruthy();
 
-    await expect(service.pickupPending(agentA)).rejects.toThrow('orchestrator_opp_missing_creator');
+    const result = await service.pickupPending(agentA);
+    expect(result).toBeNull();
   });
 });

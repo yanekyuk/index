@@ -24,7 +24,10 @@ import {
 
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
+import { log } from '../lib/log';
 import { agents, opportunities, opportunityDeliveries } from '../schemas/database.schema';
+
+const logger = log.service.from('OpportunityDeliveryService');
 
 const RESERVATION_TTL_SECONDS = 60;
 const CHANNEL = 'openclaw';
@@ -92,7 +95,10 @@ export class OpportunityDeliveryService {
         AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
         AND (
           o.status = 'pending'
-          OR (o.detection->>'createdBy') IS DISTINCT FROM ${userId}
+          OR (
+            (o.detection->>'createdBy') IS NOT NULL
+            AND (o.detection->>'createdBy') <> ${userId}
+          )
         )
         AND EXISTS (
           SELECT 1 FROM agents a
@@ -117,13 +123,18 @@ export class OpportunityDeliveryService {
     const rows = result as unknown as Array<{ id: string; actors: unknown; status: string; interpretation: unknown; detection: unknown }>;
 
     // Filter in JS via canUserSeeOpportunity (consistent with maintenance.graph.ts pattern).
-    // For 'draft' rows, assert that detection.createdBy is populated — if the ambient/orchestrator
-    // spec's persist node failed to set it, throw loudly rather than silently misbehaving.
+    // Defense-in-depth: if a 'draft' row reaches this filter with a missing detection.createdBy
+    // (shouldn't happen given the SQL guard above), log loudly and skip it rather than throwing,
+    // so one malformed row cannot block delivery of the other valid rows in the batch.
     const visible = rows.filter((row: { id: string; actors: unknown; status: string; detection: unknown }) => {
       if (row.status === 'draft') {
         const detection = (row as { detection?: { createdBy?: string } }).detection;
         if (!detection?.createdBy) {
-          throw new Error('orchestrator_opp_missing_creator');
+          logger.error('Skipping draft opportunity with missing detection.createdBy', {
+            opportunityId: row.id,
+            userId,
+          });
+          return false;
         }
       }
       const actors = row.actors as Array<{ userId: string; role: string }>;

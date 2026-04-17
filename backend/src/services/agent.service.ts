@@ -473,8 +473,11 @@ export class AgentService {
    * Keeps `handle_negotiations` column in sync with the presence of
    * `manage:negotiations` in the owner's global permission row.
    *
-   * Not transactional. If the column write succeeds and the permission
-   * write fails (or vice versa), a subsequent toggle call converges.
+   * Uses an atomic upsert (INSERT ... ON CONFLICT ... DO UPDATE) keyed on the
+   * partial unique index `uniq_agent_permissions_global`, so concurrent toggle
+   * requests cannot produce duplicate rows or lose other actions on partial
+   * failure. When the resulting action list would be empty, the row is deleted
+   * outright rather than persisted with an empty array.
    */
   private async reconcileNegotiationsPermission(
     agent: AgentWithRelations,
@@ -483,35 +486,24 @@ export class AgentService {
     const ownerPerm = agent.permissions.find(
       (p) => p.userId === agent.ownerId && p.scope === 'global',
     );
+    const current = ownerPerm?.actions ?? [];
+    const hasNeg = current.includes('manage:negotiations');
+    if (enabled === hasNeg) return;
 
-    if (enabled) {
-      if (ownerPerm?.actions.includes('manage:negotiations')) return;
-      const nextActions = [
-        ...(ownerPerm?.actions ?? []),
-        'manage:negotiations',
-      ];
-      if (ownerPerm) {
-        await this.db.revokePermission(ownerPerm.id);
-      }
-      await this.db.grantPermission({
-        agentId: agent.id,
-        userId: agent.ownerId,
-        scope: 'global',
-        actions: nextActions,
-      });
-    } else {
-      if (!ownerPerm?.actions.includes('manage:negotiations')) return;
-      await this.db.revokePermission(ownerPerm.id);
-      const remaining = ownerPerm.actions.filter((a) => a !== 'manage:negotiations');
-      if (remaining.length > 0) {
-        await this.db.grantPermission({
-          agentId: agent.id,
-          userId: agent.ownerId,
-          scope: 'global',
-          actions: remaining,
-        });
-      }
+    const nextActions = enabled
+      ? [...current, 'manage:negotiations']
+      : current.filter((a) => a !== 'manage:negotiations');
+
+    if (nextActions.length === 0) {
+      await this.db.revokeGlobalPermission(agent.id, agent.ownerId);
+      return;
     }
+
+    await this.db.upsertGlobalPermission({
+      agentId: agent.id,
+      userId: agent.ownerId,
+      actions: nextActions,
+    });
   }
 }
 

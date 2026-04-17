@@ -106,7 +106,9 @@ export interface AgentRegistryStore {
   recordTransportFailure(transportId: string): Promise<void>;
   recordTransportSuccess(transportId: string): Promise<void>;
   grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow>;
+  upsertGlobalPermission(input: { agentId: string; userId: string; actions: string[] }): Promise<AgentPermissionRow>;
   revokePermission(permissionId: string): Promise<void>;
+  revokeGlobalPermission(agentId: string, userId: string): Promise<void>;
   hasPermission(agentId: string, userId: string, action: string, scope?: AgentScope): Promise<boolean>;
   findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
   getSystemAgentIds(): AgentSystemIds;
@@ -325,9 +327,58 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     return this.toPermissionRow(row);
   }
 
+  async upsertGlobalPermission(input: {
+    agentId: string;
+    userId: string;
+    actions: string[];
+  }): Promise<AgentPermissionRow> {
+    const result = await db.execute(sql`
+      INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
+      VALUES (${input.agentId}, ${input.userId}, 'global', NULL, ${input.actions})
+      ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
+      DO UPDATE SET actions = EXCLUDED.actions
+      RETURNING id,
+                agent_id AS "agentId",
+                user_id AS "userId",
+                scope,
+                scope_id AS "scopeId",
+                actions,
+                created_at AS "createdAt"
+    `);
+    const [row] = result as unknown as Array<{
+      id: string;
+      agentId: string;
+      userId: string;
+      scope: PermissionScope;
+      scopeId: string | null;
+      actions: string[];
+      createdAt: Date;
+    }>;
+
+    logger.info('Upserted agent permission', {
+      agentId: input.agentId,
+      permissionId: row.id,
+      userId: input.userId,
+    });
+    return row;
+  }
+
   async revokePermission(permissionId: string): Promise<void> {
     await db.delete(schema.agentPermissions).where(eq(schema.agentPermissions.id, permissionId));
     logger.info('Revoked agent permission', { permissionId });
+  }
+
+  async revokeGlobalPermission(agentId: string, userId: string): Promise<void> {
+    await db
+      .delete(schema.agentPermissions)
+      .where(
+        and(
+          eq(schema.agentPermissions.agentId, agentId),
+          eq(schema.agentPermissions.userId, userId),
+          eq(schema.agentPermissions.scope, 'global'),
+        ),
+      );
+    logger.info('Revoked global agent permission', { agentId, userId });
   }
 
   async hasPermission(
