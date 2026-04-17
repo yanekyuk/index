@@ -122,7 +122,7 @@ describe('OpportunityService.startChat', () => {
     expect(result.status).toBe(404);
   });
 
-  it('does not call getOrCreateDM when updateOpportunityStatus returns null', async () => {
+  it('returns 500 when updateOpportunityStatus returns null (DM already created)', async () => {
     const opp = makeOpportunity({ status: 'pending' });
     const { service, db } = makeServiceWithDb(opp, {
       updateOpportunityStatus: mock(async () => null),
@@ -133,6 +133,63 @@ describe('OpportunityService.startChat', () => {
     expect('error' in result).toBe(true);
     if (!('error' in result)) return;
     expect(result.status).toBe(500);
-    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+    // DM is resolved BEFORE the status flip so the pair still has a
+    // conversation even if the flip fails. On retry the opp is still
+    // pending/draft and the button can recover.
+    expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+  });
+
+  describe('partial-failure recovery', () => {
+    it('leaves the opportunity at its original status when getOrCreateDM throws', async () => {
+      const opp = makeOpportunity({ status: 'pending' });
+      const { service, db } = makeServiceWithDb(opp, {
+        getOrCreateDM: mock(async () => {
+          throw new Error('redis unreachable');
+        }),
+      });
+
+      const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+      expect('error' in result).toBe(true);
+      if (!('error' in result)) return;
+      expect(result.status).toBe(500);
+      // Crucially: status flip never happens, so a retry sees pending and
+      // the Start Chat button is not a dead end.
+      expect(db.updateOpportunityStatus).not.toHaveBeenCalled();
+      expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
+      expect(db.upsertContactMembership).not.toHaveBeenCalled();
+    });
+
+    it('still returns the conversation when acceptSiblingOpportunities throws (best-effort)', async () => {
+      const opp = makeOpportunity({ status: 'pending' });
+      const { service } = makeServiceWithDb(opp, {
+        acceptSiblingOpportunities: mock(async () => {
+          throw new Error('tx rollback');
+        }),
+      });
+
+      const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+      // The user still gets navigated to their chat — siblings are a
+      // home-feed-sync concern, not a blocking one.
+      expect('error' in result).toBe(false);
+      if ('error' in result) return;
+      expect(result.conversationId).toBe(CONV_ID);
+    });
+
+    it('still returns the conversation when upsertContactMembership throws (best-effort)', async () => {
+      const opp = makeOpportunity({ status: 'pending' });
+      const { service } = makeServiceWithDb(opp, {
+        upsertContactMembership: mock(async () => {
+          throw new Error('contacts index locked');
+        }),
+      });
+
+      const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+      expect('error' in result).toBe(false);
+      if ('error' in result) return;
+      expect(result.conversationId).toBe(CONV_ID);
+    });
   });
 });
