@@ -441,6 +441,22 @@ interface ParsedTrace {
  * agent_start opens an AgentNode inside the current graph.
  * The corresponding *_end events close and annotate their nodes.
  */
+function findRunningNegotiationNode(
+  tools: ToolNode[],
+  event: Pick<TraceEvent, "opportunityId" | "negotiationConversationId">,
+): NegotiationNode | undefined {
+  const convId = event.negotiationConversationId ?? "";
+  const oppId = event.opportunityId ?? "";
+  return [...tools.flatMap((t) => t.negotiations)].reverse().find((n) => {
+    if (!n.isRunning) return false;
+    // Prefer matching by conversation ID once the node has one populated
+    if (convId !== "" && n.negotiationConversationId !== "") {
+      return n.negotiationConversationId === convId;
+    }
+    return oppId !== "" && n.opportunityId === oppId;
+  });
+}
+
 function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
   const timeline: TimelineEntry[] = [];
   const tools: ToolNode[] = [];
@@ -600,11 +616,12 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
       }
 
       case "negotiation_turn": {
-        const allNegNodes = tools.flatMap((t) => t.negotiations);
-        const negNode = [...allNegNodes].reverse().find(
-          (n) => n.opportunityId === (event.opportunityId ?? "") && n.isRunning,
-        );
+        const negNode = findRunningNegotiationNode(tools, event);
         if (!negNode) break;
+        // Back-fill conversation ID once the graph has created the conversation
+        if (negNode.negotiationConversationId === "" && event.negotiationConversationId) {
+          negNode.negotiationConversationId = event.negotiationConversationId;
+        }
         negNode.turns.push({
           turnIndex: event.turnIndex ?? negNode.turns.length,
           actor: (event.actor ?? "source") as "source" | "candidate",
@@ -618,10 +635,7 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
       }
 
       case "negotiation_outcome": {
-        const allNegNodes = tools.flatMap((t) => t.negotiations);
-        const negNode = [...allNegNodes].reverse().find(
-          (n) => n.opportunityId === (event.opportunityId ?? "") && n.isRunning,
-        );
+        const negNode = findRunningNegotiationNode(tools, event);
         if (!negNode) break;
         negNode.outcome = event.outcome;
         negNode.turnCount = event.turnCount;
@@ -630,10 +644,7 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
       }
 
       case "negotiation_session_end": {
-        const allNegNodes = tools.flatMap((t) => t.negotiations);
-        const negNode = [...allNegNodes].reverse().find(
-          (n) => n.opportunityId === (event.opportunityId ?? "") && n.isRunning,
-        );
+        const negNode = findRunningNegotiationNode(tools, event);
         if (!negNode) break;
         negNode.isRunning = false;
         negNode.durationMs = event.durationMs;
@@ -1106,6 +1117,7 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
 }
 
 function outcomeIcon(o: NegotiationNode["outcome"]): string {
+  if (!o) return "⚪";
   if (o === "accepted") return "🟢";
   if (o === "waiting_for_agent") return "⏳";
   return "🔴";

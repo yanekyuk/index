@@ -754,7 +754,7 @@ export class DebugController {
 
       const opportunityIds = effectiveOpportunityIds;
 
-      // Fetch negotiation tasks matching any of the opportunity IDs
+      // Fetch negotiation tasks matching any of the opportunity IDs (newest first)
       const taskRows = await db
         .select({
           id: tasks.id,
@@ -770,14 +770,15 @@ export class DebugController {
             sql`${tasks.metadata}->>'type' = 'negotiation'`,
             inArray(sql`${tasks.metadata}->>'opportunityId'`, opportunityIds),
           ),
-        );
+        )
+        .orderBy(desc(tasks.createdAt));
 
-      // Build a map from opportunityId to task row (latest wins)
+      // Build a map from opportunityId to task row — first entry wins (latest due to orderBy above)
       const taskByOppId = new Map<string, typeof taskRows[0]>();
       for (const row of taskRows) {
         const meta = row.metadata as Record<string, unknown> | null;
         const oppId = meta?.opportunityId;
-        if (typeof oppId === 'string') {
+        if (typeof oppId === 'string' && !taskByOppId.has(oppId)) {
           taskByOppId.set(oppId, row);
         }
       }
