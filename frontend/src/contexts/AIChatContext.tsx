@@ -25,12 +25,22 @@ export interface DiscoveryOpportunity {
  * chat UI can render cards as they settle rather than waiting for the whole
  * discovery fan-out to complete.
  *
- * The payload mirrors the backend's Opportunity row (no LLM-rendered copy
- * yet — the frontend's existing OpportunityCard renders from the raw row).
+ * `opportunity` mirrors the backend's Opportunity row; `counterparty`
+ * carries the minimum the card needs to render without a second-round-trip
+ * user lookup (name only — avatar falls back to initials).
  */
 export interface StreamingDraft {
   opportunityId: string;
-  opportunity: unknown;
+  opportunity: {
+    id: string;
+    status: string;
+    interpretation?: { reasoning?: string };
+    actors?: Array<{ userId: string; role?: string }>;
+  };
+  counterparty: {
+    userId: string;
+    name?: string;
+  };
   receivedAt: number;
 }
 
@@ -523,6 +533,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const draft: StreamingDraft = {
                       opportunityId: event.opportunityId,
                       opportunity: event.opportunity,
+                      counterparty: event.counterparty,
                       receivedAt: Date.now(),
                     };
                     setMessages((prev) =>
