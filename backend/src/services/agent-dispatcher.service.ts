@@ -86,34 +86,33 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       return { handled: false, reason: 'timeout' };
     }
 
-    try {
-      if (this.timeoutQueue) {
-        await this.timeoutQueue
-          .enqueueTimeout(payload.negotiationId, payload.history.length, options.timeoutMs)
-          .catch((err: unknown) =>
-            logger.error('Failed to enqueue negotiation timeout', {
-              negotiationId: payload.negotiationId,
-              error: err,
-            }),
-          );
+    if (this.timeoutQueue) {
+      try {
+        await this.timeoutQueue.enqueueTimeout(
+          payload.negotiationId,
+          payload.history.length,
+          options.timeoutMs,
+        );
+      } catch (err) {
+        // Without a safety timer, a parked turn could strand forever. Fall back to
+        // the system agent inline instead of returning `waiting` with no timer.
+        logger.error('Failed to enqueue negotiation timeout; falling back to system agent', {
+          userId,
+          negotiationId: payload.negotiationId,
+          error: err,
+        });
+        return { handled: false, reason: 'timeout' };
       }
-
-      logger.info('Turn parked for polling pickup', {
-        userId,
-        negotiationId: payload.negotiationId,
-        freshAgentCount: freshAgents.length,
-        parkWindowMs: options.timeoutMs,
-      });
-
-      return { handled: false, reason: 'waiting', resumeToken: payload.negotiationId };
-    } catch (err) {
-      logger.error('Failed to park turn for polling', {
-        userId,
-        negotiationId: payload.negotiationId,
-        error: err,
-      });
-      return { handled: false, reason: 'timeout' };
     }
+
+    logger.info('Turn parked for polling pickup', {
+      userId,
+      negotiationId: payload.negotiationId,
+      freshAgentCount: freshAgents.length,
+      parkWindowMs: options.timeoutMs,
+    });
+
+    return { handled: false, reason: 'waiting', resumeToken: payload.negotiationId };
   }
 
   /**
