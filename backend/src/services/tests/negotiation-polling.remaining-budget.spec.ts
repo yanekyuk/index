@@ -16,10 +16,11 @@ describe('computeRemainingBudgetMs', () => {
     expect(result).toBeLessThanOrEqual(240_000);
   });
 
-  it('clamps to a floor (never returns <= 0) so BullMQ delay is always positive', () => {
+  it('clamps to the 1s floor when elapsed time has overrun the budget', () => {
+    // 400s elapsed against a 300s budget → raw remaining is negative,
+    // implementation clamps via Math.max(1_000, remainingMs).
     const parkStart = new Date(Date.now() - 400_000);
     const result = computeRemainingBudgetMs(parkStart, 300_000);
-    expect(result).toBeGreaterThan(0);
-    expect(result).toBeLessThanOrEqual(5_000); // small floor, e.g. 1s
+    expect(result).toBe(1_000);
   });
 });

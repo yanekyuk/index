@@ -47,7 +47,9 @@ describe('AgentDatabaseAdapter.touchLastSeen', () => {
     const agent = await adapter.getAgent(testAgentId);
     expect(agent).not.toBeNull();
     expect(agent!.lastSeenAt).not.toBeNull();
-    expect(agent!.lastSeenAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    // Symmetric 1s tolerance so the test doesn't flake when the Postgres
+    // server clock drifts slightly ahead of the Bun/Node process clock.
+    expect(agent!.lastSeenAt!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
     expect(agent!.lastSeenAt!.getTime()).toBeLessThanOrEqual(after.getTime() + 1000);
   });
 
