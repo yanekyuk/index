@@ -111,6 +111,15 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
+  it("does NOT call getOrCreateDM when rejecting", async () => {
+    const db = createMockDb(twoActorOpportunity);
+    const service = new OpportunityService(db);
+
+    await service.updateOpportunityStatus(OPP_ID, "rejected", USER_A);
+
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+  });
+
   it("accepts 'stalled' status and does NOT create a contact membership", async () => {
     const db = createMockDb(twoActorOpportunity);
     const service = new OpportunityService(db);

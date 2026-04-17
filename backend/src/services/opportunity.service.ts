@@ -353,7 +353,14 @@ export class OpportunityService {
       });
     });
 
-    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
+    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] acceptSiblingOpportunities failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
 
     // Accepter explicitly acted — restore if previously removed.
     // Counterpart: add them to the accepter but honour any prior opt-out on their side.
