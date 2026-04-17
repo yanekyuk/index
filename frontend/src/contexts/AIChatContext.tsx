@@ -19,6 +19,22 @@ export interface DiscoveryOpportunity {
 }
 
 /**
+ * A draft opportunity delivered progressively during an orchestrator-driven
+ * chat discovery run. Populated by the `opportunity_draft_ready` stream
+ * event from the backend — one per accepted negotiation outcome — so the
+ * chat UI can render cards as they settle rather than waiting for the whole
+ * discovery fan-out to complete.
+ *
+ * The payload mirrors the backend's Opportunity row (no LLM-rendered copy
+ * yet — the frontend's existing OpportunityCard renders from the raw row).
+ */
+export interface StreamingDraft {
+  opportunityId: string;
+  opportunity: unknown;
+  receivedAt: number;
+}
+
+/**
  * Re-export OpportunityCardData for consumers that import from this context.
  */
 export type { OpportunityCardData } from "@/components/chat/OpportunityCardInChat";
@@ -67,6 +83,12 @@ interface ChatMessage {
   stoppedAt?: number;
   attachmentNames?: string[];
   discoveries?: DiscoveryOpportunity[];
+  /**
+   * Drafts streamed in via the orchestrator's opportunity_draft_ready events.
+   * Appended progressively during the stream; persists on the message so
+   * cards stay visible after the stream ends.
+   */
+  streamingDrafts?: StreamingDraft[];
   traceEvents?: TraceEvent[];
 }
 
@@ -478,6 +500,36 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                         if (msg.id !== assistantMessageId) return msg;
                         const traceEvents = [...(msg.traceEvents || []), agentEndEvent];
                         return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "opportunity_draft_ready": {
+                    // Plan B Task 9: orchestrator-triggered negotiations
+                    // stream accepted drafts back one at a time so the UI
+                    // can render cards progressively. Append to the
+                    // message's streamingDrafts list; the message-list
+                    // component renders them inline alongside the LLM text.
+                    //
+                    // TODO(plan-b-ui-followup): these drafts are currently
+                    // transient — they live only in React state and are not
+                    // persisted with message metadata, so reopening the chat
+                    // drops them. Persistence requires a new column on the
+                    // message metadata record (or carrying them inside
+                    // `debugMeta`) plus rehydration in loadSession. Lands
+                    // with the inline-card-rendering follow-up noted in the
+                    // PR description; doing it now would ship dead state
+                    // since the rendering path hasn't been wired.
+                    const draft: StreamingDraft = {
+                      opportunityId: event.opportunityId,
+                      opportunity: event.opportunity,
+                      receivedAt: Date.now(),
+                    };
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const streamingDrafts = [...(msg.streamingDrafts || []), draft];
+                        return { ...msg, streamingDrafts };
                       }),
                     );
                     break;

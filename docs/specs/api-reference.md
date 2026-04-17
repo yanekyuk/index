@@ -1933,6 +1933,36 @@ Update opportunity status.
 
 ---
 
+### POST /api/opportunities/:id/start-chat
+
+Atomically accept a `pending` or `draft` opportunity and resolve the h2h conversation for the actor pair. Backs the Start Chat button on both ambient (pending) and orchestrator (draft) opportunity cards so the frontend can navigate directly to `/chat/:conversationId` in a single round-trip.
+
+Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling acceptance, contact membership upsert), plus `getOrCreateDM(userA, userB)` to resolve/create the DM conversation. Does **not** insert a seed system message — the accepted opportunity itself renders inline in the chat timeline (per IND-237).
+
+**Auth**: AuthGuard
+
+**Path params**:
+- `id` — Opportunity ID (full UUID or short prefix; resolved server-side)
+
+**Request body**: empty
+
+**Response**:
+```json
+{
+  "conversationId": "string",
+  "counterpartUserId": "string",
+  "opportunity": { "id": "string", "status": "accepted", "...": "..." }
+}
+```
+
+**Error responses**:
+- `400` — Opportunity is not in `pending` or `draft` status
+- `403` — Caller is not an actor on the opportunity
+- `404` — Opportunity not found
+- `500` — Status update or DM resolution failed
+
+---
+
 ## Network Opportunity
 
 **Controller prefix**: `/networks` (separate controller registered alongside NetworkController)

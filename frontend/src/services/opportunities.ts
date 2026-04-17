@@ -187,4 +187,26 @@ export const createOpportunitiesService = (
   getInviteMessage: async (opportunityId: string): Promise<{ message: string }> => {
     return api.get<{ message: string }>(`/opportunities/${opportunityId}/invite-message`);
   },
+
+  /**
+   * Atomically accept a `pending` or `draft` opportunity and resolve the h2h
+   * conversation ID in one round-trip. Backs the Start Chat button on both
+   * ambient (pending) and orchestrator (draft) cards so the UI can navigate
+   * directly to `/chat/${conversationId}` without a follow-up lookup.
+   *
+   * Wraps POST /opportunities/:id/start-chat from Plan B Task 8.
+   */
+  startChat: async (
+    opportunityId: string,
+  ): Promise<{
+    conversationId: string;
+    counterpartUserId: string;
+    opportunity: { id: string; status: OpportunityStatus };
+  }> => {
+    return api.post<{
+      conversationId: string;
+      counterpartUserId: string;
+      opportunity: { id: string; status: OpportunityStatus };
+    }>(`/opportunities/${opportunityId}/start-chat`, {});
+  },
 });
