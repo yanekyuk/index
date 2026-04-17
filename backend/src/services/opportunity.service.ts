@@ -355,6 +355,72 @@ export class OpportunityService {
   }
 
   /**
+   * Atomically transition an opportunity to `accepted` and surface the h2h
+   * conversation to navigate to. Used by the frontend's "Start Chat" button
+   * on both `pending` (ambient) and `draft` (orchestrator) opportunities.
+   *
+   * - Verifies the caller is one of the actors (403 otherwise).
+   * - Rejects if the opp is not in `pending` or `draft` (400 otherwise — the
+   *   button should not appear for other statuses, so this is a safety rail).
+   * - Flips status → `accepted` (plus sibling acceptance + contact upsert,
+   *   matching updateOpportunityStatus('accepted')).
+   * - Calls `getOrCreateDM(userId, counterpartUserId)` to resolve the
+   *   conversationId for the pair; creates one if none exists.
+   *
+   * Does NOT insert a seed system message — IND-237 renders the accepted
+   * opportunity inline in the chat timeline, so a seed would duplicate it.
+   *
+   * @param opportunityId - The opportunity to accept and navigate from
+   * @param userId - The authenticated user (must be an actor)
+   * @returns `{ conversationId, counterpartUserId, opportunity }` on success
+   */
+  async startChat(
+    opportunityId: string,
+    userId: string,
+  ): Promise<
+    | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | { error: string; status: number }
+  > {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+    if (opp.status !== 'pending' && opp.status !== 'draft') {
+      return {
+        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending or draft.`,
+        status: 400,
+      };
+    }
+    const isActor = opp.actors.some((a) => a.userId === userId);
+    if (!isActor) {
+      return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+    }
+
+    const counterpart =
+      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== userId)
+      ?? opp.actors.find((a) => a.userId !== userId);
+    if (!counterpart) {
+      return { error: 'Opportunity has no counterpart to chat with', status: 400 };
+    }
+
+    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted');
+    if (!updated) {
+      return { error: 'Failed to accept opportunity', status: 500 };
+    }
+
+    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
+    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true });
+
+    const conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
+
+    return {
+      conversationId: conversation.id,
+      counterpartUserId: counterpart.userId,
+      opportunity: updated,
+    };
+  }
+
+  /**
    * Discover opportunities via HyDE graph.
    * 
    * @param userId - The user ID

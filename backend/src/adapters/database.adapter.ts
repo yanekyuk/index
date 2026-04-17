@@ -3283,6 +3283,18 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  /**
+   * Finds an existing DM conversation between two users, or creates one.
+   * Thin delegator to {@link ConversationDatabaseAdapter.getOrCreateDM} so
+   * OpportunityService can satisfy the OpportunityControllerDatabase
+   * interface without importing another service (per the services-must-not-
+   * import-services rule). Used by the Start Chat endpoint (Plan B Task 8).
+   */
+  async getOrCreateDM(userA: string, userB: string): Promise<{ id: string }> {
+    const conversationAdapter = new ConversationDatabaseAdapter();
+    return conversationAdapter.getOrCreateDM(userA, userB);
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

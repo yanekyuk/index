@@ -212,7 +212,7 @@ export class OpportunityController {
     }
 
     const result = await opportunityService.updateOpportunityStatus(resolved.id, status, user.id);
-    
+
     if (result && 'error' in result) {
       return new Response(JSON.stringify({ error: result.error }), {
         status: result.status as number,
@@ -220,6 +220,32 @@ export class OpportunityController {
       });
     }
 
+    return Response.json(result);
+  }
+
+  /**
+   * POST /opportunities/:id/start-chat — accept a `pending` or `draft`
+   * opportunity and resolve (find-or-create) the h2h conversation for the
+   * actor pair. Used by the frontend's Start Chat button; returns the
+   * conversationId to navigate to.
+   */
+  @Post('/:id/start-chat')
+  @UseGuards(AuthGuard)
+  async startChat(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const result = await opportunityService.startChat(resolved.id, user.id);
+    if ('error' in result) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
     return Response.json(result);
   }
 
