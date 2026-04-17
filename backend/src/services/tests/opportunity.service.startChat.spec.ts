@@ -184,7 +184,7 @@ describe('OpportunityService.startChat', () => {
 
     it('still returns the conversation when upsertContactMembership throws (best-effort)', async () => {
       const opp = makeOpportunity({ status: 'pending' });
-      const { service } = makeServiceWithDb(opp, {
+      const { service, db } = makeServiceWithDb(opp, {
         upsertContactMembership: mock(async () => {
           throw new Error('contacts index locked');
         }),
@@ -195,6 +195,8 @@ describe('OpportunityService.startChat', () => {
       expect('error' in result).toBe(false);
       if ('error' in result) return;
       expect(result.conversationId).toBe(CONV_ID);
+      // Both directions attempted even when first throws
+      expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
     });
   });
 });

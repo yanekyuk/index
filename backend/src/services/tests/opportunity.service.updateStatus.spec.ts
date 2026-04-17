@@ -143,6 +143,25 @@ describe("OpportunityService.updateOpportunityStatus", () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
+  it("returns 500 and does not flip status when getOrCreateDM throws", async () => {
+    const db = {
+      getOpportunity: mock(() => Promise.resolve(twoActorOpportunity)),
+      updateOpportunityStatus: mock(() =>
+        Promise.resolve({ ...twoActorOpportunity, status: "accepted" })
+      ),
+      acceptSiblingOpportunities: mock(() => Promise.resolve()),
+      upsertContactMembership: mock(() => Promise.resolve()),
+      getOrCreateDM: mock(() => Promise.reject(new Error("pg: connection error"))),
+    } as unknown as OpportunityControllerDatabase;
+    const service = new OpportunityService(db);
+
+    const result = await service.updateOpportunityStatus(OPP_ID, "accepted", USER_A);
+
+    expect(result).toHaveProperty("error");
+    expect((result as { status: number }).status).toBe(500);
+    expect(db.updateOpportunityStatus).not.toHaveBeenCalled();
+  });
+
   it("returns 403 when user is not an actor", async () => {
     const db = createMockDb(twoActorOpportunity);
     const service = new OpportunityService(db);

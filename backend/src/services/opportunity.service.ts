@@ -328,62 +328,67 @@ export class OpportunityService {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
 
+    const counterpart = status === 'accepted'
+      ? (opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
+          ?? opp.actors.find((actor) => actor.userId !== userId))
+      : undefined;
+
+    if (counterpart) {
+      try {
+        await this.db.getOrCreateDM(userId, counterpart.userId);
+      } catch (err) {
+        logger.error('[OpportunityService.updateOpportunityStatus] getOrCreateDM failed; status left untouched', {
+          opportunityId,
+          userId,
+          counterpartUserId: counterpart.userId,
+          error: err,
+        });
+        return { error: 'Failed to create conversation for this opportunity', status: 500 };
+      }
+    }
+
     const updated = await this.db.updateOpportunityStatus(opportunityId, status);
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    if (status !== 'accepted') {
-      return { opportunity: updated };
-    }
-
-    const counterpart = opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
-      ?? opp.actors.find((actor) => actor.userId !== userId);
-
     if (!counterpart) {
       return { opportunity: updated };
     }
 
-    await this.db.getOrCreateDM(userId, counterpart.userId).catch((err) => {
-      logger.error('[OpportunityService.updateOpportunityStatus] getOrCreateDM failed (non-blocking)', {
-        opportunityId,
-        userId,
-        counterpartUserId: counterpart.userId,
-        error: err,
-      });
-    });
+    const counterpartUserId = counterpart.userId;
 
-    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
+    await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
       logger.error('[OpportunityService.updateOpportunityStatus] acceptSiblingOpportunities failed (non-blocking)', {
         opportunityId,
         userId,
-        counterpartUserId: counterpart.userId,
+        counterpartUserId,
         error: err,
       });
     });
 
     // Accepter explicitly acted — restore if previously removed.
     // Counterpart: add them to the accepter but honour any prior opt-out on their side.
-    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
+    await this.db.upsertContactMembership(userId, counterpartUserId, { restore: true }).catch((err) => {
       logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership failed (non-blocking)', {
         opportunityId,
         userId,
-        counterpartUserId: counterpart.userId,
+        counterpartUserId,
         error: err,
       });
     });
-    await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
+    await this.db.upsertContactMembership(counterpartUserId, userId, { restore: false }).catch((err) => {
       logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership (counterpart) failed (non-blocking)', {
         opportunityId,
         userId,
-        counterpartUserId: counterpart.userId,
+        counterpartUserId,
         error: err,
       });
     });
 
     return {
       opportunity: updated,
-      counterpartUserId: counterpart.userId,
+      counterpartUserId,
     };
   }
 
