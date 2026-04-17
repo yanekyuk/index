@@ -8,6 +8,7 @@ import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiation-claim-timeout.queue';
 import { log } from '../lib/log';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '@indexnetwork/protocol';
+import { AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
 
 const logger = log.service.from('NegotiationPollingService');
 
@@ -37,6 +38,33 @@ export class UnauthorizedError extends Error {
     super(message);
     this.name = 'UnauthorizedError';
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the time remaining in a single park-window budget.
+ *
+ * The response-window timer, whether armed as the `waiting_for_agent` timeout or
+ * as the `claimed` timeout, shares one budget rather than stacking. When an agent
+ * picks up a parked turn, the claim timer is armed with whatever time is left
+ * since park start, not a fresh full budget.
+ *
+ * Clamped to a 1-second floor so BullMQ delay is always positive.
+ *
+ * @param parkStartTime - The timestamp when the task entered `waiting_for_agent`
+ * @param totalBudgetMs - The total park-window budget in milliseconds
+ * @returns Remaining milliseconds (minimum 1 000)
+ */
+export function computeRemainingBudgetMs(
+  parkStartTime: Date,
+  totalBudgetMs: number,
+): number {
+  const elapsedMs = Date.now() - parkStartTime.getTime();
+  const remainingMs = totalBudgetMs - elapsedMs;
+  return Math.max(1_000, remainingMs);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,11 +137,6 @@ interface NegotiationTaskMetadata {
 /** Default maximum turns before a negotiation is force-finalized. */
 const DEFAULT_MAX_TURNS = 6;
 
-/** Claim timeout: 6 hours in milliseconds. */
-const CLAIM_TIMEOUT_MS = 6 * 60 * 60 * 1000;
-
-/** Response timeout: 24 hours in milliseconds. */
-const RESPONSE_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Service
@@ -165,7 +188,15 @@ export class NegotiationPollingService {
         agentId,
         taskId: existingClaim.id,
       });
-      return this.buildPickupResult(existingClaim, userId);
+      // Idempotent repick path: the pre-park timestamp is not readily available
+      // once a task is claimed, so we fall back to updatedAt (the claim time).
+      // The resulting deadline is OPTIMISTIC — it can be later than when the
+      // already-armed claim-timer will actually fire (parkStart + 5min), because
+      // claimTime > parkStart. Agents may briefly see more time than they have.
+      // TODO(plan-b): persist park-start on task metadata at waiting_for_agent
+      // transition so both initial pickup and idempotent repick derive deadlines
+      // from the same origin. Tracked alongside the per-turn park-window work.
+      return this.buildPickupResult(existingClaim, userId, existingClaim.updatedAt ?? new Date());
     }
 
     // 2. Find oldest task in waiting_for_agent where user is source or candidate
@@ -216,13 +247,23 @@ export class NegotiationPollingService {
       return null;
     }
 
-    // 4. Cancel 24h timeout (no longer waiting unclaimed)
+    // 4. Cancel park-window timer (no longer unpicked)
     await negotiationTimeoutQueue.cancelTimeout(claimed.id);
 
-    // 5. Enqueue 6h claim timeout
+    // 5. Enqueue claim timeout using remaining park-window budget.
+    // NOTE: claimed.updatedAt is the post-update value (Drizzle RETURNING returns
+    // the updated row). The pre-claim updatedAt — the park-start time — lives in
+    // pendingTask.updatedAt, captured from the SELECT before the CAS transition.
+    // TODO(plan-b): the dispatcher accepts `options.timeoutMs` per call (5 min
+    // ambient today, 60s orchestrator after Plan B), but the originating window
+    // is not persisted on the task. Until it is, this path assumes every parked
+    // turn used AMBIENT_PARK_WINDOW_MS; the orchestrator trigger will over-report
+    // remaining budget until the per-turn window is threaded through the timeout
+    // job payload or task metadata. Safe for this PR (ambient-only parking).
     const messages = await conversationDatabaseAdapter.getMessagesForConversation(claimed.conversationId);
     const turnNumber = messages.length;
-    await negotiationClaimTimeoutQueue.enqueueTimeout(claimed.id, turnNumber, agentId);
+    const remainingMs = computeRemainingBudgetMs(pendingTask.updatedAt, AMBIENT_PARK_WINDOW_MS);
+    await negotiationClaimTimeoutQueue.enqueueTimeout(claimed.id, turnNumber, agentId, remainingMs);
 
     logger.info('[NegotiationPollingService] Turn claimed', {
       agentId,
@@ -232,7 +273,9 @@ export class NegotiationPollingService {
     });
 
     // 6. Return pickup result
-    return this.buildPickupResult(claimed, userId);
+    // Pass pendingTask.updatedAt (the pre-claim park-start time) so the
+    // deadline reflects the true remaining park-window, not the claim time.
+    return this.buildPickupResult(claimed, userId, pendingTask.updatedAt);
   }
 
   /**
@@ -373,10 +416,10 @@ export class NegotiationPollingService {
         turnCount: newTurnCount,
       });
     } else {
-      // Continue: set to waiting_for_agent and re-arm 24h timeout
+      // Continue: set to waiting_for_agent and re-arm park-window timeout
       await conversationDatabaseAdapter.updateTaskState(task.id, 'waiting_for_agent');
 
-      await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, RESPONSE_TIMEOUT_MS);
+      await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
       logger.info('[NegotiationPollingService] Turn submitted, waiting for next agent', {
         negotiationId,
@@ -423,8 +466,10 @@ export class NegotiationPollingService {
    *
    * @param task - Claimed task row
    * @param userId - The user whose agent is claiming this turn (drives ownUser/otherUser projection)
+   * @param parkStartTime - The timestamp when the task was last parked (waiting_for_agent updatedAt).
+   *   Used with AMBIENT_PARK_WINDOW_MS to compute a meaningful response deadline.
    */
-  private async buildPickupResult(task: convSchema.Task, userId: string): Promise<PickupResult> {
+  private async buildPickupResult(task: convSchema.Task, userId: string, parkStartTime: Date): Promise<PickupResult> {
     const meta = task.metadata as NegotiationTaskMetadata;
 
     // Load opportunity if referenced
@@ -474,9 +519,10 @@ export class NegotiationPollingService {
     const lastTurn = history.length > 0 ? history[history.length - 1] : null;
     const counterpartyAction = lastTurn?.action ?? 'none';
 
-    // Deadline = claimedAt + 6 hours
-    const claimedAt = task.claimedAt ?? new Date();
-    const deadline = new Date(claimedAt.getTime() + CLAIM_TIMEOUT_MS);
+    // Deadline = park-start time + ambient park window (typically 5 minutes).
+    // Using the pre-claim updatedAt as the park-start gives agents an accurate
+    // urgency signal rather than the old claimedAt + 6h which was wildly wrong.
+    const deadline = new Date(parkStartTime.getTime() + AMBIENT_PARK_WINDOW_MS);
 
     // Project persisted source/candidate context into own/other perspective
     // for the claiming user. Null when the task was parked before turn

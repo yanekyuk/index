@@ -24,6 +24,7 @@ export interface AgentRow {
   type: AgentType;
   status: AgentStatus;
   metadata: Record<string, unknown>;
+  lastSeenAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,6 +106,7 @@ export interface AgentRegistryStore {
   hasPermission(agentId: string, userId: string, action: string, scope?: AgentScope): Promise<boolean>;
   findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
   getSystemAgentIds(): AgentSystemIds;
+  touchLastSeen(agentId: string): Promise<void>;
 }
 
 export const SYSTEM_AGENT_IDS: AgentSystemIds = {
@@ -436,6 +438,28 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     return SYSTEM_AGENT_IDS;
   }
 
+  /**
+   * Update the agent's lastSeenAt timestamp. Called on every personal-agent pickup
+   * poll so the dispatcher can tell whether the agent is actively running.
+   *
+   * Silently no-ops when the agent doesn't exist — callers invoke this from pickup
+   * endpoints that already validated the agent, and we don't want to leak 404s
+   * from a heartbeat update.
+   */
+  async touchLastSeen(agentId: string): Promise<void> {
+    try {
+      await db
+        .update(schema.agents)
+        .set({ lastSeenAt: new Date() })
+        .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
+    } catch (err: unknown) {
+      logger.warn('touchLastSeen failed', {
+        agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   private buildScopeCondition(scope?: AgentScope) {
     if (!scope || scope.type === 'global') {
       return eq(schema.agentPermissions.scope, 'global');
@@ -524,6 +548,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       type: row.type,
       status: row.status,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      lastSeenAt: row.lastSeenAt ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

@@ -11,6 +11,9 @@ import { log } from '../lib/log';
 
 const logger = log.service.from('AgentDispatcherImpl');
 
+/** How recently a personal agent must have polled to be considered live. */
+const FRESHNESS_THRESHOLD_MS = 90_000;
+
 /** Subset of AgentService needed by the dispatcher. */
 interface AgentLookup {
   findAuthorizedAgents(
@@ -33,9 +36,13 @@ export class AgentDispatcherImpl implements AgentDispatcher {
   /**
    * Attempt to dispatch a negotiation turn to a personal agent.
    *
-   * For long-timeout calls (>60 s), parks the turn in waiting_for_agent and
-   * enqueues a 24h timeout. The agent picks up via the polling endpoint.
-   * For short-timeout calls (chat), returns timeout so the graph uses the system agent.
+   * Heartbeat-aware: checks `lastSeenAt` on each personal agent. If none is fresh
+   * (within 90 seconds), returns `timeout` so the graph falls back to the system
+   * agent inline. Otherwise parks the turn in `waiting_for_agent` and arms the
+   * response-window timer with the caller-supplied `timeoutMs`.
+   *
+   * `timeoutMs` is the park-window budget (5 min ambient / 60 s orchestrator),
+   * not a long-vs-short gate as in the previous implementation.
    *
    * @param userId - The user whose agent should handle this turn
    * @param scope - Permission scope for agent resolution
@@ -65,31 +72,31 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       return { handled: false, reason: 'no_agent' };
     }
 
-    const isLongTimeout = options.timeoutMs > 60_000;
+    const cutoff = Date.now() - FRESHNESS_THRESHOLD_MS;
+    const freshAgents = personalAgents.filter(
+      (a) => a.lastSeenAt != null && a.lastSeenAt.getTime() > cutoff,
+    );
 
-    if (isLongTimeout) {
+    if (freshAgents.length === 0) {
+      logger.info('Personal agent registered but stale — falling back to system agent', {
+        userId,
+        agentCount: personalAgents.length,
+        freshnessThresholdMs: FRESHNESS_THRESHOLD_MS,
+      });
+      return { handled: false, reason: 'timeout' };
+    }
+
+    if (this.timeoutQueue) {
       try {
-        // Enqueue 24h timeout — agent has 24h to pick up before system agent takes over
-        if (this.timeoutQueue) {
-          await this.timeoutQueue
-            .enqueueTimeout(payload.negotiationId, payload.history.length, options.timeoutMs)
-            .catch((err: unknown) =>
-              logger.error('Failed to enqueue negotiation timeout', {
-                negotiationId: payload.negotiationId,
-                error: err,
-              }),
-            );
-        }
-
-        logger.info('Turn parked for polling pickup', {
-          userId,
-          negotiationId: payload.negotiationId,
-          agentCount: personalAgents.length,
-        });
-
-        return { handled: false, reason: 'waiting', resumeToken: payload.negotiationId };
+        await this.timeoutQueue.enqueueTimeout(
+          payload.negotiationId,
+          payload.history.length,
+          options.timeoutMs,
+        );
       } catch (err) {
-        logger.error('Failed to park turn for polling', {
+        // Without a safety timer, a parked turn could strand forever. Fall back to
+        // the system agent inline instead of returning `waiting` with no timer.
+        logger.error('Failed to enqueue negotiation timeout; falling back to system agent', {
           userId,
           negotiationId: payload.negotiationId,
           error: err,
@@ -98,14 +105,14 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       }
     }
 
-    // Short timeout (chat): personal agent transports are async-only; synchronous
-    // response is not implemented yet. Return timeout so the graph falls back to
-    // the system negotiator agent.
-    logger.info('Short timeout dispatch — falling back to system agent', {
+    logger.info('Turn parked for polling pickup', {
       userId,
-      timeoutMs: options.timeoutMs,
+      negotiationId: payload.negotiationId,
+      freshAgentCount: freshAgents.length,
+      parkWindowMs: options.timeoutMs,
     });
-    return { handled: false, reason: 'timeout' };
+
+    return { handled: false, reason: 'waiting', resumeToken: payload.negotiationId };
   }
 
   /**

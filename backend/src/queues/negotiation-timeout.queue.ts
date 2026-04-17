@@ -2,7 +2,7 @@ import { Job } from 'bullmq';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { IndexNegotiator } from '@indexnetwork/protocol';
+import { IndexNegotiator, AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
 import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for negotiation timeout jobs. */
@@ -22,9 +22,12 @@ export interface NegotiationTimeoutQueueDeps {
 /**
  * NegotiationTimeoutQueue: BullMQ queue + worker for handling negotiation timeouts.
  *
- * When an external agent doesn't respond within the deadline (default 24h),
- * the timeout worker runs the AI agent for that turn and continues the
- * negotiation evaluation (evaluate -> next turn or finalize).
+ * When an external agent doesn't respond within the park-window budget (the
+ * dispatcher-provided `timeoutMs`, currently `AMBIENT_PARK_WINDOW_MS` / 5 min
+ * for the ambient trigger), the timeout worker runs the AI agent for that turn
+ * and continues the negotiation evaluation (evaluate -> next turn or finalize).
+ * If the AI counter-responds, the re-arm path uses `AMBIENT_PARK_WINDOW_MS`
+ * again for the next speaker.
  *
  * Workers are started only by the protocol server via {@link NegotiationTimeoutQueue.startWorker}.
  */
@@ -269,7 +272,7 @@ export class NegotiationTimeoutQueue {
     // Set to waiting_for_agent and arm a new timeout so the negotiation doesn't stall.
     await database.updateTaskState(task.id, 'waiting_for_agent');
 
-    await this.enqueueTimeout(negotiationId, newTurnCount, 24 * 60 * 60 * 1000);
+    await this.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
     this.logger.info('[NegotiationTimeoutJob] AI agent countered, armed timeout for next speaker', {
       negotiationId,

@@ -431,10 +431,12 @@ export const agents = pgTable('agents', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
 }, (table) => ({
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
+  lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
 }));
 
 export const agentTransports = pgTable('agent_transports', {

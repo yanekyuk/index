@@ -6,14 +6,11 @@ import * as convSchema from '../schemas/conversation.schema';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { IndexNegotiator } from '@indexnetwork/protocol';
+import { IndexNegotiator, AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
 import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for negotiation claim-timeout jobs. */
 export const QUEUE_NAME = 'negotiation-claim-timeout';
-
-/** Default claim timeout: 6 hours in milliseconds. */
-const DEFAULT_CLAIM_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
 /** Payload for a negotiation claim-timeout job. */
 export interface NegotiationClaimTimeoutJobData {
@@ -31,13 +28,16 @@ export interface NegotiationClaimTimeoutQueueDeps {
  * NegotiationClaimTimeoutQueue: BullMQ queue + worker for handling claimed-but-abandoned negotiation turns.
  *
  * When an external agent claims a negotiation turn via polling but never responds
- * within the deadline (default 6h), the timeout worker runs the AI agent as a
- * fallback for that turn and continues the negotiation evaluation
+ * within the remaining park-window budget, the timeout worker runs the AI agent
+ * as a fallback for that turn and continues the negotiation evaluation
  * (evaluate -> next turn or finalize).
  *
- * This is distinct from {@link NegotiationTimeoutQueue} which fires when a turn
- * is never picked up at all (24h timeout). This queue fires after a turn has been
- * claimed but the agent abandoned it without responding.
+ * This is distinct from {@link NegotiationTimeoutQueue}, which fires when a turn
+ * is never picked up at all. This queue fires after a turn has been claimed but
+ * the agent abandoned it without responding. Both queues share the same
+ * park-window budget (default {@link AMBIENT_PARK_WINDOW_MS}, 5 minutes) — the
+ * remaining budget carries across the waiting_for_agent → claimed transition
+ * rather than being re-armed fresh.
  *
  * Workers are started only by the protocol server via {@link NegotiationClaimTimeoutQueue.startWorker}.
  */
@@ -61,14 +61,16 @@ export class NegotiationClaimTimeoutQueue {
    * @param negotiationId - The negotiation task ID
    * @param turnNumber - Current turn number (used to detect stale jobs)
    * @param agentId - The agent that claimed the turn
-   * @param delayMs - Delay in milliseconds before the timeout fires (default 6h)
+   * @param delayMs - Remaining park-window budget in milliseconds (typically the
+   *   value returned by `computeRemainingBudgetMs(parkStart, AMBIENT_PARK_WINDOW_MS)`
+   *   — required so callers cannot accidentally fall back to a stale default).
    * @returns The BullMQ job ID
    */
   async enqueueTimeout(
     negotiationId: string,
     turnNumber: number,
     agentId: string,
-    delayMs: number = DEFAULT_CLAIM_TIMEOUT_MS,
+    delayMs: number,
   ): Promise<string> {
     const jobId = `neg-claim-timeout-${negotiationId}`;
 
@@ -310,9 +312,9 @@ export class NegotiationClaimTimeoutQueue {
     // Set to waiting_for_agent and arm a new general timeout so the negotiation doesn't stall.
     await database.updateTaskState(task.id, 'waiting_for_agent');
 
-    // Import dynamically to avoid circular dependency; arm the general 24h timeout for the next speaker
+    // Import dynamically to avoid circular dependency; arm the park-window timeout for the next speaker
     const { negotiationTimeoutQueue } = await import('./negotiation-timeout.queue');
-    await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, 24 * 60 * 60 * 1000);
+    await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
     this.logger.info('[NegotiationClaimTimeoutJob] AI agent countered, armed timeout for next speaker', {
       negotiationId,
