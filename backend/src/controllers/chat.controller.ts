@@ -249,7 +249,7 @@ export class ChatController {
           let fullResponse = "";
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
-          let debugMeta: { graph: string; iterations: number; tools: unknown[] } | undefined;
+          let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown } | undefined;
 
           // Use context-aware streaming to load previous messages
           // checkpointer is PostgresSaver from the local install; the package expects
@@ -292,6 +292,8 @@ export class ChatController {
                   graph: event.graph,
                   iterations: event.iterations,
                   tools: event.tools,
+                  llm: event.llm,
+                  ...(event.orchestratorNegotiations !== undefined && { orchestratorNegotiations: event.orchestratorNegotiations }),
                 };
               }
             }
