@@ -788,8 +788,8 @@ export class DebugController {
         const turnMessages = negMessages.slice(0, TURN_LIMIT);
 
         const negTurns: NegotiationTurnEntry[] = turnMessages.map((m, i) => {
-          const actor: 'source' | 'candidate' =
-            m.senderId === sourceUserId ? 'source' : 'candidate';
+          const senderBareId = m.senderId?.startsWith('agent:') ? m.senderId.slice('agent:'.length) : m.senderId;
+          const actor: 'source' | 'candidate' = senderBareId === sourceUserId ? 'source' : 'candidate';
 
           // Find the data part
           const parts = m.parts as Array<{ kind?: string; data?: Record<string, unknown> }>;

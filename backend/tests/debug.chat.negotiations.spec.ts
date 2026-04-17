@@ -109,7 +109,7 @@ beforeAll(async () => {
       {
         conversationId: negConvId,
         taskId: task.id,
-        senderId: userId, // source actor
+        senderId: `agent:${userId}`, // source actor
         role: 'user',
         parts: [
           {
@@ -127,7 +127,7 @@ beforeAll(async () => {
       {
         conversationId: negConvId,
         taskId: task.id,
-        senderId: candidateUserId, // candidate actor
+        senderId: `agent:${candidateUserId}`, // candidate actor
         role: 'agent',
         parts: [
           {
@@ -257,6 +257,11 @@ describe('GET /debug/chat/:id — negotiation hydration', () => {
     const neg2 = negotiations.find((n) => n.opportunityId === oppId2);
     expect(neg1?.outcome?.status).toBe('draft');
     expect(neg2?.outcome?.status).toBe('rejected');
+
+    // Verify actor labelling: first turn is source, second is candidate
+    const firstNeg = negotiations[0];
+    expect((firstNeg.turns[0] as { actor: string }).actor).toBe('source');
+    expect((firstNeg.turns[1] as { actor: string }).actor).toBe('candidate');
   });
 
   it('returns 404 when session does not belong to the user', async () => {
