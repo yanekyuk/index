@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, min, max, count, inArray } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, min, max, count, inArray, gte, lte } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -657,8 +657,9 @@ export class DebugController {
       negotiations?: NegotiationDebugEntry[];
     }> = [];
 
-    // Track raw debugMeta per turn index for later negotiation hydration
+    // Track raw debugMeta and message createdAt per turn index for later negotiation hydration
     const rawDebugMetaByTurnIndex = new Map<number, Record<string, unknown>>();
+    const msgCreatedAtByTurnIndex = new Map<number, Date>();
 
     for (const msg of messageRows) {
       const messageIndex = chatMessages.length;
@@ -708,22 +709,50 @@ export class DebugController {
             : [],
         });
 
-        // Capture raw debugMeta for negotiation hydration
+        // Capture raw debugMeta and message timestamp for negotiation hydration
         if (source && typeof source === 'object') {
           rawDebugMetaByTurnIndex.set(turnIndex, source as Record<string, unknown>);
+        }
+        if (msg.createdAt) {
+          msgCreatedAtByTurnIndex.set(turnIndex, msg.createdAt);
         }
       }
     }
 
     // ── 5. Hydrate negotiation data for each turn ─────────────────────────
     for (const [turnIndex, rawMeta] of rawDebugMetaByTurnIndex.entries()) {
-      // Safely extract orchestratorNegotiations.opportunityIds
+      // Safely extract orchestratorNegotiations.opportunityIds (pointer path)
       const orchNeg = rawMeta.orchestratorNegotiations;
-      if (!orchNeg || typeof orchNeg !== 'object') continue;
-      const oppIds = (orchNeg as Record<string, unknown>).opportunityIds;
-      if (!Array.isArray(oppIds) || oppIds.length === 0) continue;
-      const opportunityIds = oppIds.filter((id): id is string => typeof id === 'string');
-      if (opportunityIds.length === 0) continue;
+      const oppIds = orchNeg && typeof orchNeg === 'object'
+        ? (orchNeg as Record<string, unknown>).opportunityIds
+        : undefined;
+      const pointerIds = Array.isArray(oppIds)
+        ? oppIds.filter((id): id is string => typeof id === 'string')
+        : [];
+
+      let effectiveOpportunityIds: string[] | null = pointerIds.length > 0 ? pointerIds : null;
+
+      // Fallback: if no pointer, query by time-window for legacy messages
+      if (!effectiveOpportunityIds) {
+        const msgTs = msgCreatedAtByTurnIndex.get(turnIndex);
+        if (!msgTs) continue;
+        const WINDOW_MS = 10 * 60 * 1000;
+        const fromTs = new Date(msgTs.getTime() - WINDOW_MS);
+        const toTs = new Date(msgTs.getTime() + WINDOW_MS);
+        const oppsInWindow = await db
+          .select({ id: opportunities.id })
+          .from(opportunities)
+          .where(and(
+            sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId: user.id }])}::jsonb`,
+            sql`${opportunities.detection}->>'source' = 'chat'`,
+            gte(opportunities.createdAt, fromTs),
+            lte(opportunities.createdAt, toTs),
+          ));
+        if (oppsInWindow.length === 0) continue;
+        effectiveOpportunityIds = oppsInWindow.map((o) => o.id);
+      }
+
+      const opportunityIds = effectiveOpportunityIds;
 
       // Fetch negotiation tasks matching any of the opportunity IDs
       const taskRows = await db
