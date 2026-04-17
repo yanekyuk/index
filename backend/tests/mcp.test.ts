@@ -98,7 +98,7 @@ describe('MCP Server Factory', () => {
     // Keep this resilient as new tool domains are added over time.
     expect(registry.size).toBeGreaterThan(0);
 
-    // Verify representative agent and legacy webhook tools remain in the registry.
+    // Verify representative tools remain in the registry.
     const expectedTools = [
       'read_intents',
       'create_intent',
@@ -109,11 +109,6 @@ describe('MCP Server Factory', () => {
       'scrape_url',
       'register_agent',
       'list_agents',
-      'register_webhook',
-      'list_webhooks',
-      'delete_webhook',
-      'test_webhook',
-      'list_webhook_events',
     ];
 
     for (const toolName of expectedTools) {
@@ -154,37 +149,6 @@ describe('MCP Server Factory', () => {
     });
 
     expect(parseToolResult(result ?? '')).toEqual({ success: false, error: 'Agent name is required.' });
-    expect(createAgentCalls).toEqual([]);
-  });
-
-  it('register_agent validates webhook config before creating an agent', async () => {
-    const createAgentCalls: Array<Parameters<AgentDatabase['createAgent']>[0]> = [];
-    const registry = createToolRegistry({
-      ...mockDeps,
-      agentDatabase: {
-        ...mockAgentDb,
-        createAgent: async (input) => {
-          createAgentCalls.push(input);
-          throw new Error('should not create agent');
-        },
-      },
-    });
-
-    const result = await registry.get('register_agent')?.handler({
-      context: {
-        userId: 'test-user-id',
-        userName: 'Test User',
-        userEmail: 'test@example.com',
-        user: { id: 'test-user-id' } as never,
-        userProfile: null,
-        userNetworks: [],
-        isOnboarding: false,
-        hasName: true,
-      },
-      query: { name: 'Agent', webhook_url: 'https://example.com/webhook', webhook_events: ['   '] },
-    });
-
-    expect(parseToolResult(result ?? '')).toEqual({ success: false, error: 'Webhook events are required.' });
     expect(createAgentCalls).toEqual([]);
   });
 
@@ -274,8 +238,8 @@ describe('MCP Server Factory', () => {
           createdAt: new Date('2026-04-08T00:00:00.000Z'),
           updatedAt: new Date('2026-04-08T00:00:00.000Z'),
         }),
-        createTransport: async () => {
-          throw new Error('transport failed');
+        grantPermission: async () => {
+          throw new Error('permission grant failed');
         },
         deleteAgent: async (agentId) => {
           deletedAgentIds.push(agentId);
@@ -296,14 +260,13 @@ describe('MCP Server Factory', () => {
       },
       query: {
         name: 'Agent',
-        webhook_url: 'https://example.com/webhook',
-        webhook_events: ['intent.created'],
+        permissions: ['manage:intents'],
       },
     });
 
     expect(parseToolResult(result ?? '')).toEqual({
       success: false,
-      error: 'Failed to register agent: transport failed',
+      error: 'Failed to register agent: permission grant failed',
     });
     expect(deletedAgentIds).toEqual(['agent-123']);
   });

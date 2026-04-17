@@ -147,8 +147,7 @@ const DEFAULT_MAX_TURNS = 6;
  *
  * Provides the business logic for polling-based negotiation delivery.
  * External agents call {@link pickup} to claim the next pending turn, then
- * call {@link respond} to submit their response. This replaces the previous
- * webhook-based push delivery model.
+ * call {@link respond} to submit their response.
  *
  * RESPONSIBILITIES:
  * - Pickup: find the oldest pending turn for a user's agent, atomically claim it

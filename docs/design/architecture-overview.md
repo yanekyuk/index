@@ -241,7 +241,7 @@ The protocol includes an agent registry that sits beside the chat tool stack and
 #### Tables
 
 - `agents` stores personal and system agent identities (`type: 'system' | 'personal'`, `ownerId`, `status`).
-- `agent_transports` stores delivery channels. The active channel is `mcp` — the agent authenticates with an API key bound to its identity, connects to the MCP server for tool work, and polls `POST /api/agents/:id/negotiations/pickup` for negotiation turns. The `webhook` value remains as a legacy enum on the table but is no longer used for negotiation delivery.
+- `agent_transports` stores delivery channels. The only channel is `mcp` — the agent authenticates with an API key bound to its identity, connects to the MCP server for tool work, and polls `POST /api/agents/:id/negotiations/pickup` for negotiation turns.
 - `agent_permissions` stores the actions an agent may perform for a user (e.g. `manage:intents`, `manage:negotiations`), optionally scoped to a network or node.
 
 System agents are seeded with fixed UUIDs and granted their default permissions during onboarding. Personal agents are user-owned records exposed through the `/api/agents` controller family (see `docs/specs/api-reference.md`).

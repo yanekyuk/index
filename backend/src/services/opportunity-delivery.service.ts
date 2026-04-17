@@ -24,7 +24,10 @@ import {
 
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
+import { log } from '../lib/log';
 import { agents, opportunities, opportunityDeliveries } from '../schemas/database.schema';
+
+const logger = log.service.from('OpportunityDeliveryService');
 
 const RESERVATION_TTL_SECONDS = 60;
 const CHANNEL = 'openclaw';
@@ -78,22 +81,36 @@ export class OpportunityDeliveryService {
     const ttlCutoff = new Date(Date.now() - RESERVATION_TTL_SECONDS * 1000);
 
     // Fetch candidate opportunities where:
-    //  - status = 'pending'
+    //  - status IN ('pending', 'draft')
     //  - user appears in actors JSONB array
+    //  - for 'draft' rows, user is NOT the initiator (detection->>'createdBy')
+    //  - the agent has notify_on_opportunity = true (muted agents get no results)
     //  - no committed delivery row (delivered_at IS NOT NULL) exists for this (user, opp, channel, status)
     //  - no live reservation exists (reserved_at within TTL window, delivered_at IS NULL)
     // We limit to 20 and filter with canUserSeeOpportunity in JS to stay consistent with protocol rules.
     const result = await db.execute(sql`
-      SELECT o.id, o.actors, o.status, o.interpretation
+      SELECT o.id, o.actors, o.status, o.interpretation, o.detection
       FROM opportunities o
-      WHERE o.status = 'pending'
+      WHERE o.status IN ('pending', 'draft')
         AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
+        AND (
+          o.status = 'pending'
+          OR (
+            (o.detection->>'createdBy') IS NOT NULL
+            AND (o.detection->>'createdBy') <> ${userId}
+          )
+        )
+        AND EXISTS (
+          SELECT 1 FROM agents a
+          WHERE a.id = ${agentId}
+            AND a.notify_on_opportunity = true
+        )
         AND NOT EXISTS (
           SELECT 1 FROM opportunity_deliveries d
           WHERE d.opportunity_id = o.id
             AND d.user_id = ${userId}
             AND d.channel = ${CHANNEL}
-            AND d.delivered_at_status = 'pending'
+            AND d.delivered_at_status = o.status::text
             AND (
               d.delivered_at IS NOT NULL
               OR (d.reserved_at IS NOT NULL AND d.reserved_at >= ${ttlCutoff.toISOString()})
@@ -103,10 +120,23 @@ export class OpportunityDeliveryService {
       LIMIT 20
     `);
 
-    const rows = result as unknown as Array<{ id: string; actors: unknown; status: string; interpretation: unknown }>;
+    const rows = result as unknown as Array<{ id: string; actors: unknown; status: string; interpretation: unknown; detection: unknown }>;
 
-    // Filter in JS via canUserSeeOpportunity (consistent with maintenance.graph.ts pattern)
-    const visible = rows.filter((row: { id: string; actors: unknown; status: string }) => {
+    // Filter in JS via canUserSeeOpportunity (consistent with maintenance.graph.ts pattern).
+    // Defense-in-depth: if a 'draft' row reaches this filter with a missing detection.createdBy
+    // (shouldn't happen given the SQL guard above), log loudly and skip it rather than throwing,
+    // so one malformed row cannot block delivery of the other valid rows in the batch.
+    const visible = rows.filter((row: { id: string; actors: unknown; status: string; detection: unknown }) => {
+      if (row.status === 'draft') {
+        const detection = (row as { detection?: { createdBy?: string } }).detection;
+        if (!detection?.createdBy) {
+          logger.error('Skipping draft opportunity with missing detection.createdBy', {
+            opportunityId: row.id,
+            userId,
+          });
+          return false;
+        }
+      }
       const actors = row.actors as Array<{ userId: string; role: string }>;
       return canUserSeeOpportunity(actors, row.status, userId);
     });
@@ -119,13 +149,14 @@ export class OpportunityDeliveryService {
 
     // Insert reservation row. The uniqueIndex is partial (WHERE delivered_at IS NOT NULL),
     // so multiple reservation rows can co-exist — only the first confirmDelivered wins.
+    // Record the actual opp status so draft deliveries don't re-deliver after promotion to pending.
     await db.insert(opportunityDeliveries).values({
       opportunityId: chosen.id,
       userId,
       agentId,
       channel: CHANNEL,
       trigger: TRIGGER_PENDING,
-      deliveredAtStatus: 'pending',
+      deliveredAtStatus: chosen.status,
       reservationToken,
       reservedAt,
     });

@@ -3,7 +3,7 @@ import { useAuthenticatedAPI } from '../lib/api';
 export interface AgentTransport {
   id: string;
   agentId: string;
-  channel: 'mcp' | 'webhook';
+  channel: 'mcp';
   config: Record<string, unknown>;
   priority: number;
   active: boolean;
@@ -27,6 +27,9 @@ export interface Agent {
   description: string | null;
   type: 'personal' | 'system';
   status: 'active' | 'inactive';
+  notifyOnOpportunity: boolean;
+  dailySummaryEnabled: boolean;
+  handleNegotiations: boolean;
   metadata: Record<string, unknown>;
   transports: AgentTransport[];
   permissions: AgentPermission[];
@@ -72,7 +75,7 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   update: async (
     agentId: string,
-    updates: { name?: string; description?: string | null; status?: 'active' | 'inactive' },
+    updates: { name?: string; description?: string | null; status?: 'active' | 'inactive'; notifyOnOpportunity?: boolean; dailySummaryEnabled?: boolean; handleNegotiations?: boolean },
   ): Promise<Agent> => {
     const response = await api.patch<{ agent: Agent }>(`/agents/${agentId}`, updates);
     return response.agent;
@@ -84,7 +87,7 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   addTransport: async (
     agentId: string,
-    channel: 'mcp' | 'webhook',
+    channel: 'mcp',
     config?: Record<string, unknown>,
     priority?: number,
   ): Promise<AgentTransport> => {

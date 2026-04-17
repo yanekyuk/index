@@ -30,13 +30,16 @@ const updateAgentSchema = z
     name: z.string().optional(),
     description: z.string().nullable().optional(),
     status: z.enum(['active', 'inactive']).optional(),
+    notifyOnOpportunity: z.boolean().optional(),
+    dailySummaryEnabled: z.boolean().optional(),
+    handleNegotiations: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one field is required',
   });
 
 const addTransportSchema = z.object({
-  channel: z.enum(['webhook', 'mcp']),
+  channel: z.enum(['mcp']),
   config: z.record(z.string(), z.unknown()).optional(),
   priority: z.number().int().optional(),
 });
