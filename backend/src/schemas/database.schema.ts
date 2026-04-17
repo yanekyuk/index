@@ -436,6 +436,7 @@ export const agents = pgTable('agents', {
 }, (table) => ({
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
+  lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
 }));
 
 export const agentTransports = pgTable('agent_transports', {
