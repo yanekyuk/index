@@ -2,7 +2,7 @@
 import { config } from "dotenv";
 config({ path: ".env.test", override: true });
 
-import { describe, it, expect, mock, beforeEach } from "bun:test";
+import { describe, it, expect, mock } from "bun:test";
 
 import type { Opportunity, OpportunityControllerDatabase } from '@indexnetwork/protocol';
 import { OpportunityService } from "../opportunity.service";
@@ -59,6 +59,7 @@ function createMockDb(opportunity: Opportunity | null) {
     ),
     acceptSiblingOpportunities: mock(() => Promise.resolve()),
     upsertContactMembership: mock(() => Promise.resolve()),
+    getOrCreateDM: mock(() => Promise.resolve({ id: "conv-backfill-001" })),
   } as unknown as OpportunityControllerDatabase;
 }
 
@@ -67,7 +68,7 @@ function createMockDb(opportunity: Opportunity | null) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("OpportunityService.updateOpportunityStatus", () => {
-  it("calls upsertContactMembership with counterpart when accepting a 2-actor opportunity", async () => {
+  it("creates DM and adds contacts both ways when accepting a 2-actor opportunity", async () => {
     const db = createMockDb(twoActorOpportunity);
     const service = new OpportunityService(db);
 
@@ -75,11 +76,18 @@ describe("OpportunityService.updateOpportunityStatus", () => {
 
     expect(result).not.toHaveProperty("error");
     expect((result as { counterpartUserId?: string }).counterpartUserId).toBe(USER_B);
-    expect(db.upsertContactMembership).toHaveBeenCalledTimes(1);
+
+    // DM created between the pair
+    expect(db.getOrCreateDM).toHaveBeenCalledWith(USER_A, USER_B);
+
+    // Contact added both ways: accepter gets counterpart (restore:true),
+    // counterpart gets accepter (restore:false — honours prior opt-out)
+    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
     expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_A, USER_B, { restore: true });
+    expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_B, USER_A, { restore: false });
   });
 
-  it("calls upsertContactMembership with non-introducer counterpart in 3-actor opportunity", async () => {
+  it("creates DM and adds contacts both ways with non-introducer counterpart in 3-actor opportunity", async () => {
     const db = createMockDb(threeActorOpportunity);
     const service = new OpportunityService(db);
 
@@ -87,8 +95,11 @@ describe("OpportunityService.updateOpportunityStatus", () => {
 
     expect(result).not.toHaveProperty("error");
     expect((result as { counterpartUserId?: string }).counterpartUserId).toBe(USER_B);
-    expect(db.upsertContactMembership).toHaveBeenCalledTimes(1);
+
+    expect(db.getOrCreateDM).toHaveBeenCalledWith(USER_A, USER_B);
+    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
     expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_A, USER_B, { restore: true });
+    expect(db.upsertContactMembership).toHaveBeenCalledWith(USER_B, USER_A, { restore: false });
   });
 
   it("does NOT call upsertContactMembership when rejecting", async () => {

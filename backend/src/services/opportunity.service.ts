@@ -344,9 +344,35 @@ export class OpportunityService {
       return { opportunity: updated };
     }
 
+    await this.db.getOrCreateDM(userId, counterpart.userId).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] getOrCreateDM failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
+
     await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
 
-    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true });
+    // Accepter explicitly acted — restore if previously removed.
+    // Counterpart: add them to the accepter but honour any prior opt-out on their side.
+    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
+    await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership (counterpart) failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
 
     return {
       opportunity: updated,
