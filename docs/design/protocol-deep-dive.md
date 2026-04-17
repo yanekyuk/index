@@ -147,21 +147,28 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 **File:** `opportunity.graph.ts`
 **Purpose:** End-to-end opportunity discovery: scoping, HyDE generation, vector search, evaluation, ranking, deduplication, negotiation, and persistence.
-**Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `persist`
-**State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, etc.)
+**Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `persist`, `negotiate`
+**State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
 **Conditional edges:**
 - After `prep`: routes to `scope` or `END` (no index memberships)
 - After `discovery`: routes to `evaluation` or `END` (no candidates)
 - After `evaluation`: routes to `ranking` or `END` (no evaluated opportunities)
 
-**Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> END`
+**Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
 The graph supports three discovery paths:
 - **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
 - **Profile-based (Path B/C):** Use profile embedding or query-generated HyDE documents for search
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
 
-**Dependencies:** `OpportunityGraphDatabase`, `Embedder`, compiled HyDE graph, optional `OpportunityEvaluator`, optional `NegotiationGraph`
+**Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
+
+| Node | Ambient trigger | Orchestrator trigger |
+|---|---|---|
+| `persist` | Initial status = `options.initialStatus ?? 'pending'`. | Initial status = `options.initialStatus ?? 'negotiating'`. Also collects `dedupAlreadyAccepted` — accepted opps between the discoverer and each unique candidate — so the tool can tell the LLM to steer users toward the existing chat instead of creating a duplicate draft. |
+| `negotiate` | 5-min park window (`AMBIENT_PARK_WINDOW_MS`) with heartbeat-aware dispatcher. Results aggregate at the end of the fan-out. | 60-second park window (orchestrator cannot afford the ambient budget). Per-candidate `onCandidateResolved` hook flips each accepted opp to `draft` and emits an `opportunity_draft_ready` event via the requestContext `traceEmitter`, so the chat UI renders cards progressively. Honors `requestContext.abortSignal` — after the chat session closes, in-flight negotiations still finish via their park window but their cards are suppressed. |
+
+**Dependencies:** `OpportunityGraphDatabase`, `Embedder`, compiled HyDE graph, optional `OpportunityEvaluator`, optional `NegotiationGraph`, optional `AgentDispatcher`
 
 ### 3.5 HyDE Graph
 
