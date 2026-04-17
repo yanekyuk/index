@@ -102,7 +102,7 @@ export default function ChatSidebar() {
         lastMessage: preview,
         lastMessageIsInternal: !messageText && !!reasoningText,
         negotiationStatus,
-        sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
+        sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
     }
     const peer = (conv.participants ?? []).find((p) => p.participantId !== user?.id && p.participantType === 'user');
@@ -115,7 +115,7 @@ export default function ChatSidebar() {
       lastMessage: lastText,
       lastMessageIsInternal: false,
       negotiationStatus: null,
-      sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
+      sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
     };
   }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 

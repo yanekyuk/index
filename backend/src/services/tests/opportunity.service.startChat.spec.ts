@@ -71,6 +71,11 @@ describe('OpportunityService.startChat', () => {
     expect(result.counterpartUserId).toBe(PEER_ID);
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, 'accepted');
     expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+
+    // Both-way contact membership: accepter (restore:true) + counterpart (restore:false)
+    expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
+    expect(db.upsertContactMembership).toHaveBeenCalledWith(VIEWER_ID, PEER_ID, { restore: true });
+    expect(db.upsertContactMembership).toHaveBeenCalledWith(PEER_ID, VIEWER_ID, { restore: false });
   });
 
   it('flips draft → accepted for the orchestrator path', async () => {
@@ -179,7 +184,7 @@ describe('OpportunityService.startChat', () => {
 
     it('still returns the conversation when upsertContactMembership throws (best-effort)', async () => {
       const opp = makeOpportunity({ status: 'pending' });
-      const { service } = makeServiceWithDb(opp, {
+      const { service, db } = makeServiceWithDb(opp, {
         upsertContactMembership: mock(async () => {
           throw new Error('contacts index locked');
         }),
@@ -190,6 +195,8 @@ describe('OpportunityService.startChat', () => {
       expect('error' in result).toBe(false);
       if ('error' in result) return;
       expect(result.conversationId).toBe(CONV_ID);
+      // Both directions attempted even when first throws
+      expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
     });
   });
 });
