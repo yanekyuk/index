@@ -379,6 +379,31 @@ interface GraphNode {
   agents: AgentNode[];
 }
 
+export interface NegotiationTurnRow {
+  turnIndex: number;
+  actor: "source" | "candidate";
+  action: "propose" | "accept" | "reject" | "counter" | "question";
+  reasoning?: string;
+  message?: string;
+  suggestedRoles?: { ownUser?: string; otherUser?: string };
+  durationMs: number;
+}
+
+export interface NegotiationNode {
+  opportunityId: string;
+  negotiationConversationId: string;
+  candidateUserId: string;
+  candidateName?: string;
+  trigger: "orchestrator" | "ambient";
+  startTimestamp: number;
+  durationMs?: number;
+  turns: NegotiationTurnRow[];
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  turnCount?: number;
+  outcomeReasoning?: string;
+  isRunning: boolean;
+}
+
 interface ToolNode {
   name: string;
   startTimestamp?: number;
@@ -389,6 +414,7 @@ interface ToolNode {
   status?: "success" | "error";
   summary?: string;
   graphs: GraphNode[];
+  negotiations: NegotiationNode[];
 }
 
 /** Ordered list of items to render in the non-tool sections (llm / iteration events). */
@@ -456,6 +482,7 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
           isRunning: true,
           activities: [],
           graphs: [],
+          negotiations: [],
         };
         const toolIdx = tools.length;
         tools.push(node);
@@ -553,6 +580,63 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
           agentNode.isRunning = false;
           agentNode.summary = event.summary;
         }
+        break;
+      }
+
+      case "negotiation_session_start": {
+        const target = currentTool ?? (tools.length > 0 ? tools[tools.length - 1] : null);
+        if (!target) break;
+        target.negotiations.push({
+          opportunityId: event.opportunityId ?? "",
+          negotiationConversationId: event.negotiationConversationId ?? "",
+          candidateUserId: event.candidateUserId ?? "",
+          candidateName: event.candidateName,
+          trigger: event.trigger ?? "ambient",
+          startTimestamp: event.timestamp,
+          turns: [],
+          isRunning: true,
+        });
+        break;
+      }
+
+      case "negotiation_turn": {
+        const allNegNodes = tools.flatMap((t) => t.negotiations);
+        const negNode = [...allNegNodes].reverse().find(
+          (n) => n.opportunityId === (event.opportunityId ?? "") && n.isRunning,
+        );
+        if (!negNode) break;
+        negNode.turns.push({
+          turnIndex: event.turnIndex ?? negNode.turns.length,
+          actor: (event.actor ?? "source") as "source" | "candidate",
+          action: (event.action ?? "propose") as NegotiationTurnRow["action"],
+          reasoning: event.reasoning,
+          message: event.message,
+          suggestedRoles: event.suggestedRoles,
+          durationMs: event.durationMs ?? 0,
+        });
+        break;
+      }
+
+      case "negotiation_outcome": {
+        const allNegNodes = tools.flatMap((t) => t.negotiations);
+        const negNode = [...allNegNodes].reverse().find(
+          (n) => n.opportunityId === (event.opportunityId ?? "") && n.isRunning,
+        );
+        if (!negNode) break;
+        negNode.outcome = event.outcome;
+        negNode.turnCount = event.turnCount;
+        negNode.outcomeReasoning = event.reasoning;
+        break;
+      }
+
+      case "negotiation_session_end": {
+        const allNegNodes = tools.flatMap((t) => t.negotiations);
+        const negNode = [...allNegNodes].reverse().find(
+          (n) => n.opportunityId === (event.opportunityId ?? "") && n.isRunning,
+        );
+        if (!negNode) break;
+        negNode.isRunning = false;
+        negNode.durationMs = event.durationMs;
         break;
       }
     }
