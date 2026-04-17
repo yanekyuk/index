@@ -57,7 +57,7 @@ const PERSONAL_AGENT_ACTIONS = [
   'manage:intents',
   'manage:networks',
   'manage:contacts',
-  'manage:negotiations',
+  'manage:opportunities',
 ] as const;
 
 interface SeedApiKeyRecord {

@@ -543,7 +543,7 @@ Soft-delete a personal agent and deactivate its transports.
 
 ### POST /api/agents/:id/transports
 
-Add a transport to an owned personal agent. New deployments should use the `mcp` channel — the agent authenticates with an API key (see `POST /api/agents/:id/tokens`) and pulls work from the Index Network MCP server and the negotiation pickup endpoint below. The `webhook` channel is retained as a legacy enum value on the `agent_transports` table but is no longer used for negotiation delivery.
+Add a transport to an owned personal agent. The only supported channel is `mcp` — the agent authenticates with an API key (see `POST /api/agents/:id/tokens`) and pulls work from the Index Network MCP server and the negotiation pickup endpoint below. Transports are MCP-only.
 
 **Request body (mcp channel)**:
 ```json

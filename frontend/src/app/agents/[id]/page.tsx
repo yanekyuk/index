@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import { AlphaBadge } from "@/components/AlphaBadge";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
 import type { NegotiationInsights } from "@/services/users";
 
@@ -182,12 +183,90 @@ function SendTestMessageDialog({
   );
 }
 
+function NotificationsSection({
+  agent,
+  onChange,
+  disabled,
+}: {
+  agent: Agent;
+  onChange: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
+  disabled: boolean;
+}) {
+  if (agent.type !== "personal") return null;
+
+  return (
+    <div className="p-4 rounded-md border border-gray-100 bg-white">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          Notifications
+        </h3>
+      </div>
+      <div className="space-y-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agent.notifyOnOpportunity}
+            disabled={disabled}
+            onChange={(e) => onChange({ notifyOnOpportunity: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Notify me about new opportunities</span>
+            <span className="block text-xs text-gray-400 mt-0.5">
+              Only applies when your agent is polling via OpenClaw.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agent.dailySummaryEnabled}
+            disabled={disabled}
+            onChange={(e) => onChange({ dailySummaryEnabled: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Send a daily summary</span>
+            <span className="block text-xs text-gray-400 mt-0.5">
+              Once per 24 hours, through the same OpenClaw channel.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agent.handleNegotiations}
+            disabled={disabled}
+            onChange={(e) => onChange({ handleNegotiations: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
+          />
+          <span>
+            <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
+              Handle negotiations on my behalf
+              <AlphaBadge />
+            </span>
+            <span className="block text-xs text-gray-400 mt-0.5">
+              Experimental — your personal agent will respond to negotiation turns through the OpenClaw pickup loop.
+            </span>
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function OverviewTab({
   agent,
   userId,
+  onPatch,
+  isSaving,
 }: {
   agent: Agent;
   userId: string;
+  onPatch: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
+  isSaving: boolean;
 }) {
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
@@ -237,6 +316,8 @@ function OverviewTab({
           </div>
         </dl>
       </div>
+
+      <NotificationsSection agent={agent} onChange={onPatch} disabled={isSaving} />
     </div>
   );
 }
@@ -836,6 +917,7 @@ export default function AgentDetailPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
   const [testMessageOpen, setTestMessageOpen] = useState(false);
@@ -869,6 +951,21 @@ export default function AgentDetailPage() {
       cancelled = true;
     };
   }, [id, agentsService, isAuthenticated, error, navigate]);
+
+  async function handlePatch(
+    patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>,
+  ) {
+    if (!agent) return;
+    setIsSaving(true);
+    try {
+      const updated = await agentsService.update(agent.id, patch);
+      setAgent(updated);
+    } catch (err) {
+      error("Failed to save setting", err instanceof Error ? err.message : undefined);
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   if (authLoading || !isAuthenticated || loading) {
     return (
@@ -967,7 +1064,7 @@ export default function AgentDetailPage() {
             </Tabs.List>
 
             <Tabs.Content value="overview" className="w-full">
-              <OverviewTab agent={agent} userId={user?.id ?? ""} />
+              <OverviewTab agent={agent} userId={user?.id ?? ""} onPatch={handlePatch} isSaving={isSaving} />
             </Tabs.Content>
 
             <Tabs.Content value="api-keys" className="w-full">

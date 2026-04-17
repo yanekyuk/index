@@ -38,6 +38,15 @@ const ORCHESTRATOR_ACTIONS: readonly AgentAction[] = [
   'manage:opportunities',
 ];
 
+/** Default actions granted to the owner of a newly created personal agent. */
+export const PERSONAL_AGENT_DEFAULT_ACTIONS: readonly AgentAction[] = [
+  'manage:profile',
+  'manage:intents',
+  'manage:networks',
+  'manage:contacts',
+  'manage:opportunities',
+];
+
 export type AgentServiceStore = AgentRegistryStore;
 
 /**
@@ -69,7 +78,7 @@ export class AgentService {
       agentId: agent.id,
       userId: ownerId,
       scope: 'global',
-      actions: [...AGENT_ACTIONS],
+      actions: [...PERSONAL_AGENT_DEFAULT_ACTIONS],
     });
 
     logger.info('Created personal agent with default permissions', { agentId: agent.id, ownerId });
@@ -102,9 +111,16 @@ export class AgentService {
   async update(
     agentId: string,
     userId: string,
-    updates: { name?: string; description?: string | null; status?: 'active' | 'inactive' },
+    updates: {
+      name?: string;
+      description?: string | null;
+      status?: 'active' | 'inactive';
+      notifyOnOpportunity?: boolean;
+      dailySummaryEnabled?: boolean;
+      handleNegotiations?: boolean;
+    },
   ): Promise<AgentWithRelations> {
-    const agent = await this.requireOwnedAgent(agentId, userId);
+    const agent = await this.requireOwnedAgentWithRelations(agentId, userId);
     if (agent.type === 'system') {
       throw new Error('System agents cannot be modified');
     }
@@ -128,18 +144,34 @@ export class AgentService {
       cleanUpdates.status = updates.status;
     }
 
-    if (Object.keys(cleanUpdates).length === 0) {
-      const current = await this.db.getAgentWithRelations(agentId);
-      if (!current) {
-        throw new Error('Agent not found');
-      }
-
-      return this.sanitizeAgent(current);
+    if (updates.notifyOnOpportunity !== undefined) {
+      cleanUpdates.notifyOnOpportunity = updates.notifyOnOpportunity;
     }
 
-    const updated = await this.db.updateAgent(agentId, cleanUpdates);
-    if (!updated) {
-      throw new Error('Agent not found');
+    if (updates.dailySummaryEnabled !== undefined) {
+      cleanUpdates.dailySummaryEnabled = updates.dailySummaryEnabled;
+    }
+
+    if (updates.handleNegotiations !== undefined) {
+      cleanUpdates.handleNegotiations = updates.handleNegotiations;
+    }
+
+    const hasColumnUpdates = Object.keys(cleanUpdates).length > 0;
+    const syncingNegotiations = updates.handleNegotiations !== undefined;
+
+    if (!hasColumnUpdates && !syncingNegotiations) {
+      return this.sanitizeAgent(agent);
+    }
+
+    if (hasColumnUpdates) {
+      const updated = await this.db.updateAgent(agentId, cleanUpdates);
+      if (!updated) {
+        throw new Error('Agent not found');
+      }
+    }
+
+    if (syncingNegotiations) {
+      await this.reconcileNegotiationsPermission(agent, updates.handleNegotiations!);
     }
 
     const refreshed = await this.db.getAgentWithRelations(agentId);
@@ -405,12 +437,7 @@ export class AgentService {
   }
 
   private sanitizeTransport(transport: AgentTransportRow): AgentTransportRow {
-    return {
-      ...transport,
-      config: transport.channel === 'webhook'
-        ? Object.fromEntries(Object.entries(transport.config).filter(([key]) => key !== 'secret'))
-        : transport.config,
-    };
+    return transport;
   }
 
   private sanitizeAgent(agent: AgentWithRelations, viewerId?: string): AgentWithRelations {
@@ -440,6 +467,51 @@ export class AgentService {
     );
 
     return results.filter((result) => !result.hasPermission).map((result) => result.action);
+  }
+
+  /**
+   * Keeps `handle_negotiations` column in sync with the presence of
+   * `manage:negotiations` in the owner's global permission row.
+   *
+   * Not transactional. If the column write succeeds and the permission
+   * write fails (or vice versa), a subsequent toggle call converges.
+   */
+  private async reconcileNegotiationsPermission(
+    agent: AgentWithRelations,
+    enabled: boolean,
+  ): Promise<void> {
+    const ownerPerm = agent.permissions.find(
+      (p) => p.userId === agent.ownerId && p.scope === 'global',
+    );
+
+    if (enabled) {
+      if (ownerPerm?.actions.includes('manage:negotiations')) return;
+      const nextActions = [
+        ...(ownerPerm?.actions ?? []),
+        'manage:negotiations',
+      ];
+      if (ownerPerm) {
+        await this.db.revokePermission(ownerPerm.id);
+      }
+      await this.db.grantPermission({
+        agentId: agent.id,
+        userId: agent.ownerId,
+        scope: 'global',
+        actions: nextActions,
+      });
+    } else {
+      if (!ownerPerm?.actions.includes('manage:negotiations')) return;
+      await this.db.revokePermission(ownerPerm.id);
+      const remaining = ownerPerm.actions.filter((a) => a !== 'manage:negotiations');
+      if (remaining.length > 0) {
+        await this.db.grantPermission({
+          agentId: agent.id,
+          userId: agent.ownerId,
+          scope: 'global',
+          actions: remaining,
+        });
+      }
+    }
   }
 }
 

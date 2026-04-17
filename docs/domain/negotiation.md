@@ -118,6 +118,7 @@ Each negotiation begins with a seed assessment from the opportunity evaluator:
 - **score**: The evaluator's initial score (0-100)
 - **reasoning**: Why the evaluator thinks this is a match
 - **valencyRole**: The evaluator's initial role suggestion
+- **actors**: Optional array of `{userId, role}` pairs
 
 Both agents receive this seed assessment as context. They are instructed to use it as a starting point but form their own independent judgment.
 
@@ -170,8 +171,9 @@ The openclaw-plugin exposes one optional config key under `plugins.entries.index
 Negotiations are tracked as A2A (Agent-to-Agent) conversations:
 
 - A **conversation** is created with two agent participants (`agent:{userId}`)
-- A **task** is created within the conversation with type "negotiation"
+- A **task** is created within the conversation with type "negotiation" and metadata linking source and candidate user IDs
 - Each turn is persisted as a **message** with the turn data in a DataPart (`kind: "data"`)
+- Task state transitions through: `submitted` -> `working` -> `waiting_for_agent` (if yielding) -> `completed`
 - When finalized, an **artifact** is created on the task containing the negotiation outcome
 
 This integration means negotiation history is stored in the same conversation/message infrastructure used by the rest of the system, enabling future features like letting users review the reasoning that led to their opportunities.

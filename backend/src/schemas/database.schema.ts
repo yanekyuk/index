@@ -11,7 +11,7 @@ export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FU
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
-export const transportChannelEnum = pgEnum('transport_channel', ['webhook', 'mcp']);
+export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 
 export interface OnboardingState {
@@ -414,10 +414,6 @@ export type Link = typeof linksTable.$inferSelect;
 export type NewLink = typeof linksTable.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Webhooks
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Agents
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -433,6 +429,10 @@ export const agents = pgTable('agents', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  notifyOnOpportunity: boolean('notify_on_opportunity').notNull().default(true),
+  dailySummaryEnabled: boolean('daily_summary_enabled').notNull().default(true),
+  handleNegotiations: boolean('handle_negotiations').notNull().default(false),
+  lastDailySummaryAt: timestamp('last_daily_summary_at', { withTimezone: true }),
 }, (table) => ({
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
@@ -465,6 +465,9 @@ export const agentPermissions = pgTable('agent_permissions', {
   agentIdIdx: index('agent_permissions_agent_id_idx').on(table.agentId),
   userIdIdx: index('agent_permissions_user_id_idx').on(table.userId),
   agentUserIdx: index('agent_permissions_agent_user_idx').on(table.agentId, table.userId),
+  uniqueGlobalPermission: uniqueIndex('uniq_agent_permissions_global')
+    .on(table.agentId, table.userId)
+    .where(sql`${table.scope} = 'global'`),
 }));
 
 export const agentTestMessages = pgTable(

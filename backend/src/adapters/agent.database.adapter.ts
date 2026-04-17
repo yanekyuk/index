@@ -8,7 +8,7 @@ const logger = log.lib.from('agent.database.adapter');
 
 export type AgentType = 'personal' | 'system';
 export type AgentStatus = 'active' | 'inactive';
-export type TransportChannel = 'webhook' | 'mcp';
+export type TransportChannel = 'mcp';
 export type PermissionScope = 'global' | 'node' | 'network';
 
 export interface AgentScope {
@@ -25,6 +25,10 @@ export interface AgentRow {
   status: AgentStatus;
   metadata: Record<string, unknown>;
   lastSeenAt: Date | null;
+  notifyOnOpportunity: boolean;
+  dailySummaryEnabled: boolean;
+  handleNegotiations: boolean;
+  lastDailySummaryAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -93,7 +97,7 @@ export interface AgentRegistryStore {
   getAgentWithRelations(agentId: string): Promise<AgentWithRelations | null>;
   updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata'>>,
+    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
   ): Promise<AgentRow | null>;
   deleteAgent(agentId: string): Promise<void>;
   listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
@@ -172,7 +176,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   async updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata'>>,
+    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
   ): Promise<AgentRow | null> {
     const [row] = await db
       .update(schema.agents)
@@ -411,7 +415,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       if (row.type !== 'personal') return true;
       return credentialedPersonalAgentIds.has(row.id);
     });
-    return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows, { redactSecret: false });
+    return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows);
   }
 
   private async findPersonalAgentIdsWithValidCredentials(agentIds: string[]): Promise<Set<string>> {
@@ -478,9 +482,8 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     agentRows: Array<typeof schema.agents.$inferSelect>,
     transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
-    options?: { redactSecret?: boolean },
   ): AgentWithRelations[] {
-    const transportsByAgent = this.groupTransportsByAgent(transportRows, options);
+    const transportsByAgent = this.groupTransportsByAgent(transportRows);
     const permissionsByAgent = this.groupPermissionsByAgent(permissionRows);
 
     return agentRows
@@ -512,13 +515,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private groupTransportsByAgent(
     rows: Array<typeof schema.agentTransports.$inferSelect>,
-    options?: { redactSecret?: boolean },
   ): Map<string, AgentTransportRow[]> {
     const result = new Map<string, AgentTransportRow[]>();
 
     for (const row of rows) {
       const current = result.get(row.agentId) ?? [];
-      current.push(this.toTransportRow(row, options));
+      current.push(this.toTransportRow(row));
       result.set(row.agentId, current);
     }
 
@@ -549,6 +551,10 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       status: row.status,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       lastSeenAt: row.lastSeenAt ?? null,
+      notifyOnOpportunity: row.notifyOnOpportunity,
+      dailySummaryEnabled: row.dailySummaryEnabled,
+      handleNegotiations: row.handleNegotiations,
+      lastDailySummaryAt: row.lastDailySummaryAt ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -556,18 +562,14 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private toTransportRow(
     row: typeof schema.agentTransports.$inferSelect,
-    options?: { redactSecret?: boolean },
   ): AgentTransportRow {
     const config = ((row.config ?? {}) as Record<string, unknown>);
-    const redact = options?.redactSecret ?? true;
 
     return {
       id: row.id,
       agentId: row.agentId,
       channel: row.channel,
-      config: redact && row.channel === 'webhook'
-        ? Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'secret'))
-        : config,
+      config,
       priority: row.priority,
       active: row.active,
       failureCount: row.failureCount,
@@ -588,14 +590,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     };
   }
 
-  private transportSubscribesToEvent(transport: AgentTransportRow, event: string): boolean {
-    if (transport.channel !== 'webhook' || !transport.active) {
-      return false;
-    }
-
-    const events = transport.config?.events;
-    return Array.isArray(events) && events.includes(event);
-  }
 }
 
 export const agentDatabaseAdapter = new AgentDatabaseAdapter();

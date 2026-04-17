@@ -13,7 +13,7 @@ import {
 } from '../src/adapters/agent.database.adapter';
 import type { AgentTokenStore } from '../src/adapters/agent-token.adapter';
 import { AgentController } from '../src/controllers/agent.controller';
-import { AGENT_ACTIONS, AgentService, type AgentServiceStore } from '../src/services/agent.service';
+import { AGENT_ACTIONS, PERSONAL_AGENT_DEFAULT_ACTIONS, AgentService, type AgentServiceStore } from '../src/services/agent.service';
 import { agentService } from '../src/services/agent.service';
 
 const OWNER_ID = 'owner-1';
@@ -28,6 +28,10 @@ function createAgentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     type: 'personal',
     status: 'active',
     metadata: {},
+    notifyOnOpportunity: true,
+    dailySummaryEnabled: true,
+    handleNegotiations: false,
+    lastDailySummaryAt: null,
     createdAt: new Date('2026-04-08T00:00:00.000Z'),
     updatedAt: new Date('2026-04-08T00:00:00.000Z'),
     ...overrides,
@@ -38,8 +42,8 @@ function createTransportRow(overrides: Partial<AgentTransportRow> = {}): AgentTr
   return {
     id: 'transport-1',
     agentId: 'agent-1',
-    channel: 'webhook',
-    config: { url: 'https://example.com/webhook' },
+    channel: 'mcp',
+    config: {},
     priority: 0,
     active: true,
     failureCount: 0,
@@ -172,6 +176,31 @@ describe('AgentService', () => {
     await expect(service.create(OWNER_ID, '   ')).rejects.toThrow('Agent name is required');
   });
 
+  it('creates a personal agent without manage:negotiations by default', async () => {
+    let grantedActions: string[] = [];
+    const store = createStore({
+      createAgent: async (input) => createAgentRow({ ...input }),
+      grantPermission: async (input) => {
+        grantedActions = [...input.actions];
+        return createPermissionRow({ actions: input.actions });
+      },
+    });
+    const service = new AgentService(store, createTokenStore());
+
+    await service.create(OWNER_ID, 'Fresh agent');
+
+    expect(grantedActions).not.toContain('manage:negotiations');
+    expect(grantedActions).toEqual(
+      expect.arrayContaining([
+        'manage:profile',
+        'manage:intents',
+        'manage:networks',
+        'manage:contacts',
+        'manage:opportunities',
+      ]),
+    );
+  });
+
   it('allows an authorized user to fetch an agent', async () => {
     const service = new AgentService(
       createStore({
@@ -185,62 +214,34 @@ describe('AgentService', () => {
     expect(result.id).toBe('agent-1');
   });
 
-  it('redacts webhook secrets from returned agent transports', async () => {
-    const service = new AgentService(
-      createStore({
-        getAgentWithRelations: async () =>
-          createAgentWithRelations({
-            transports: [
-              createTransportRow({
-                config: {
-                  url: 'https://example.com/webhook',
-                  secret: 'super-secret-token',
-                },
-              }),
-            ],
-          }),
-      }),
-    );
-
-    const result = await service.getById('agent-1', OWNER_ID);
-
-    expect(result.transports[0]?.config.secret).toBeUndefined();
-    expect(result.transports[0]?.config.url).toBe('https://example.com/webhook');
-  });
-
-  it('redacts webhook secrets when listing agents for a user', async () => {
-    const service = new AgentService(
-      createStore({
-        listAgentsForUser: async () => [
-          createAgentWithRelations({
-            transports: [
-              createTransportRow({
-                config: {
-                  url: 'https://example.com/webhook',
-                  secret: 'super-secret-token',
-                },
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
-
-    const result = await service.listForUser(OWNER_ID);
-
-    expect(result[0]?.transports[0]?.config.secret).toBeUndefined();
-  });
-
   it('rejects unauthorized agent reads', async () => {
     const service = new AgentService(createStore());
 
     await expect(service.getById('agent-1', OTHER_USER_ID)).rejects.toThrow('Agent not found');
   });
 
+  it('sanitizeAgent exposes the three notification toggle fields', async () => {
+    const store = createStore({
+      getAgentWithRelations: async () =>
+        createAgentWithRelations({
+          notifyOnOpportunity: false,
+          dailySummaryEnabled: false,
+          handleNegotiations: true,
+        }),
+    });
+    const service = new AgentService(store, createTokenStore());
+
+    const result = await service.getById('agent-1', OWNER_ID);
+
+    expect(result.notifyOnOpportunity).toBe(false);
+    expect(result.dailySummaryEnabled).toBe(false);
+    expect(result.handleNegotiations).toBe(true);
+  });
+
   it('rejects modifying a system agent', async () => {
     const service = new AgentService(
       createStore({
-        getAgent: async () => createAgentRow({ type: 'system' }),
+        getAgentWithRelations: async () => createAgentWithRelations({ type: 'system' }),
       }),
     );
 
@@ -681,5 +682,100 @@ describe('AgentService', () => {
     await service.delete('agent-1', OWNER_ID, new Headers());
 
     expect(calls.revokeToken).toEqual(['token-1']);
+  });
+
+  it('updates notifyOnOpportunity and dailySummaryEnabled on a personal agent', async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const store = createStore({
+      getAgentWithRelations: async () =>
+        createAgentWithRelations({
+          notifyOnOpportunity: true,
+          dailySummaryEnabled: true,
+          handleNegotiations: false,
+        }),
+      updateAgent: async (_agentId, patch) => {
+        updates.push(patch);
+        return createAgentRow({ ...patch });
+      },
+    });
+    const service = new AgentService(store, createTokenStore());
+
+    await service.update('agent-1', OWNER_ID, {
+      notifyOnOpportunity: false,
+      dailySummaryEnabled: false,
+    });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      notifyOnOpportunity: false,
+      dailySummaryEnabled: false,
+    });
+  });
+
+  describe('handle_negotiations toggle', () => {
+    it('adds manage:negotiations to owner permission row when flipped on', async () => {
+      const grants: Array<{ actions: string[] }> = [];
+      const revocations: string[] = [];
+      const columnWrites: Array<Record<string, unknown>> = [];
+
+      const store = createStore({
+        getAgentWithRelations: async () =>
+          createAgentWithRelations({
+            handleNegotiations: false,
+            permissions: [
+              createPermissionRow({
+                id: 'perm-owner',
+                actions: ['manage:intents', 'manage:opportunities'],
+              }),
+            ],
+          }),
+        updateAgent: async (_agentId, patch) => {
+          columnWrites.push(patch);
+          return createAgentRow({ ...patch });
+        },
+        grantPermission: async (input) => {
+          grants.push({ actions: [...input.actions] });
+          return createPermissionRow({ actions: input.actions });
+        },
+        revokePermission: async (id) => {
+          revocations.push(id);
+        },
+      });
+      const service = new AgentService(store, createTokenStore());
+
+      await service.update('agent-1', OWNER_ID, { handleNegotiations: true });
+
+      expect(columnWrites).toEqual([expect.objectContaining({ handleNegotiations: true })]);
+      expect(grants).toHaveLength(1);
+      expect(grants[0]!.actions).toContain('manage:negotiations');
+    });
+
+    it('removes manage:negotiations when flipped off', async () => {
+      const revocations: string[] = [];
+
+      const store = createStore({
+        getAgentWithRelations: async () =>
+          createAgentWithRelations({
+            handleNegotiations: true,
+            permissions: [
+              createPermissionRow({
+                id: 'perm-owner',
+                actions: ['manage:intents', 'manage:negotiations'],
+              }),
+            ],
+          }),
+        revokePermission: async (id) => {
+          revocations.push(id);
+        },
+        grantPermission: async (input) =>
+          createPermissionRow({ actions: input.actions }),
+        updateAgent: async (_agentId, patch) => createAgentRow({ ...patch }),
+      });
+      const service = new AgentService(store, createTokenStore());
+
+      await service.update('agent-1', OWNER_ID, { handleNegotiations: false });
+
+      expect(revocations).toContain('perm-owner');
+    });
   });
 });
