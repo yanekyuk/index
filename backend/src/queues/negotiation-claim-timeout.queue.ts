@@ -6,7 +6,7 @@ import * as convSchema from '../schemas/conversation.schema';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { IndexNegotiator } from '@indexnetwork/protocol';
+import { IndexNegotiator, AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
 import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for negotiation claim-timeout jobs. */
@@ -310,9 +310,9 @@ export class NegotiationClaimTimeoutQueue {
     // Set to waiting_for_agent and arm a new general timeout so the negotiation doesn't stall.
     await database.updateTaskState(task.id, 'waiting_for_agent');
 
-    // Import dynamically to avoid circular dependency; arm the general 24h timeout for the next speaker
+    // Import dynamically to avoid circular dependency; arm the park-window timeout for the next speaker
     const { negotiationTimeoutQueue } = await import('./negotiation-timeout.queue');
-    await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, 24 * 60 * 60 * 1000);
+    await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
     this.logger.info('[NegotiationClaimTimeoutJob] AI agent countered, armed timeout for next speaker', {
       negotiationId,
