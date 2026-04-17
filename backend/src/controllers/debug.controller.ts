@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, min, max, count } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, min, max, count, inArray, gte, lte } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -17,6 +17,7 @@ import {
   conversationParticipants,
   conversationMetadata,
   messages,
+  tasks,
 } from '../schemas/conversation.schema';
 import { debugService } from '../services/debug.service';
 
@@ -610,6 +611,31 @@ export class DebugController {
     const sessionMeta = meta._sessionMeta ? { metadata: meta._sessionMeta } : null;
 
     // ── 4. Build messages and turns ──────────────────────────────────────
+
+    type NegotiationTurnEntry = {
+      turnIndex: number;
+      actor: 'source' | 'candidate';
+      action: string;
+      reasoning?: string;
+      message?: string;
+      suggestedRoles?: { ownUser?: string; otherUser?: string };
+      createdAt: string;
+    };
+
+    type NegotiationDebugEntry = {
+      opportunityId: string;
+      negotiationConversationId: string;
+      taskState: string;
+      sourceUserId: string;
+      candidateUserId: string;
+      turns: NegotiationTurnEntry[];
+      outcome: { status: string; turnCount: number } | null;
+      startedAt: string | null;
+      endedAt: string | null;
+      durationMs: number | null;
+      turnsTruncated?: boolean;
+    };
+
     const chatMessages: Array<{ role: string; content: string }> = [];
     const turns: Array<{
       messageIndex: number;
@@ -628,7 +654,12 @@ export class DebugController {
           agents: Array<{ name: string; durationMs: number }>;
         }>;
       }>;
+      negotiations?: NegotiationDebugEntry[];
     }> = [];
+
+    // Track raw debugMeta and message createdAt per turn index for later negotiation hydration
+    const rawDebugMetaByTurnIndex = new Map<number, Record<string, unknown>>();
+    const msgCreatedAtByTurnIndex = new Map<number, Date>();
 
     for (const msg of messageRows) {
       const messageIndex = chatMessages.length;
@@ -660,6 +691,7 @@ export class DebugController {
           : undefined;
         const source = debugMetaFromMetadata ?? fallbackMeta;
 
+        const turnIndex = turns.length;
         turns.push({
           messageIndex,
           graph: source?.graph ?? null,
@@ -676,6 +708,170 @@ export class DebugController {
               }))
             : [],
         });
+
+        // Capture raw debugMeta and message timestamp for negotiation hydration
+        if (source && typeof source === 'object') {
+          rawDebugMetaByTurnIndex.set(turnIndex, source as Record<string, unknown>);
+        }
+        if (msg.createdAt) {
+          msgCreatedAtByTurnIndex.set(turnIndex, msg.createdAt);
+        }
+      }
+    }
+
+    // ── 5. Hydrate negotiation data for each turn ─────────────────────────
+    for (const [turnIndex, rawMeta] of rawDebugMetaByTurnIndex.entries()) {
+      // Safely extract orchestratorNegotiations.opportunityIds (pointer path)
+      const orchNeg = rawMeta.orchestratorNegotiations;
+      const oppIds = orchNeg && typeof orchNeg === 'object'
+        ? (orchNeg as Record<string, unknown>).opportunityIds
+        : undefined;
+      const pointerIds = Array.isArray(oppIds)
+        ? oppIds.filter((id): id is string => typeof id === 'string')
+        : [];
+
+      let effectiveOpportunityIds: string[] | null = pointerIds.length > 0 ? pointerIds : null;
+
+      // Fallback: if no pointer, query by time-window for legacy messages
+      if (!effectiveOpportunityIds) {
+        const msgTs = msgCreatedAtByTurnIndex.get(turnIndex);
+        if (!msgTs) continue;
+        const WINDOW_MS = 10 * 60 * 1000;
+        const fromTs = new Date(msgTs.getTime() - WINDOW_MS);
+        const toTs = new Date(msgTs.getTime() + WINDOW_MS);
+        const oppsInWindow = await db
+          .select({ id: opportunities.id })
+          .from(opportunities)
+          .where(and(
+            sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId: user.id }])}::jsonb`,
+            sql`${opportunities.detection}->>'source' = 'chat'`,
+            gte(opportunities.createdAt, fromTs),
+            lte(opportunities.createdAt, toTs),
+          ));
+        if (oppsInWindow.length === 0) continue;
+        effectiveOpportunityIds = oppsInWindow.map((o) => o.id);
+      }
+
+      const opportunityIds = effectiveOpportunityIds;
+
+      // Fetch negotiation tasks matching any of the opportunity IDs (newest first)
+      const taskRows = await db
+        .select({
+          id: tasks.id,
+          conversationId: tasks.conversationId,
+          state: tasks.state,
+          metadata: tasks.metadata,
+          createdAt: tasks.createdAt,
+          updatedAt: tasks.updatedAt,
+        })
+        .from(tasks)
+        .where(
+          and(
+            sql`${tasks.metadata}->>'type' = 'negotiation'`,
+            inArray(sql`${tasks.metadata}->>'opportunityId'`, opportunityIds),
+          ),
+        )
+        .orderBy(desc(tasks.createdAt));
+
+      // Build a map from opportunityId to task row — first entry wins (latest due to orderBy above)
+      const taskByOppId = new Map<string, typeof taskRows[0]>();
+      for (const row of taskRows) {
+        const meta = row.metadata as Record<string, unknown> | null;
+        const oppId = meta?.opportunityId;
+        if (typeof oppId === 'string' && !taskByOppId.has(oppId)) {
+          taskByOppId.set(oppId, row);
+        }
+      }
+
+      // Fetch opportunity status for all IDs
+      const oppRows = await db
+        .select({ id: opportunities.id, status: opportunities.status })
+        .from(opportunities)
+        .where(inArray(opportunities.id, opportunityIds));
+      const oppStatusById = new Map(oppRows.map((o) => [o.id, o.status]));
+
+      const negotiations: NegotiationDebugEntry[] = [];
+
+      for (const oppId of opportunityIds) {
+        const task = taskByOppId.get(oppId);
+        if (!task) continue;
+
+        const taskMeta = (task.metadata ?? {}) as Record<string, unknown>;
+        const sourceUserId = typeof taskMeta.sourceUserId === 'string' ? taskMeta.sourceUserId : '';
+        const candidateUserId = typeof taskMeta.candidateUserId === 'string' ? taskMeta.candidateUserId : '';
+
+        // Fetch turn messages for this negotiation conversation
+        const TURN_LIMIT = 20;
+        const negMessages = await db
+          .select({
+            id: messages.id,
+            senderId: messages.senderId,
+            parts: messages.parts,
+            createdAt: messages.createdAt,
+          })
+          .from(messages)
+          .where(eq(messages.conversationId, task.conversationId))
+          .orderBy(asc(messages.createdAt))
+          .limit(TURN_LIMIT + 1);
+
+        const turnsTruncated = negMessages.length > TURN_LIMIT;
+        const turnMessages = negMessages.slice(0, TURN_LIMIT);
+
+        const negTurns: NegotiationTurnEntry[] = turnMessages.map((m, i) => {
+          const senderBareId = m.senderId?.startsWith('agent:') ? m.senderId.slice('agent:'.length) : m.senderId;
+          const actor: 'source' | 'candidate' = senderBareId === sourceUserId ? 'source' : 'candidate';
+
+          // Find the data part
+          const parts = m.parts as Array<{ kind?: string; data?: Record<string, unknown> }>;
+          const dataPart = parts.find((p) => p.kind === 'data');
+          const data = dataPart?.data ?? {};
+
+          const action = typeof data.action === 'string' ? data.action : 'unknown';
+          const assessment = data.assessment && typeof data.assessment === 'object'
+            ? data.assessment as Record<string, unknown>
+            : {};
+          const reasoning = typeof assessment.reasoning === 'string' ? assessment.reasoning : undefined;
+          const suggestedRolesRaw = assessment.suggestedRoles;
+          const suggestedRoles = suggestedRolesRaw && typeof suggestedRolesRaw === 'object'
+            ? suggestedRolesRaw as { ownUser?: string; otherUser?: string }
+            : undefined;
+          const message = typeof data.message === 'string' ? data.message : undefined;
+
+          return {
+            turnIndex: i,
+            actor,
+            action,
+            reasoning,
+            message,
+            suggestedRoles,
+            createdAt: m.createdAt.toISOString(),
+          };
+        });
+
+        const oppStatus = oppStatusById.get(oppId) ?? null;
+        const startedAt = task.createdAt.toISOString();
+        const endedAt = task.updatedAt.toISOString();
+        const durationMs = task.updatedAt.getTime() - task.createdAt.getTime();
+
+        const entry: NegotiationDebugEntry = {
+          opportunityId: oppId,
+          negotiationConversationId: task.conversationId,
+          taskState: task.state,
+          sourceUserId,
+          candidateUserId,
+          turns: negTurns,
+          outcome: oppStatus !== null ? { status: oppStatus, turnCount: negTurns.length } : null,
+          startedAt,
+          endedAt,
+          durationMs,
+          ...(turnsTruncated ? { turnsTruncated: true } : {}),
+        };
+
+        negotiations.push(entry);
+      }
+
+      if (negotiations.length > 0) {
+        turns[turnIndex].negotiations = negotiations;
       }
     }
 

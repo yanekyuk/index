@@ -747,6 +747,14 @@ Agent names in trace events use kebab-case: `intent-inferrer`, `profile-generato
 
 Each graph node accumulates `agentTimings` (array of `{ name, durationMs }`) in its return state. These timings are aggregated by the ChatStreamer and included in the `debug_meta` event at the end of the response, providing per-agent performance visibility.
 
+**Negotiation events** (added 2026-04-17):
+
+- `negotiation_session_start` / `negotiation_session_end` — emitted by `negotiateCandidates` in `negotiation.graph.ts`, wrapping each per-candidate run. Carries `opportunityId`, `negotiationConversationId`, source/candidate user ids, `trigger` (`'orchestrator' | 'ambient'`), `startedAt`, and `durationMs` (on end).
+- `negotiation_turn` — emitted by the negotiation graph's `turnNode` after each successful turn. Carries `opportunityId`, `turnIndex`, `actor` (`'source' | 'candidate'`), `action` (`propose | accept | reject | counter | question`), `reasoning`, `message`, `suggestedRoles`, `durationMs`.
+- `negotiation_outcome` — emitted from `finalizeNode` on every terminal path (`accepted`, `rejected_stalled`, `waiting_for_agent`, `timed_out`, `turn_cap`). Carries `opportunityId`, `outcome`, `turnCount`, `reasoning`, `agreedRoles`.
+
+Consumers: the live TRACE panel uses these to render per-candidate negotiation nodes. `/debug/chat/:id` uses `debugMeta.orchestratorNegotiations.opportunityIds` (persisted from `negotiation_session_start` during the turn) to hydrate full negotiation history from `tasks` + `messages` + `opportunities`. Existing `agent_start/end` emissions in `negotiation.graph.ts` are retained for backward compatibility with the rolled-up `debugMeta.tools[].graphs[].agents[]` render path.
+
 ## 11. Model Configuration
 
 All LLM model settings are centralized in `packages/protocol/src/agents/model.config.ts`.

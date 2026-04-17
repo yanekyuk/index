@@ -66,7 +66,11 @@ export type TraceEventType =
   | "graph_start"
   | "graph_end"
   | "agent_start"
-  | "agent_end";
+  | "agent_end"
+  | "negotiation_session_start"
+  | "negotiation_session_end"
+  | "negotiation_turn"
+  | "negotiation_outcome";
 
 export interface TraceEvent {
   type: TraceEventType;
@@ -79,6 +83,23 @@ export interface TraceEvent {
   steps?: ToolCallStep[];
   hasToolCalls?: boolean;
   toolNames?: string[];
+  // Negotiation event fields
+  opportunityId?: string;
+  negotiationConversationId?: string;
+  sourceUserId?: string;
+  candidateUserId?: string;
+  candidateName?: string;
+  trigger?: "orchestrator" | "ambient";
+  startedAt?: number;
+  turnIndex?: number;
+  actor?: "source" | "candidate";
+  action?: "propose" | "accept" | "reject" | "counter" | "question";
+  reasoning?: string;
+  message?: string;
+  suggestedRoles?: { ownUser?: string; otherUser?: string };
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  turnCount?: number;
+  agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
 interface ChatMessage {
@@ -514,6 +535,91 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       prev.map((msg) => {
                         if (msg.id !== assistantMessageId) return msg;
                         const traceEvents = [...(msg.traceEvents || []), agentEndEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_session_start": {
+                    const negSessionStartEvent: TraceEvent = {
+                      type: "negotiation_session_start",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      sourceUserId: event.sourceUserId,
+                      candidateUserId: event.candidateUserId,
+                      candidateName: event.candidateName,
+                      trigger: event.trigger,
+                      startedAt: event.startedAt,
+                    };
+                    streamTraceEvents.push(negSessionStartEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negSessionStartEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_turn": {
+                    const negTurnEvent: TraceEvent = {
+                      type: "negotiation_turn",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      turnIndex: event.turnIndex,
+                      actor: event.actor,
+                      action: event.action,
+                      reasoning: event.reasoning,
+                      message: event.message,
+                      suggestedRoles: event.suggestedRoles,
+                      durationMs: event.durationMs,
+                    };
+                    streamTraceEvents.push(negTurnEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negTurnEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_outcome": {
+                    const negOutcomeEvent: TraceEvent = {
+                      type: "negotiation_outcome",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      outcome: event.outcome,
+                      turnCount: event.turnCount,
+                      reasoning: event.reasoning,
+                      agreedRoles: event.agreedRoles,
+                    };
+                    streamTraceEvents.push(negOutcomeEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negOutcomeEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_session_end": {
+                    const negSessionEndEvent: TraceEvent = {
+                      type: "negotiation_session_end",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      durationMs: event.durationMs,
+                    };
+                    streamTraceEvents.push(negSessionEndEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negSessionEndEvent];
                         return { ...msg, traceEvents };
                       }),
                     );

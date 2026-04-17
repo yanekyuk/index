@@ -79,6 +79,11 @@ export class NegotiationGraphFactory {
 
     const turnNode = async (state: typeof NegotiationGraphState.State) => {
       const traceEmitter = requestContext.getStore()?.traceEmitter;
+      // Local helper to emit events whose shape is wider than the declared
+      // `TraceEmitter` union. The chat agent already casts at its relay sink;
+      // here we localize the cast at the callsite so the rest of the body stays typed.
+      const emitWide = (event: Record<string, unknown>) =>
+        (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
       const agentName = "Index negotiator";
       const agentStart = Date.now();
       traceEmitter?.({ type: "agent_start", name: agentName });
@@ -171,6 +176,21 @@ export class NegotiationGraphFactory {
 
         await database.updateTaskState(state.taskId, "working");
 
+        if (state.opportunityId) {
+          emitWide({
+            type: "negotiation_turn",
+            opportunityId: state.opportunityId,
+            negotiationConversationId: state.conversationId,
+            turnIndex: state.turnCount,
+            actor: isSource ? "source" : "candidate",
+            action: turn.action,
+            ...(turn.assessment?.reasoning && { reasoning: turn.assessment.reasoning }),
+            ...(turn.message && { message: turn.message }),
+            ...(turn.assessment?.suggestedRoles && { suggestedRoles: turn.assessment.suggestedRoles }),
+            durationMs: Date.now() - agentStart,
+          });
+        }
+
         return {
           messages: [{
             id: message.id,
@@ -210,7 +230,19 @@ export class NegotiationGraphFactory {
     };
 
     const finalizeNode = async (state: typeof NegotiationGraphState.State) => {
+      const traceEmitter = requestContext.getStore()?.traceEmitter;
+      const emitWide = (event: Record<string, unknown>) =>
+        (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
+
       if (state.status === 'waiting_for_agent') {
+        if (state.opportunityId) {
+          emitWide({
+            type: "negotiation_outcome",
+            opportunityId: state.opportunityId,
+            outcome: "waiting_for_agent",
+            turnCount: state.turnCount,
+          });
+        }
         return {};
       }
 
@@ -266,6 +298,33 @@ export class NegotiationGraphFactory {
         }
       } catch (err) {
         logger.error("[Graph:Finalize] Failed to persist outcome", { error: err });
+      }
+
+      if (state.opportunityId) {
+        const emittedOutcome: "accepted" | "rejected_stalled" | "turn_cap" | "timed_out" =
+          hasOpportunity
+            ? "accepted"
+            : atCap
+            ? "turn_cap"
+            : state.error && /timeout/i.test(state.error)
+            ? "timed_out"
+            : lastTurn?.action === "reject"
+            ? "rejected_stalled"
+            : "rejected_stalled";
+
+        emitWide({
+          type: "negotiation_outcome",
+          opportunityId: state.opportunityId,
+          outcome: emittedOutcome,
+          turnCount: state.turnCount,
+          ...(outcome.reasoning && { reasoning: outcome.reasoning }),
+          ...(hasOpportunity && agreedRoles.length >= 2 && {
+            agreedRoles: {
+              ownUser: agreedRoles[0]?.role,
+              otherUser: agreedRoles[1]?.role,
+            },
+          }),
+        });
       }
 
       return { outcome, status: 'completed' as const };
@@ -339,13 +398,33 @@ export async function negotiateCandidates(
     indexContextOverrides?: Map<string, string>;
     timeoutMs?: number;
     onCandidateResolved?: OnNegotiationResolved;
+    trigger?: "orchestrator" | "ambient";
   },
 ): Promise<NegotiationResult[]> {
-  const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved } = opts ?? {};
+  const { maxTurns, traceEmitter, indexContextOverrides, timeoutMs, onCandidateResolved, trigger } = opts ?? {};
+
+  // Local helper to emit events whose shape is wider than the declared
+  // `TraceEmitter` union (mirrors the cast used in chat.agent at the relay sink
+  // and inside turn/finalize nodes above).
+  const emitWide = (event: Record<string, unknown>) =>
+    (traceEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
 
   const results = await Promise.all(
     candidates.map(async (candidate) => {
       const start = Date.now();
+      if (candidate.opportunityId) {
+        const candidateName = candidate.candidateUser?.profile?.name;
+        emitWide({
+          type: "negotiation_session_start",
+          opportunityId: candidate.opportunityId,
+          negotiationConversationId: "", // filled in on session_end
+          sourceUserId: sourceUser.id,
+          candidateUserId: candidate.userId,
+          ...(candidateName && { candidateName }),
+          trigger: trigger ?? "ambient",
+          startedAt: start,
+        });
+      }
       traceEmitter?.({ type: "agent_start", name: "Negotiating candidate" });
 
       try {
@@ -384,6 +463,15 @@ export async function negotiateCandidates(
         const statusTag = hasOpportunity ? "✓ opportunity" : "✗ rejected";
         traceEmitter?.({ type: "agent_end", name: "Negotiating candidate", durationMs, summary: `${candidate.userId}: ${turnFlow} ${statusTag}` });
 
+        if (candidate.opportunityId) {
+          emitWide({
+            type: "negotiation_session_end",
+            opportunityId: candidate.opportunityId,
+            negotiationConversationId: (result as { conversationId?: string }).conversationId ?? "",
+            durationMs: Date.now() - start,
+          });
+        }
+
         const accepted: NegotiationResult | null = hasOpportunity && outcome
           ? {
               userId: candidate.userId,
@@ -411,6 +499,14 @@ export async function negotiateCandidates(
       } catch (err) {
         const durationMs = Date.now() - start;
         traceEmitter?.({ type: "agent_end", name: "Negotiating candidate", durationMs, summary: `${candidate.userId}: error` });
+        if (candidate.opportunityId) {
+          emitWide({
+            type: "negotiation_session_end",
+            opportunityId: candidate.opportunityId,
+            negotiationConversationId: "",
+            durationMs: Date.now() - start,
+          });
+        }
         logger.error("[negotiateCandidates] Negotiation failed", { candidateUserId: candidate.userId, error: err });
         if (onCandidateResolved) {
           try {

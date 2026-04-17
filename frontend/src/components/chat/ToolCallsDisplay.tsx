@@ -379,6 +379,31 @@ interface GraphNode {
   agents: AgentNode[];
 }
 
+export interface NegotiationTurnRow {
+  turnIndex: number;
+  actor: "source" | "candidate";
+  action: "propose" | "accept" | "reject" | "counter" | "question";
+  reasoning?: string;
+  message?: string;
+  suggestedRoles?: { ownUser?: string; otherUser?: string };
+  durationMs: number;
+}
+
+export interface NegotiationNode {
+  opportunityId: string;
+  negotiationConversationId: string;
+  candidateUserId: string;
+  candidateName?: string;
+  trigger: "orchestrator" | "ambient";
+  startTimestamp: number;
+  durationMs?: number;
+  turns: NegotiationTurnRow[];
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  turnCount?: number;
+  outcomeReasoning?: string;
+  isRunning: boolean;
+}
+
 interface ToolNode {
   name: string;
   startTimestamp?: number;
@@ -389,6 +414,7 @@ interface ToolNode {
   status?: "success" | "error";
   summary?: string;
   graphs: GraphNode[];
+  negotiations: NegotiationNode[];
 }
 
 /** Ordered list of items to render in the non-tool sections (llm / iteration events). */
@@ -415,6 +441,22 @@ interface ParsedTrace {
  * agent_start opens an AgentNode inside the current graph.
  * The corresponding *_end events close and annotate their nodes.
  */
+function findRunningNegotiationNode(
+  tools: ToolNode[],
+  event: Pick<TraceEvent, "opportunityId" | "negotiationConversationId">,
+): NegotiationNode | undefined {
+  const convId = event.negotiationConversationId ?? "";
+  const oppId = event.opportunityId ?? "";
+  return [...tools.flatMap((t) => t.negotiations)].reverse().find((n) => {
+    if (!n.isRunning) return false;
+    // Prefer matching by conversation ID once the node has one populated
+    if (convId !== "" && n.negotiationConversationId !== "") {
+      return n.negotiationConversationId === convId;
+    }
+    return oppId !== "" && n.opportunityId === oppId;
+  });
+}
+
 function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
   const timeline: TimelineEntry[] = [];
   const tools: ToolNode[] = [];
@@ -456,6 +498,7 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
           isRunning: true,
           activities: [],
           graphs: [],
+          negotiations: [],
         };
         const toolIdx = tools.length;
         tools.push(node);
@@ -553,6 +596,58 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
           agentNode.isRunning = false;
           agentNode.summary = event.summary;
         }
+        break;
+      }
+
+      case "negotiation_session_start": {
+        const target = currentTool ?? (tools.length > 0 ? tools[tools.length - 1] : null);
+        if (!target) break;
+        target.negotiations.push({
+          opportunityId: event.opportunityId ?? "",
+          negotiationConversationId: event.negotiationConversationId ?? "",
+          candidateUserId: event.candidateUserId ?? "",
+          candidateName: event.candidateName,
+          trigger: event.trigger ?? "ambient",
+          startTimestamp: event.timestamp,
+          turns: [],
+          isRunning: true,
+        });
+        break;
+      }
+
+      case "negotiation_turn": {
+        const negNode = findRunningNegotiationNode(tools, event);
+        if (!negNode) break;
+        // Back-fill conversation ID once the graph has created the conversation
+        if (negNode.negotiationConversationId === "" && event.negotiationConversationId) {
+          negNode.negotiationConversationId = event.negotiationConversationId;
+        }
+        negNode.turns.push({
+          turnIndex: event.turnIndex ?? negNode.turns.length,
+          actor: (event.actor ?? "source") as "source" | "candidate",
+          action: (event.action ?? "propose") as NegotiationTurnRow["action"],
+          reasoning: event.reasoning,
+          message: event.message,
+          suggestedRoles: event.suggestedRoles,
+          durationMs: event.durationMs ?? 0,
+        });
+        break;
+      }
+
+      case "negotiation_outcome": {
+        const negNode = findRunningNegotiationNode(tools, event);
+        if (!negNode) break;
+        negNode.outcome = event.outcome;
+        negNode.turnCount = event.turnCount;
+        negNode.outcomeReasoning = event.reasoning;
+        break;
+      }
+
+      case "negotiation_session_end": {
+        const negNode = findRunningNegotiationNode(tools, event);
+        if (!negNode) break;
+        negNode.isRunning = false;
+        negNode.durationMs = event.durationMs;
         break;
       }
     }
@@ -1021,6 +1116,68 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
   );
 }
 
+function outcomeIcon(o: NegotiationNode["outcome"]): string {
+  if (!o) return "⚪";
+  if (o === "accepted") return "🟢";
+  if (o === "waiting_for_agent") return "⏳";
+  return "🔴";
+}
+
+function NegotiationTree({ negotiations }: { negotiations: NegotiationNode[] }) {
+  const [openIdxs, setOpenIdxs] = useState<Set<number>>(new Set());
+
+  if (negotiations.length === 0) return null;
+
+  return (
+    <div className="mt-2 pl-3 border-l border-gray-200">
+      <div className="text-xs text-gray-500 mb-1">Negotiations ({negotiations.length})</div>
+      {negotiations.map((n, i) => {
+        const isOpen = openIdxs.has(i);
+        const toggle = () => {
+          const next = new Set(openIdxs);
+          if (isOpen) next.delete(i); else next.add(i);
+          setOpenIdxs(next);
+        };
+        return (
+          <div key={`${n.opportunityId}-${i}`} className="mb-1">
+            <button
+              type="button"
+              onClick={toggle}
+              className="flex items-center gap-1 text-xs text-gray-700 hover:text-gray-900"
+              title={n.outcomeReasoning ?? ""}
+            >
+              <span>{isOpen ? "▾" : "▸"}</span>
+              <span>{outcomeIcon(n.outcome)}</span>
+              <span className="font-medium">{n.candidateName ?? n.candidateUserId}</span>
+              <span className="text-gray-500">
+                {" — "}{n.outcome ?? (n.isRunning ? "running" : "unknown")}
+                {" ("}{n.turns.length} turn{n.turns.length === 1 ? "" : "s"}
+                {n.durationMs != null ? `, ${n.durationMs}ms` : ""}
+                {")"}
+              </span>
+            </button>
+            {isOpen && (
+              <ol className="ml-5 mt-1 space-y-0.5 text-xs text-gray-700">
+                {n.turns.map((t) => (
+                  <li key={t.turnIndex}>
+                    <span className="text-gray-500">{t.turnIndex + 1}.</span>{" "}
+                    <span className="font-mono text-[10px] text-gray-500">[{t.actor}]</span>{" "}
+                    <span className="font-medium">{t.action}</span>
+                    {t.message && <span> — {t.message}</span>}
+                    {t.reasoning && (
+                      <div className="ml-5 text-gray-400 italic">{t.reasoning}</div>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ToolRowProps {
   tool: ToolNode;
   toolIdx: number;
@@ -1118,6 +1275,11 @@ function ToolRow({
           stoppedAt={stoppedAt}
         />
       ))}
+
+      {/* Negotiations nested under this tool */}
+      {tool.negotiations.length > 0 && (
+        <NegotiationTree negotiations={tool.negotiations} />
+      )}
 
       {/* Expandable steps detail */}
       {hasSteps && isToolExpanded && (

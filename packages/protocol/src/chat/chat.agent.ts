@@ -20,7 +20,7 @@ import {
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import { createModel } from "../shared/agent/model.config.js";
 import { sanitizeForDebugMeta } from "../shared/observability/debug-meta.sanitizer.js";
-import type { DebugMetaToolCall } from "./chat-streaming.types.js";
+import type { DebugMetaToolCall, DebugMetaLlm, DebugMetaOrchestratorNegotiations } from "./chat-streaming.types.js";
 import type { Opportunity } from "../shared/interfaces/database.interface.js";
 import { Timed } from "../shared/observability/performance.js";
 import { requestContext } from "../shared/observability/request-context.js";
@@ -88,6 +88,47 @@ export type AgentStreamEvent =
         userId: string;
         name?: string;
       };
+    }
+  | {
+      type: "negotiation_session_start";
+      opportunityId: string;
+      negotiationConversationId: string;
+      sourceUserId: string;
+      candidateUserId: string;
+      candidateName?: string;
+      trigger: "orchestrator" | "ambient";
+      startedAt: number;
+    }
+  | {
+      type: "negotiation_session_end";
+      opportunityId: string;
+      negotiationConversationId: string;
+      durationMs: number;
+    }
+  | {
+      type: "negotiation_turn";
+      opportunityId: string;
+      negotiationConversationId: string;
+      turnIndex: number;
+      actor: "source" | "candidate";
+      action: "propose" | "accept" | "reject" | "counter" | "question";
+      reasoning?: string;
+      message?: string;
+      suggestedRoles?: { ownUser?: string; otherUser?: string };
+      durationMs: number;
+    }
+  | {
+      type: "negotiation_outcome";
+      opportunityId: string;
+      outcome:
+        | "accepted"
+        | "rejected_stalled"
+        | "waiting_for_agent"
+        | "timed_out"
+        | "turn_cap";
+      turnCount: number;
+      reasoning?: string;
+      agreedRoles?: { ownUser?: string; otherUser?: string };
     };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -712,9 +753,28 @@ export class ChatAgent {
     responseText: string;
     messages: BaseMessage[];
     iterationCount: number;
-    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[] };
+    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[]; llm: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations };
   }> {
+    const llm: DebugMetaLlm = { calls: 0, totalDurationMs: 0, resets: [], hallucinations: [] };
+    const orchestratorNegotiationIds = new Set<string>();
+    let lastLlmStart = 0;
+
     const emit = (event: AgentStreamEvent) => {
+      if (event.type === "llm_start") {
+        llm.calls += 1;
+        lastLlmStart = Date.now();
+      } else if (event.type === "llm_end") {
+        if (lastLlmStart > 0) {
+          llm.totalDurationMs += Date.now() - lastLlmStart;
+          lastLlmStart = 0;
+        }
+      } else if (event.type === "response_reset") {
+        llm.resets.push({ reason: event.reason, at: Date.now() });
+      } else if (event.type === "hallucination_detected") {
+        llm.hallucinations.push({ blockType: event.blockType, tool: event.tool, at: Date.now() });
+      } else if (event.type === "negotiation_session_start") {
+        orchestratorNegotiationIds.add(event.opportunityId);
+      }
       try {
         writer?.(event);
       } catch {
@@ -1127,7 +1187,15 @@ export class ChatAgent {
         responseText: sanitizedText,
         messages,
         iterationCount,
-        debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
+        debugMeta: {
+          graph: "agent_loop",
+          iterations: iterationCount,
+          tools: toolsDebug,
+          llm,
+          ...(orchestratorNegotiationIds.size > 0 && {
+            orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
+          }),
+        },
       };
     }
 
@@ -1137,7 +1205,15 @@ export class ChatAgent {
         responseText: "",
         messages,
         iterationCount,
-        debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
+        debugMeta: {
+          graph: "agent_loop",
+          iterations: iterationCount,
+          tools: toolsDebug,
+          llm,
+          ...(orchestratorNegotiationIds.size > 0 && {
+            orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
+          }),
+        },
       };
     }
 
@@ -1172,7 +1248,15 @@ export class ChatAgent {
         ...(forcedAccumulated ? [forcedAccumulated] : []),
       ],
       iterationCount,
-      debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
+      debugMeta: {
+        graph: "agent_loop",
+        iterations: iterationCount,
+        tools: toolsDebug,
+        llm,
+        ...(orchestratorNegotiationIds.size > 0 && {
+          orchestratorNegotiations: { opportunityIds: [...orchestratorNegotiationIds] },
+        }),
+      },
     };
   }
 }
