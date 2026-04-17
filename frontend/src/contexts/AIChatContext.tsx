@@ -510,6 +510,16 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     // can render cards progressively. Append to the
                     // message's streamingDrafts list; the message-list
                     // component renders them inline alongside the LLM text.
+                    //
+                    // TODO(plan-b-ui-followup): these drafts are currently
+                    // transient — they live only in React state and are not
+                    // persisted with message metadata, so reopening the chat
+                    // drops them. Persistence requires a new column on the
+                    // message metadata record (or carrying them inside
+                    // `debugMeta`) plus rehydration in loadSession. Lands
+                    // with the inline-card-rendering follow-up noted in the
+                    // PR description; doing it now would ship dead state
+                    // since the rendering path hasn't been wired.
                     const draft: StreamingDraft = {
                       opportunityId: event.opportunityId,
                       opportunity: event.opportunity,
