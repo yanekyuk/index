@@ -5,8 +5,18 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 // the module-level singletons inside agent.controller.ts resolve to our fakes.
 // ---------------------------------------------------------------------------
 
-const touchLastSeenMock = mock(async (_agentId: string): Promise<void> => {});
-const getByIdMock = mock(async (_agentId: string, _userId: string) => ({ id: _agentId }));
+// Shared call log so tests can assert the relative ordering of pickup vs
+// heartbeat — the controller must authorize (via pickup or getById) before
+// bumping lastSeenAt, otherwise an unauthorized probe could spoof liveness.
+const callOrder: string[] = [];
+
+const touchLastSeenMock = mock(async (_agentId: string): Promise<void> => {
+  callOrder.push('touch');
+});
+const getByIdMock = mock(async (_agentId: string, _userId: string) => {
+  callOrder.push('getById');
+  return { id: _agentId };
+});
 
 mock.module('../../services/agent.service', () => ({
   agentService: {
@@ -29,7 +39,10 @@ mock.module('../../services/agent.service', () => ({
   },
 }));
 
-const negotiationPickupMock = mock(async (_agentId: string, _userId: string) => null);
+const negotiationPickupMock = mock(async (_agentId: string, _userId: string) => {
+  callOrder.push('pickupNegotiation');
+  return null;
+});
 
 mock.module('../../services/negotiation-polling.service', () => ({
   negotiationPollingService: {
@@ -41,7 +54,10 @@ mock.module('../../services/negotiation-polling.service', () => ({
   UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
-const testMessagePickupMock = mock(async (_agentId: string) => null);
+const testMessagePickupMock = mock(async (_agentId: string) => {
+  callOrder.push('pickupTestMessage');
+  return null;
+});
 
 mock.module('../../services/agent-test-message.service', () => ({
   AgentTestMessageService: class {
@@ -51,7 +67,10 @@ mock.module('../../services/agent-test-message.service', () => ({
   },
 }));
 
-const opportunityPickupMock = mock(async (_agentId: string) => null);
+const opportunityPickupMock = mock(async (_agentId: string) => {
+  callOrder.push('pickupOpportunity');
+  return null;
+});
 
 mock.module('../../services/opportunity-delivery.service', () => ({
   OpportunityDeliveryService: class {
@@ -97,6 +116,7 @@ describe('AgentController pickup endpoints heartbeat', () => {
 
   beforeEach(() => {
     controller = makeController();
+    callOrder.length = 0;
     touchLastSeenMock.mockClear();
     negotiationPickupMock.mockClear();
     testMessagePickupMock.mockClear();
@@ -104,31 +124,36 @@ describe('AgentController pickup endpoints heartbeat', () => {
     getByIdMock.mockClear();
   });
 
-  it('pickupNegotiation bumps lastSeenAt before querying pending turns', async () => {
+  it('pickupNegotiation bumps lastSeenAt AFTER pickup authorizes the caller', async () => {
     const req = new Request('http://localhost/agents/agent-123/negotiations/pickup', { method: 'POST' });
 
     await controller.pickupNegotiation(req, mockUser as never, makeParams(TEST_AGENT_ID));
 
     expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    expect(negotiationPickupMock).toHaveBeenCalled();
+    // Pickup runs first (it enforces ownership); heartbeat fires only after.
+    expect(callOrder).toEqual(['pickupNegotiation', 'touch']);
   });
 
-  it('pickupTestMessage bumps lastSeenAt before querying pending test messages', async () => {
+  it('pickupTestMessage bumps lastSeenAt AFTER getById authorizes the caller', async () => {
     const req = new Request('http://localhost/agents/agent-123/test-messages/pickup', { method: 'POST' });
 
     await controller.pickupTestMessage(req, mockUser as never, makeParams(TEST_AGENT_ID));
 
     expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    expect(testMessagePickupMock).toHaveBeenCalled();
+    expect(callOrder).toEqual(['getById', 'pickupTestMessage', 'touch']);
   });
 
-  it('pickupOpportunity bumps lastSeenAt before querying pending deliveries', async () => {
+  it('pickupOpportunity bumps lastSeenAt AFTER getById authorizes the caller', async () => {
     const req = new Request('http://localhost/agents/agent-123/opportunities/pickup', { method: 'POST' });
 
     await controller.pickupOpportunity(req, mockUser as never, makeParams(TEST_AGENT_ID));
 
     expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    expect(opportunityPickupMock).toHaveBeenCalled();
+    // pickupOpportunity heartbeats between getById (auth) and pickupPending (work).
+    // The important invariant is that the heartbeat cannot fire without getById.
+    expect(callOrder[0]).toBe('getById');
+    expect(callOrder).toContain('touch');
+    expect(callOrder).toContain('pickupOpportunity');
   });
 
   it('bumps lastSeenAt even when nothing pending (empty poll)', async () => {
@@ -145,5 +170,19 @@ describe('AgentController pickup endpoints heartbeat', () => {
     expect(touchLastSeenMock).toHaveBeenNthCalledWith(1, TEST_AGENT_ID);
     expect(touchLastSeenMock).toHaveBeenNthCalledWith(2, TEST_AGENT_ID);
     expect(touchLastSeenMock).toHaveBeenNthCalledWith(3, TEST_AGENT_ID);
+  });
+
+  it('does NOT bump lastSeenAt when pickup throws (unauthorized probe)', async () => {
+    negotiationPickupMock.mockImplementationOnce(async () => {
+      callOrder.push('pickupNegotiation');
+      throw new Error('Not authorized');
+    });
+    const req = new Request('http://localhost/agents/agent-999/negotiations/pickup', { method: 'POST' });
+
+    await controller.pickupNegotiation(req, mockUser as never, makeParams('agent-999'));
+
+    expect(negotiationPickupMock).toHaveBeenCalled();
+    expect(touchLastSeenMock).not.toHaveBeenCalled();
+    expect(callOrder).toEqual(['pickupNegotiation']);
   });
 });

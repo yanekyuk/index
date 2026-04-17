@@ -378,10 +378,10 @@ export class AgentController {
     }
 
     try {
-      // Heartbeat: record that this personal agent is actively polling
-      await agentService.touchLastSeen(agentId);
-
+      // Run pickup first — it proves the caller is authorized for this agentId.
+      // Only then bump the heartbeat, so unauthorized probes cannot spoof liveness.
       const result = await negotiationPollingService.pickup(agentId, user.id);
+      await agentService.touchLastSeen(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
       }
@@ -454,10 +454,10 @@ export class AgentController {
     }
 
     try {
-      // Heartbeat: record that this personal agent is actively polling
-      await agentService.touchLastSeen(agentId);
-
+      // Verify ownership before bumping heartbeat so unauthorized probes can't spoof liveness.
+      await agentService.getById(agentId, user.id);
       const result = await agentTestMessageService.pickup(agentId);
+      await agentService.touchLastSeen(agentId);
       if (!result) {
         return new Response(null, { status: 204 });
       }
