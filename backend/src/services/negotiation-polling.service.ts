@@ -40,6 +40,33 @@ export class UnauthorizedError extends Error {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Budget helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the time remaining in a single park-window budget.
+ *
+ * The response-window timer, whether armed as the `waiting_for_agent` timeout or
+ * as the `claimed` timeout, shares one budget rather than stacking. When an agent
+ * picks up a parked turn, the claim timer is armed with whatever time is left
+ * since park start, not a fresh full budget.
+ *
+ * Clamped to a 1-second floor so BullMQ delay is always positive.
+ *
+ * @param parkStartTime - The timestamp when the task entered `waiting_for_agent`
+ * @param totalBudgetMs - The total park-window budget in milliseconds
+ * @returns Remaining milliseconds (minimum 1 000)
+ */
+export function computeRemainingBudgetMs(
+  parkStartTime: Date,
+  totalBudgetMs: number,
+): number {
+  const elapsedMs = Date.now() - parkStartTime.getTime();
+  const remainingMs = totalBudgetMs - elapsedMs;
+  return Math.max(1_000, remainingMs);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -216,13 +243,19 @@ export class NegotiationPollingService {
       return null;
     }
 
-    // 4. Cancel 24h timeout (no longer waiting unclaimed)
+    // 4. Cancel park-window timer (no longer unpicked)
     await negotiationTimeoutQueue.cancelTimeout(claimed.id);
 
-    // 5. Enqueue 6h claim timeout
+    // 5. Enqueue claim timeout using remaining park-window budget.
+    // NOTE: claimed.updatedAt is the post-update value (Drizzle RETURNING returns
+    // the updated row). The pre-claim updatedAt — the park-start time — lives in
+    // pendingTask.updatedAt, captured from the SELECT before the CAS transition.
     const messages = await conversationDatabaseAdapter.getMessagesForConversation(claimed.conversationId);
     const turnNumber = messages.length;
-    await negotiationClaimTimeoutQueue.enqueueTimeout(claimed.id, turnNumber, agentId);
+    // 5 minutes matches AMBIENT_PARK_WINDOW_MS in negotiation.tools.ts (Task 6 will wire the constant).
+    const AMBIENT_PARK_WINDOW_MS = 5 * 60 * 1000;
+    const remainingMs = computeRemainingBudgetMs(pendingTask.updatedAt, AMBIENT_PARK_WINDOW_MS);
+    await negotiationClaimTimeoutQueue.enqueueTimeout(claimed.id, turnNumber, agentId, remainingMs);
 
     logger.info('[NegotiationPollingService] Turn claimed', {
       agentId,
