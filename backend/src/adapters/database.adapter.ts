@@ -1245,7 +1245,7 @@ export class ChatDatabaseAdapter {
         const [memberCount] = await db
           .select({ count: count() })
           .from(schema.networkMembers)
-          .where(eq(schema.networkMembers.networkId, row.id));
+          .where(and(eq(schema.networkMembers.networkId, row.id), isNull(schema.networkMembers.deletedAt)));
         return {
           id: row.id,
           title: row.title,
@@ -1302,7 +1302,7 @@ export class ChatDatabaseAdapter {
         memberCount: count(schema.networkMembers.networkId),
       })
       .from(schema.networks)
-      .innerJoin(schema.networkMembers, eq(schema.networks.id, schema.networkMembers.networkId))
+      .innerJoin(schema.networkMembers, and(eq(schema.networks.id, schema.networkMembers.networkId), isNull(schema.networkMembers.deletedAt)))
       .where(
         and(
           isNull(schema.networks.deletedAt),
@@ -1377,7 +1377,7 @@ export class ChatDatabaseAdapter {
       const [countResult] = await db
         .select({ count: count() })
         .from(schema.networkMembers)
-        .where(eq(schema.networkMembers.networkId, row.id));
+        .where(and(eq(schema.networkMembers.networkId, row.id), isNull(schema.networkMembers.deletedAt)));
 
       result.push({
         id: row.id,
@@ -1626,7 +1626,7 @@ export class ChatDatabaseAdapter {
     const result = await Promise.all(
       ownerRows.map(async (row) => {
         const [memberCountResult, intentCountResult] = await Promise.all([
-          db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, row.networkId)),
+          db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, row.networkId), isNull(networkMembers.deletedAt))),
           db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, row.networkId)),
         ]);
         const perms = row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean } | null;
@@ -1672,7 +1672,7 @@ export class ChatDatabaseAdapter {
       })
       .from(networkMembers)
       .innerJoin(users, eq(networkMembers.userId, users.id))
-      .where(eq(networkMembers.networkId, networkId));
+      .where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt), isNull(users.deletedAt)));
 
     const [requestingUserEmailRow] = await db
       .select({ email: users.email })
@@ -1740,7 +1740,7 @@ export class ChatDatabaseAdapter {
       })
       .from(networkMembers)
       .innerJoin(users, eq(networkMembers.userId, users.id))
-      .where(eq(networkMembers.networkId, networkId));
+      .where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt), isNull(users.deletedAt)));
 
     const memberUserIds = members.map((m) => m.userId);
     const intentCountRows = memberUserIds.length > 0
@@ -1795,6 +1795,7 @@ export class ChatDatabaseAdapter {
           inArray(networkMembers.networkId, myIndexIds),
           isNull(networks.deletedAt),
           isNull(users.deletedAt),
+          isNull(networkMembers.deletedAt),
         )
       );
 
@@ -1985,7 +1986,7 @@ export class ChatDatabaseAdapter {
       throw new Error('Index not found after update');
     }
     const [memberCountResult, intentCountResult] = await Promise.all([
-      db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId)),
+      db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
       db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
     const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
@@ -2119,7 +2120,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getNetworkMemberCount(networkId: string): Promise<number> {
-    const [r] = await db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId));
+    const [r] = await db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt)));
     return Number(r?.count ?? 0);
   }
 
