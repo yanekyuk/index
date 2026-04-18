@@ -48,6 +48,25 @@ import { NegotiationEvents } from './events/negotiation.event';
 import { init as initTelegramGateway } from './gateways/telegram.gateway';
 import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
+import { NegotiationGraphFactory } from '@indexnetwork/protocol';
+import { conversationDatabaseAdapter } from './adapters/database.adapter';
+import { agentService } from './services/agent.service';
+import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
+
+// Wire negotiation into the background discovery queue so latent opportunities
+// from the IntentEvents.onCreated path are negotiated, matching the chat/MCP paths.
+// Without this, OpportunityGraph's negotiateNode short-circuits and every evaluated
+// candidate is persisted unfiltered.
+const backgroundAgentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
+const backgroundNegotiationGraph = new NegotiationGraphFactory(
+  conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
+  backgroundAgentDispatcher,
+  negotiationTimeoutQueue,
+).createGraph();
+opportunityQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
 
 intentQueue.startWorker();
 opportunityQueue.startWorker();

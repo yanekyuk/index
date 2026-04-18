@@ -8,7 +8,7 @@ const logger = log.lib.from('agent.database.adapter');
 
 export type AgentType = 'personal' | 'system';
 export type AgentStatus = 'active' | 'inactive';
-export type TransportChannel = 'webhook' | 'mcp';
+export type TransportChannel = 'mcp';
 export type PermissionScope = 'global' | 'node' | 'network';
 
 export interface AgentScope {
@@ -24,6 +24,11 @@ export interface AgentRow {
   type: AgentType;
   status: AgentStatus;
   metadata: Record<string, unknown>;
+  lastSeenAt: Date | null;
+  notifyOnOpportunity: boolean;
+  dailySummaryEnabled: boolean;
+  handleNegotiations: boolean;
+  lastDailySummaryAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -92,7 +97,7 @@ export interface AgentRegistryStore {
   getAgentWithRelations(agentId: string): Promise<AgentWithRelations | null>;
   updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata'>>,
+    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
   ): Promise<AgentRow | null>;
   deleteAgent(agentId: string): Promise<void>;
   listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
@@ -101,10 +106,13 @@ export interface AgentRegistryStore {
   recordTransportFailure(transportId: string): Promise<void>;
   recordTransportSuccess(transportId: string): Promise<void>;
   grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow>;
+  upsertGlobalPermission(input: { agentId: string; userId: string; actions: string[] }): Promise<AgentPermissionRow>;
   revokePermission(permissionId: string): Promise<void>;
+  revokeGlobalPermission(agentId: string, userId: string): Promise<void>;
   hasPermission(agentId: string, userId: string, action: string, scope?: AgentScope): Promise<boolean>;
   findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
   getSystemAgentIds(): AgentSystemIds;
+  touchLastSeen(agentId: string): Promise<void>;
 }
 
 export const SYSTEM_AGENT_IDS: AgentSystemIds = {
@@ -170,7 +178,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   async updateAgent(
     agentId: string,
-    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata'>>,
+    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata' | 'notifyOnOpportunity' | 'dailySummaryEnabled' | 'handleNegotiations'>>,
   ): Promise<AgentRow | null> {
     const [row] = await db
       .update(schema.agents)
@@ -319,9 +327,58 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     return this.toPermissionRow(row);
   }
 
+  async upsertGlobalPermission(input: {
+    agentId: string;
+    userId: string;
+    actions: string[];
+  }): Promise<AgentPermissionRow> {
+    const result = await db.execute(sql`
+      INSERT INTO agent_permissions (agent_id, user_id, scope, scope_id, actions)
+      VALUES (${input.agentId}, ${input.userId}, 'global', NULL, ${input.actions})
+      ON CONFLICT (agent_id, user_id) WHERE scope = 'global'
+      DO UPDATE SET actions = EXCLUDED.actions
+      RETURNING id,
+                agent_id AS "agentId",
+                user_id AS "userId",
+                scope,
+                scope_id AS "scopeId",
+                actions,
+                created_at AS "createdAt"
+    `);
+    const [row] = result as unknown as Array<{
+      id: string;
+      agentId: string;
+      userId: string;
+      scope: PermissionScope;
+      scopeId: string | null;
+      actions: string[];
+      createdAt: Date;
+    }>;
+
+    logger.info('Upserted agent permission', {
+      agentId: input.agentId,
+      permissionId: row.id,
+      userId: input.userId,
+    });
+    return row;
+  }
+
   async revokePermission(permissionId: string): Promise<void> {
     await db.delete(schema.agentPermissions).where(eq(schema.agentPermissions.id, permissionId));
     logger.info('Revoked agent permission', { permissionId });
+  }
+
+  async revokeGlobalPermission(agentId: string, userId: string): Promise<void> {
+    await db
+      .delete(schema.agentPermissions)
+      .where(
+        and(
+          eq(schema.agentPermissions.agentId, agentId),
+          eq(schema.agentPermissions.userId, userId),
+          eq(schema.agentPermissions.scope, 'global'),
+        ),
+      );
+    logger.info('Revoked global agent permission', { agentId, userId });
   }
 
   async hasPermission(
@@ -409,7 +466,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       if (row.type !== 'personal') return true;
       return credentialedPersonalAgentIds.has(row.id);
     });
-    return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows, { redactSecret: false });
+    return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows);
   }
 
   private async findPersonalAgentIdsWithValidCredentials(agentIds: string[]): Promise<Set<string>> {
@@ -426,7 +483,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
             isNull(schema.apikeys.expiresAt),
             sql`${schema.apikeys.expiresAt} > now()`,
           ),
-          sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId') = ANY(${agentIds})`,
+          inArray(sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId')`, agentIds),
         ),
       );
     return new Set(rows.map((r) => r.agentId).filter((id): id is string => !!id));
@@ -434,6 +491,28 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   getSystemAgentIds(): AgentSystemIds {
     return SYSTEM_AGENT_IDS;
+  }
+
+  /**
+   * Update the agent's lastSeenAt timestamp. Called on every personal-agent pickup
+   * poll so the dispatcher can tell whether the agent is actively running.
+   *
+   * Silently no-ops when the agent doesn't exist — callers invoke this from pickup
+   * endpoints that already validated the agent, and we don't want to leak 404s
+   * from a heartbeat update.
+   */
+  async touchLastSeen(agentId: string): Promise<void> {
+    try {
+      await db
+        .update(schema.agents)
+        .set({ lastSeenAt: new Date() })
+        .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
+    } catch (err: unknown) {
+      logger.warn('touchLastSeen failed', {
+        agentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   private buildScopeCondition(scope?: AgentScope) {
@@ -454,9 +533,8 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     agentRows: Array<typeof schema.agents.$inferSelect>,
     transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
-    options?: { redactSecret?: boolean },
   ): AgentWithRelations[] {
-    const transportsByAgent = this.groupTransportsByAgent(transportRows, options);
+    const transportsByAgent = this.groupTransportsByAgent(transportRows);
     const permissionsByAgent = this.groupPermissionsByAgent(permissionRows);
 
     return agentRows
@@ -488,13 +566,12 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private groupTransportsByAgent(
     rows: Array<typeof schema.agentTransports.$inferSelect>,
-    options?: { redactSecret?: boolean },
   ): Map<string, AgentTransportRow[]> {
     const result = new Map<string, AgentTransportRow[]>();
 
     for (const row of rows) {
       const current = result.get(row.agentId) ?? [];
-      current.push(this.toTransportRow(row, options));
+      current.push(this.toTransportRow(row));
       result.set(row.agentId, current);
     }
 
@@ -524,6 +601,11 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       type: row.type,
       status: row.status,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      lastSeenAt: row.lastSeenAt ?? null,
+      notifyOnOpportunity: row.notifyOnOpportunity,
+      dailySummaryEnabled: row.dailySummaryEnabled,
+      handleNegotiations: row.handleNegotiations,
+      lastDailySummaryAt: row.lastDailySummaryAt ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -531,18 +613,14 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private toTransportRow(
     row: typeof schema.agentTransports.$inferSelect,
-    options?: { redactSecret?: boolean },
   ): AgentTransportRow {
     const config = ((row.config ?? {}) as Record<string, unknown>);
-    const redact = options?.redactSecret ?? true;
 
     return {
       id: row.id,
       agentId: row.agentId,
       channel: row.channel,
-      config: redact && row.channel === 'webhook'
-        ? Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'secret'))
-        : config,
+      config,
       priority: row.priority,
       active: row.active,
       failureCount: row.failureCount,
@@ -563,14 +641,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     };
   }
 
-  private transportSubscribesToEvent(transport: AgentTransportRow, event: string): boolean {
-    if (transport.channel !== 'webhook' || !transport.active) {
-      return false;
-    }
-
-    const events = transport.config?.events;
-    return Array.isArray(events) && events.includes(event);
-  }
 }
 
 export const agentDatabaseAdapter = new AgentDatabaseAdapter();

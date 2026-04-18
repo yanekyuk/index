@@ -20,7 +20,7 @@ The repository is organized as a Bun-managed monorepo with two primary workspace
 
 ```
 index/
-  backend/           Backend API and Agent Engine (Bun, Express, TypeScript)
+  backend/           Backend API and Agent Engine (Bun, TypeScript)
   frontend/          Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
   packages/
     protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces, tools)
@@ -28,7 +28,7 @@ index/
     openclaw-plugin/ indexnetwork-openclaw-plugin (bootstrap skill + negotiation poller for OpenClaw hosts)
 ```
 
-**Protocol** is the backend: an Express.js server running on the Bun runtime (port 3001). It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
+**Protocol** is the backend: a native Bun HTTP server (`Bun.serve`) running on port 3001. It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
 
 **Frontend** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the protocol backend. In production, a reverse proxy handles routing.
 
@@ -133,27 +133,28 @@ export interface Database {
 }
 
 // Each graph picks only what it needs
-export type IntentIndexGraphDatabase = Pick<
+export type IntentNetworkGraphDatabase = Pick<
   Database,
   | 'getIntentForIndexing'
-  | 'getIndexMemberContext'
+  | 'getNetworkMemberContext'
   | 'isIntentAssignedToIndex'
-  | 'assignIntentToIndex'
+  | 'assignIntentToNetwork'
   | 'unassignIntentFromIndex'
   | 'getIntent'
-  | 'isIndexMember'
-  | 'getIndexIdsForIntent'
-  | 'getIndexIntentsForMember'
+  | 'isNetworkMember'
+  | 'isIndexOwner'
+  | 'getNetworkIdsForIntent'
+  | 'getNetworkIntentsForMember'
   | 'getIntentsInIndexForMember'
 >;
 
 // Factory constructor accepts the narrow type
-export class IntentIndexGraphFactory {
-  constructor(private database: IntentIndexGraphDatabase) {}
+export class IntentNetworkGraphFactory {
+  constructor(private database: IntentNetworkGraphDatabase) {}
 }
 ```
 
-This pattern is applied to all graph factories: `ProfileGraphDatabase`, `OpportunityGraphDatabase`, `IntentGraphDatabase`, `IndexGraphDatabase`, `IntentIndexGraphDatabase`, `IndexMembershipGraphDatabase`, `HydeGraphDatabase`, and `HomeGraphDatabase`.
+This pattern is applied to all graph factories: `ProfileGraphDatabase`, `OpportunityGraphDatabase`, `IntentGraphDatabase`, `NetworkGraphDatabase`, `IntentNetworkGraphDatabase`, `NetworkMembershipGraphDatabase`, `HydeGraphDatabase`, and `HomeGraphDatabase`.
 
 ### Adapter Naming Convention
 
@@ -191,16 +192,16 @@ packages/protocol/src/
 
 Graphs are LangGraph state machines. Each graph is created by a factory class that accepts dependencies via constructor injection.
 
-| Graph | Purpose |
-|-------|---------|
+| Graph (factory) | Purpose |
+|-----------------|---------|
 | Chat | ReAct agent loop with tool calling |
 | Intent | Extract, verify, reconcile, and persist intents |
 | Profile | Generate/update user profiles with scraping and embedding |
 | Opportunity | HyDE-based discovery: search, evaluate, rank, persist |
 | HyDE | Generate hypothetical document embeddings (cache-aware) |
-| Index | Manage index CRUD |
-| Index Membership | Manage index member join/leave |
-| Intent Index | Evaluate and assign/unassign intents to indexes |
+| Network | Manage index (network) CRUD |
+| NetworkMembership | Manage index member join/leave |
+| IntentNetwork | Evaluate and assign/unassign intents to indexes |
 | Home | Categorize and curate home feed content |
 | Maintenance | Periodic maintenance tasks |
 | Negotiation | Multi-turn negotiation flows |
@@ -230,8 +231,13 @@ Tools are the capabilities exposed to the chat agent. They bridge the agent loop
 |-----------|-------------|
 | `profile.tools.ts` | read/create/update user profiles |
 | `intent.tools.ts` | CRUD intents, manage intent-index assignments |
-| `index.tools.ts` | CRUD indexes, manage memberships |
+| `network.tools.ts` | CRUD indexes (networks), manage memberships |
+| `contact.tools.ts` | import, add, remove, and list contacts |
 | `opportunity.tools.ts` | Discover and send opportunities |
+| `agent.tools.ts` | register, list, update, delete agents and manage agent permissions |
+| `integration.tools.ts` | Connect and manage third-party integrations |
+| `negotiation.tools.ts` | Respond to negotiation turns |
+| `chat.tools.ts` | Chat session and conversation tools |
 | `utility.tools.ts` | URL scraping, action confirmation/cancellation |
 
 ### Agent Registry
@@ -241,7 +247,7 @@ The protocol includes an agent registry that sits beside the chat tool stack and
 #### Tables
 
 - `agents` stores personal and system agent identities (`type: 'system' | 'personal'`, `ownerId`, `status`).
-- `agent_transports` stores delivery channels. The active channel is `mcp` — the agent authenticates with an API key bound to its identity, connects to the MCP server for tool work, and polls `POST /api/agents/:id/negotiations/pickup` for negotiation turns. The `webhook` value remains as a legacy enum on the table but is no longer used for negotiation delivery.
+- `agent_transports` stores delivery channels. The only channel is `mcp` — the agent authenticates with an API key bound to its identity, connects to the MCP server for tool work, and polls `POST /api/agents/:id/negotiations/pickup` for negotiation turns.
 - `agent_permissions` stores the actions an agent may perform for a user (e.g. `manage:intents`, `manage:negotiations`), optionally scoped to a network or node.
 
 System agents are seeded with fixed UUIDs and granted their default permissions during onboarding. Personal agents are user-owned records exposed through the `/api/agents` controller family (see `docs/specs/api-reference.md`).
@@ -388,13 +394,13 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
 };
 ```
 
-### Index Membership Events
+### Network Membership Events
 
-Defined in `src/events/index_membership.event.ts`:
+Defined in `src/events/network_membership.event.ts`:
 
 ```typescript
-export const IndexMembershipEvents = {
-  onMemberAdded: (_userId: string, _indexId: string): void => {},
+export const NetworkMembershipEvents = {
+  onMemberAdded: (_userId: string, _networkId: string): void => {},
 };
 ```
 
@@ -467,9 +473,10 @@ The canonical schema lives in `backend/src/schemas/database.schema.ts`. All tabl
 | `users` | User accounts (Better Auth integration) |
 | `user_profiles` | User identity with 2000-dim vector embeddings |
 | `intents` | User intents with embeddings, confidence scores, semantic governance fields |
-| `indexes` | Communities/collections; personal indexes have `isPersonal=true` |
-| `index_members` | Membership with permissions, custom prompts, auto-assignment settings |
-| `intent_indexes` | Many-to-many junction with optional `relevancyScore` (0.0-1.0) |
+| `networks` | Communities/collections (indexes); personal networks have `isPersonal=true` |
+| `network_members` | Membership with permissions, custom prompts, auto-assignment settings |
+| `intent_networks` | Many-to-many junction with optional `relevancyScore` (0.0-1.0) |
+| `personal_networks` | Maps each user to their personal network (one row per user) |
 | `opportunities` | Match records with detection, actors, interpretation, context, status |
 | `hyde_documents` | Stored HyDE documents for retrieval |
 | `conversations` | Conversation containers (A2A context) |
@@ -500,7 +507,7 @@ Drizzle generates migrations from schema diffs. Migrations are renamed to descri
 ```
 +========================+
 |      Controllers       |   HTTP boundary
-|  (Express + decorators)|   Input validation, routing
+|  (Bun.serve + decorators)|   Input validation, routing
 +========================+
           |
           v

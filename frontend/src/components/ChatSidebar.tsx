@@ -5,14 +5,24 @@ import UserAvatar from '@/components/UserAvatar';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
 
+type NegotiationStatus = 'accepted' | 'rejected' | 'in_progress' | null;
+
 interface RecentChat {
   groupId: string;
   peerUserId: string | null;
   peerAvatar: string | null;
   name: string;
   lastMessage: string;
+  lastMessageIsInternal: boolean;
+  negotiationStatus: NegotiationStatus;
   sortTimestamp: number;
 }
+
+const STATUS_DOT: Record<Exclude<NegotiationStatus, null>, { cls: string; label: string }> = {
+  accepted: { cls: 'bg-emerald-500', label: 'Accepted' },
+  rejected: { cls: 'bg-red-500', label: 'Rejected' },
+  in_progress: { cls: 'bg-amber-400', label: 'In progress' },
+};
 
 const formatConversationTime = (timestamp: number) => {
   if (!timestamp) return '';
@@ -61,21 +71,38 @@ export default function ChatSidebar() {
         const participants = conv.participants ?? [];
         return participants.length === 2 && participants.every((p) => p.participantType === 'user');
       })
-    : negotiations;
+    // Negotiations with zero messages are orphaned conversation rows (no turns
+    // ever landed, or the task parked and never completed) — hide them.
+    // Still show ones whose only content is an internal assessment.reasoning.
+    : negotiations.filter((conv) => !!conv.lastMessage);
   const recentChats: RecentChat[] = filteredConversations.map((conv) => {
     if (mode === 'a2a') {
-      const participantLabels = (conv.participants ?? []).map((p) => p.ownerName ?? p.name ?? p.participantId.replace('agent:', ''));
-      const lastParts = conv.lastMessage?.parts as { kind?: string; text?: string; data?: { message?: string } }[] | undefined;
+      const counterparts = (conv.participants ?? []).filter((p) => p.participantId !== `agent:${user?.id}`);
+      const counterpartLabels = counterparts.map((p) => p.ownerName ?? p.name ?? p.participantId.replace('agent:', ''));
+      const lastParts = conv.lastMessage?.parts as { kind?: string; text?: string; data?: { action?: string; message?: string; assessment?: { reasoning?: string } } }[] | undefined;
       const dataPart = lastParts?.find(p => p.kind === 'data');
       const textPart = lastParts?.find(p => p.text);
-      const preview = dataPart?.data?.message ?? textPart?.text ?? '';
+      const messageText = dataPart?.data?.message;
+      const reasoningText = dataPart?.data?.assessment?.reasoning;
+      const fallbackText = textPart?.text ?? '';
+      const preview = messageText ?? reasoningText ?? fallbackText;
+      const lastAction = dataPart?.data?.action;
+      const negotiationStatus: NegotiationStatus = lastAction === 'accept'
+        ? 'accepted'
+        : lastAction === 'reject'
+          ? 'rejected'
+          : lastAction
+            ? 'in_progress'
+            : null;
       return {
         groupId: conv.id,
         peerUserId: null,
-        peerAvatar: (conv.participants ?? []).find(p => p.participantId !== `agent:${user?.id}`)?.avatar ?? null,
-        name: conv.metadata?.title ?? participantLabels.join(' vs '),
+        peerAvatar: counterparts[0]?.avatar ?? null,
+        name: conv.metadata?.title ?? counterpartLabels.join(', '),
         lastMessage: preview,
-        sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
+        lastMessageIsInternal: !messageText && !!reasoningText,
+        negotiationStatus,
+        sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
       };
     }
     const peer = (conv.participants ?? []).find((p) => p.participantId !== user?.id && p.participantType === 'user');
@@ -86,7 +113,9 @@ export default function ChatSidebar() {
       peerAvatar: peer?.avatar ?? null,
       name: conv.metadata?.title ?? peer?.name ?? 'Conversation',
       lastMessage: lastText,
-      sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
+      lastMessageIsInternal: false,
+      negotiationStatus: null,
+      sortTimestamp: new Date(conv.lastMessageAt ?? conv.createdAt).getTime(),
     };
   }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
@@ -137,10 +166,24 @@ export default function ChatSidebar() {
                   className="flex-1 flex items-center gap-3 text-sm text-left pr-10 min-w-0 text-gray-700 hover:text-black"
                 >
                   <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={28} className="flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-black">{chat.name}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-black flex items-center gap-1.5">
+                      {chat.negotiationStatus && (
+                        <span
+                          className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[chat.negotiationStatus].cls}`}
+                          title={STATUS_DOT[chat.negotiationStatus].label}
+                          aria-label={STATUS_DOT[chat.negotiationStatus].label}
+                        />
+                      )}
+                      <span className="truncate">{chat.name}</span>
+                    </p>
                     <p className="truncate text-sm font-normal text-gray-500">
-                      {chat.lastMessage.replace(/[*_~`#>]/g, '')}
+                      {chat.lastMessageIsInternal && (
+                        <span className="mr-1 italic text-gray-400">Internal:</span>
+                      )}
+                      <span className={chat.lastMessageIsInternal ? 'italic text-gray-400' : undefined}>
+                        {chat.lastMessage.replace(/[*_~`#>]/g, '')}
+                      </span>
                     </p>
                   </div>
                 </button>

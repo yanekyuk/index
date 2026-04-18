@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   Loader2,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Send,
 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents, useUsers } from "@/contexts/APIContext";
@@ -25,8 +27,10 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import { AlphaBadge } from "@/components/AlphaBadge";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
 import type { NegotiationInsights } from "@/services/users";
 
@@ -104,12 +108,165 @@ function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
 }
 
+const DEFAULT_TEST_MESSAGE = "Hello from Index Network — this is a test delivery.";
+
+function SendTestMessageDialog({
+  agentId,
+  open,
+  onOpenChange,
+}: {
+  agentId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const agentsService = useAgents();
+  const { success, error } = useNotifications();
+  const [content, setContent] = useState(DEFAULT_TEST_MESSAGE);
+  const [sending, setSending] = useState(false);
+
+  async function handleSend() {
+    if (!content.trim() || sending) return;
+    setSending(true);
+    try {
+      await agentsService.sendTestMessage(agentId, content.trim());
+      success("Sent — should arrive in your OpenClaw gateway within ~30s");
+      onOpenChange(false);
+    } catch (err) {
+      error(
+        "Failed to send test message",
+        err instanceof Error ? err.message : undefined,
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+          <Dialog.Title className="text-lg font-bold text-gray-900 mb-2">
+            Send test message
+          </Dialog.Title>
+          <Dialog.Description className="text-sm text-gray-600 mb-4">
+            This message will be delivered to your OpenClaw gateway via the MCP
+            transport. Edit if needed, then hit Send.
+          </Dialog.Description>
+          <Textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            rows={4}
+            disabled={sending}
+            className="w-full mb-4 font-mono text-sm"
+          />
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={sending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSend} disabled={sending || !content.trim()}>
+              {sending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-1" />
+              ) : (
+                <Send className="w-4 h-4 mr-1" />
+              )}
+              {sending ? "Sending..." : "Send"}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function NotificationsSection({
+  agent,
+  onChange,
+  disabled,
+}: {
+  agent: Agent;
+  onChange: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
+  disabled: boolean;
+}) {
+  if (agent.type !== "personal") return null;
+
+  return (
+    <div className="p-4 rounded-md border border-gray-100 bg-white">
+      <div className="flex items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+          Notifications
+        </h3>
+      </div>
+      <div className="space-y-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agent.notifyOnOpportunity}
+            disabled={disabled}
+            onChange={(e) => onChange({ notifyOnOpportunity: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Notify me about new opportunities</span>
+            <span className="block text-xs text-gray-400 mt-0.5">
+              Only applies when your agent is polling via OpenClaw.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agent.dailySummaryEnabled}
+            disabled={disabled}
+            onChange={(e) => onChange({ dailySummaryEnabled: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Send a daily summary</span>
+            <span className="block text-xs text-gray-400 mt-0.5">
+              Once per 24 hours, through the same OpenClaw channel.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={agent.handleNegotiations}
+            disabled={disabled}
+            onChange={(e) => onChange({ handleNegotiations: e.target.checked })}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 accent-gray-900 disabled:opacity-50"
+          />
+          <span>
+            <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
+              Handle negotiations on my behalf
+              <AlphaBadge />
+            </span>
+            <span className="block text-xs text-gray-400 mt-0.5">
+              Experimental — your personal agent will respond to negotiation turns through the OpenClaw pickup loop.
+            </span>
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function OverviewTab({
   agent,
   userId,
+  onPatch,
+  isSaving,
 }: {
   agent: Agent;
   userId: string;
+  onPatch: (patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>) => void;
+  isSaving: boolean;
 }) {
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
@@ -159,6 +316,8 @@ function OverviewTab({
           </div>
         </dl>
       </div>
+
+      <NotificationsSection agent={agent} onChange={onPatch} disabled={isSaving} />
     </div>
   );
 }
@@ -366,6 +525,30 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // Clipboard unavailable (e.g. non-secure context)
+        }
+      }}
+      className="shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+      title="Copy"
+      aria-label="Copy value"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
 function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
   const [expanded, setExpanded] = useState(false);
   const keyPlaceholder = apiKey || "YOUR_API_KEY";
@@ -398,17 +581,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
 
-  const openclawMcp = `openclaw mcp set index-network '${JSON.stringify({
-    url: mcpUrl,
-    transport: "streamable-http",
-    headers: { "x-api-key": keyPlaceholder },
-  })}'`;
-
-  const openclawConfigure = [
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId ${agentPlaceholder}`,
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey ${keyPlaceholder}`,
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl ${protocolUrl}`,
-  ].join("\n");
+  const openclawSetup = `openclaw index-network setup`;
 
   return (
     <div className="border border-gray-200 rounded-sm">
@@ -431,8 +604,27 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <CodeBlock code={openclawInstall} label="1. Install plugin" />
-            <CodeBlock code={openclawMcp} label="2. Register MCP server" />
-            <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables negotiation polling)" />
+            <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
+            <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
+              <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                The setup wizard will prompt for these values:
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Server URL</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{protocolUrl}</code>
+                <CopyButton text={protocolUrl} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Agent ID</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{agentPlaceholder}</code>
+                <CopyButton text={agentPlaceholder} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">API Key</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{keyPlaceholder}</code>
+                <CopyButton text={keyPlaceholder} />
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -725,8 +917,10 @@ export default function AgentDetailPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
+  const [testMessageOpen, setTestMessageOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -758,6 +952,21 @@ export default function AgentDetailPage() {
     };
   }, [id, agentsService, isAuthenticated, error, navigate]);
 
+  async function handlePatch(
+    patch: Partial<Pick<Agent, "notifyOnOpportunity" | "dailySummaryEnabled" | "handleNegotiations">>,
+  ) {
+    if (!agent) return;
+    setIsSaving(true);
+    try {
+      const updated = await agentsService.update(agent.id, patch);
+      setAgent(updated);
+    } catch (err) {
+      error("Failed to save setting", err instanceof Error ? err.message : undefined);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   if (authLoading || !isAuthenticated || loading) {
     return (
       <ClientLayout>
@@ -783,6 +992,7 @@ export default function AgentDetailPage() {
   }
 
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
+  const canSendTestMessage = agent.type === "personal";
 
   return (
     <ClientLayout>
@@ -796,7 +1006,7 @@ export default function AgentDetailPage() {
             Back to Agents
           </button>
 
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-6 flex-wrap">
             <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">
               {agent.name}
             </h1>
@@ -810,7 +1020,26 @@ export default function AgentDetailPage() {
             }`}>
               {agent.status}
             </span>
+            {canSendTestMessage && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setTestMessageOpen(true)}
+                className="ml-auto"
+              >
+                <Send className="w-3.5 h-3.5 mr-1" />
+                Send test message
+              </Button>
+            )}
           </div>
+
+          {canSendTestMessage && (
+            <SendTestMessageDialog
+              agentId={agent.id}
+              open={testMessageOpen}
+              onOpenChange={setTestMessageOpen}
+            />
+          )}
 
           <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
             <Tabs.List className="flex border-b border-gray-200 mb-6">
@@ -835,7 +1064,7 @@ export default function AgentDetailPage() {
             </Tabs.List>
 
             <Tabs.Content value="overview" className="w-full">
-              <OverviewTab agent={agent} userId={user?.id ?? ""} />
+              <OverviewTab agent={agent} userId={user?.id ?? ""} onPatch={handlePatch} isSaving={isSaving} />
             </Tabs.Content>
 
             <Tabs.Content value="api-keys" className="w-full">

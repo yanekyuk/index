@@ -86,10 +86,6 @@ Profiles participate in discovery through two mechanisms:
 
 When a user's intent triggers discovery, the HyDE system generates hypothetical documents that describe the kind of person who would match that intent, then searches the profile embedding space for similar profiles. Candidates found this way are "found by who they are" and are typically assigned the agent (helper) role.
 
-### As triggers
-
-When a user's profile is created or updated, this can trigger opportunity discovery -- searching for people whose intents or profiles complement the updated profile.
-
 ---
 
 ## Profile Lifecycle

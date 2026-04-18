@@ -8,6 +8,7 @@ export interface ConversationSummary {
   lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
   metadata: { title?: string; shareToken?: string } | null;
   lastMessageAt: string | null;
+  createdAt: string;
 }
 
 export interface ConversationMessage {

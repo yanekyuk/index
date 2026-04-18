@@ -76,6 +76,30 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          // Clipboard unavailable (e.g. non-secure context)
+        }
+      }}
+      className="shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+      title="Copy"
+      aria-label="Copy value"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
 function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
   const [expanded, setExpanded] = useState(false);
   const keyPlaceholder = apiKey || 'YOUR_API_KEY';
@@ -108,17 +132,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
 
-  const openclawMcp = `openclaw mcp set index-network '${JSON.stringify({
-    url: mcpUrl,
-    transport: 'streamable-http',
-    headers: { 'x-api-key': keyPlaceholder },
-  })}'`;
-
-  const openclawConfigure = [
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId ${agentPlaceholder}`,
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey ${keyPlaceholder}`,
-    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl ${protocolUrl}`,
-  ].join('\n');
+  const openclawSetup = `openclaw index-network setup`;
 
   return (
     <div className="border border-gray-200 rounded-sm" onClick={(e) => e.stopPropagation()}>
@@ -141,8 +155,27 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <CodeBlock code={openclawInstall} label="1. Install plugin" />
-            <CodeBlock code={openclawMcp} label="2. Register MCP server" />
-            <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables negotiation polling)" />
+            <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
+            <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
+              <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                The setup wizard will prompt for these values:
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Server URL</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{protocolUrl}</code>
+                <CopyButton text={protocolUrl} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Agent ID</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{agentPlaceholder}</code>
+                <CopyButton text={agentPlaceholder} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">API Key</span>
+                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{keyPlaceholder}</code>
+                <CopyButton text={keyPlaceholder} />
+              </div>
+            </div>
           </div>
         </div>
       )}

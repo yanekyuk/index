@@ -127,7 +127,7 @@ export class ContactDatabaseAdapter {
 
     if (actuallyCreatedIds.size > 0) {
       const profilesToInsert = usersToInsert.filter(u => actuallyCreatedIds.has(u.id)).map(u => ({ userId: u.id }));
-      await db.insert(schema.userProfiles).values(profilesToInsert);
+      await db.insert(schema.userProfiles).values(profilesToInsert).onConflictDoNothing();
     }
 
     return usersToInsert

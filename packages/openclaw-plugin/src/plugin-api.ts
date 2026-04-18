@@ -48,11 +48,44 @@ export interface RouteOptions {
   handler: RouteHandler;
 }
 
+/**
+ * Narrow slice of OpenClawConfig that the plugin reads at register time.
+ * Matches the shape exposed by `api.config` per the OpenClaw plugin SDK.
+ */
+export interface OpenClawConfigSlice {
+  gateway?: {
+    port?: number;
+    auth?: {
+      token?: string;
+    };
+  };
+  mcp?: {
+    servers?: Record<string, {
+      url?: string;
+      transport?: string;
+      headers?: Record<string, string>;
+    }>;
+  };
+}
+
+export interface CliRegistration {
+  (
+    factory: (ctx: { program: unknown }) => void | Promise<void>,
+    opts?: { descriptors?: Array<{ name: string; description: string; hasSubcommands?: boolean }> },
+  ): void;
+}
+
 export interface OpenClawPluginApi {
   id: string;
   name: string;
   pluginConfig: Record<string, unknown>;
+  /** Live OpenClaw config snapshot (same shape as `~/.openclaw/openclaw.json`). */
+  config?: OpenClawConfigSlice;
   runtime: PluginRuntime;
   logger: PluginLogger;
   registerHttpRoute(options: RouteOptions): void;
+  /** Write a value into the OpenClaw config. Available since OpenClaw >=0.1.0. */
+  configSet?(path: string, value: unknown): Promise<void>;
+  /** Register a CLI subcommand (e.g. `openclaw index-network setup`). */
+  registerCli?: CliRegistration;
 }

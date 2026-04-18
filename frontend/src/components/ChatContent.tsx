@@ -43,6 +43,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useNetworkFilter } from "@/contexts/IndexFilterContext";
 import { useNetworksState } from "@/contexts/IndexesContext";
+import { useConversation } from "@/contexts/ConversationContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
 
@@ -361,6 +362,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
+  const { refreshConversations } = useConversation();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -778,6 +780,34 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     [opportunitiesService, navigate, showError, showSuccess],
   );
 
+  /**
+   * Start Chat handler for an orchestrator-streamed draft card. Uses the
+   * atomic POST /opportunities/:id/start-chat endpoint (Plan B Task 8) to
+   * flip the opp to `accepted` and resolve the pair's conversation in one
+   * round-trip, then navigates to the h2h chat. Falls back to a counterpart-
+   * page route if the conversation ID is missing for any reason.
+   */
+  const handleStreamingDraftStartChat = useCallback(
+    async (opportunityId: string, counterpartUserId: string) => {
+      setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
+      try {
+        const result = await opportunitiesService.startChat(opportunityId);
+        setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
+        refreshConversations();
+        if (result.conversationId) {
+          navigate(`/chat/${result.conversationId}`);
+        } else {
+          navigate(`/u/${counterpartUserId}/chat`);
+        }
+      } catch (error) {
+        showError(error instanceof Error ? error.message : "Failed to start chat");
+      } finally {
+        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
+      }
+    },
+    [opportunitiesService, navigate, showError, refreshConversations],
+  );
+
   const archiveProposalIntent = useCallback(
     async (proposalId: string, intentId: string) => {
       await apiClient.patch(`/intents/${intentId}/archive`);
@@ -788,32 +818,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIntentProposalApprove = useCallback(
     async (proposalId: string, description: string, networkId?: string) => {
-      try {
-        const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
-        setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
-        setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
-        addNotification({
-          type: "intent_broadcast",
-          title: "Broadcasting Signal",
-          message: description,
-          duration: 10000,
-          onAction: () => archiveProposalIntent(proposalId, res.intentId),
-        });
-      } catch (err) {
-        throw err;
-      }
+      const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
+      setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
+      setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
+      addNotification({
+        type: "intent_broadcast",
+        title: "Broadcasting Signal",
+        message: description,
+        duration: 10000,
+        onAction: () => archiveProposalIntent(proposalId, res.intentId),
+      });
     },
     [addNotification, archiveProposalIntent],
   );
 
   const handleIntentProposalReject = useCallback(
     async (proposalId: string) => {
-      try {
-        await apiClient.post("/intents/reject", { proposalId });
-        setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
-      } catch (err) {
-        throw err;
-      }
+      await apiClient.post("/intents/reject", { proposalId });
+      setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
     },
     [],
   );
@@ -1708,6 +1730,45 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           discovery={discovery}
                         />
                       ))}
+                    </div>
+                  )}
+                {/* Orchestrator streaming drafts (Plan B): one card per
+                   opportunity_draft_ready event. Renders the same
+                   OpportunityCard used on the home feed for visual
+                   consistency; button wires to the atomic Start Chat
+                   endpoint for single-round-trip accept + navigate. */}
+                {msg.role === "assistant" &&
+                  msg.streamingDrafts &&
+                  msg.streamingDrafts.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {msg.streamingDrafts.map((draft) => {
+                        const cardStatus =
+                          opportunityStatusMap[draft.opportunityId] ??
+                          draft.opportunity.status ??
+                          "draft";
+                        const cardData: OpportunityCardData = {
+                          opportunityId: draft.opportunityId,
+                          userId: draft.counterparty.userId,
+                          name: draft.counterparty.name ?? "New connection",
+                          mainText:
+                            draft.opportunity.interpretation?.reasoning ??
+                            "Accepted draft opportunity",
+                          primaryActionLabel: "Start Chat",
+                          secondaryActionLabel: "Skip",
+                          status: cardStatus,
+                        };
+                        return (
+                          <OpportunityCard
+                            key={draft.opportunityId}
+                            card={cardData}
+                            currentStatus={cardStatus}
+                            onPrimaryAction={(oppId, userId) =>
+                              handleStreamingDraftStartChat(oppId, userId)
+                            }
+                            isLoading={opportunityActionLoading[draft.opportunityId]}
+                          />
+                        );
+                      })}
                     </div>
                   )}
               </div>

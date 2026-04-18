@@ -409,6 +409,8 @@ export interface CreateOpportunityData {
 
 export interface OpportunityQueryOptions {
   status?: OpportunityStatus;
+  /** When set, filter to opportunities whose status is in this list. Orthogonal to `status` (single) — callers pick one. */
+  statuses?: OpportunityStatus[];
   networkId?: string;
   role?: string;
   limit?: number;
@@ -1225,6 +1227,15 @@ export interface Database {
   /** Upsert a contact membership in the owner's personal index (index_members with permissions=['contact']). */
   upsertContactMembership(ownerId: string, contactUserId: string, options?: { restore?: boolean }): Promise<void>;
 
+  /**
+   * Finds an existing DM conversation between two users, or creates one.
+   * Uses a unique `dmPair` column (sorted user IDs joined by ':') to
+   * prevent duplicate DMs under concurrency. Used by the Start Chat flow
+   * (Plan B Task 8) to atomically surface the h2h conversation when
+   * accepting an opportunity.
+   */
+  getOrCreateDM(userA: string, userB: string): Promise<{ id: string }>;
+
   /** Hard-delete a contact membership from the owner's personal index. */
   hardDeleteContactMembership(ownerId: string, contactUserId: string): Promise<void>;
 
@@ -1646,6 +1657,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'opportunityExistsBetweenActors'
   | 'getOpportunityBetweenActors'
   | 'findOverlappingOpportunities'
+  | 'getAcceptedOpportunitiesBetweenActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
   // HyDE graph (used by OpportunityGraph)
@@ -1702,6 +1714,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'opportunityExistsBetweenActors'
   | 'getOpportunityBetweenActors'
   | 'findOverlappingOpportunities'
+  | 'getAcceptedOpportunitiesBetweenActors'
   | 'getUserIndexIds'
   | 'getNetworkMemberships'
   | 'getActiveIntents'
@@ -1816,6 +1829,25 @@ export interface NegotiationDatabase {
   } | null>;
 
   /**
+   * Looks up the negotiation task attached to an opportunity.
+   *
+   * Returns the most-recently-created task whose metadata carries
+   * `type: 'negotiation'` and `opportunityId: <id>`. Returns null if no
+   * negotiation has been started for that opportunity yet.
+   *
+   * @param opportunityId - Opportunity whose negotiation task to fetch
+   * @returns The task record or null if no negotiation exists for the opportunity
+   */
+  getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null>;
+
+  /**
    * Gets all messages for a conversation, ordered by creation time.
    * @param conversationId - The conversation to fetch messages for
    * @returns Array of message records
@@ -1879,6 +1911,11 @@ export type OpportunityControllerDatabase = Pick<
   | 'getProfile'
   | 'getActiveIntents'
   | 'upsertContactMembership'
+  // Start Chat endpoint (Plan B Task 8): atomic pair → conversation resolution
+  // for the "Open h2h chat from this opportunity" flow. Kept on this interface
+  // (rather than ConversationControllerDatabase) because the transition is
+  // owned by OpportunityService — services cannot import other services.
+  | 'getOrCreateDM'
 >;
 
 /**
@@ -1990,4 +2027,9 @@ export type HomeGraphDatabase = Pick<
   | 'getActiveIntents'
   | 'getNetwork'
   | 'getUser'
+> & Pick<
+  NegotiationDatabase,
+  | 'getNegotiationTaskForOpportunity'
+  | 'getMessagesForConversation'
+  | 'getArtifactsForTask'
 >;

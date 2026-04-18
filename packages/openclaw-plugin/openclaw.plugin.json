@@ -2,7 +2,7 @@
   "id": "indexnetwork-openclaw-plugin",
   "name": "Index Network",
   "description": "Index Network — find the right people and let them find you. Registers the Index Network MCP server on first use and hands off to its guidance.",
-  "version": "0.6.0",
+  "version": "0.8.0",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -17,13 +17,22 @@
       "protocolUrl": {
         "type": "string",
         "format": "uri",
-        "description": "Base URL of the Index Network backend. Defaults to http://localhost:3001."
+        "default": "https://protocol.index.network",
+        "description": "Base URL of the Index Network backend."
       },
       "negotiationMode": {
         "type": "string",
         "enum": ["enabled", "disabled"],
         "default": "enabled",
         "description": "When set to \"disabled\", pending turns are skipped — Index Network falls back to its system negotiator."
+      },
+      "deliveryChannel": {
+        "type": "string",
+        "description": "OpenClaw channel id for delivering Index Network notifications (e.g. \"telegram\"). Required to receive opportunity and test-message deliveries."
+      },
+      "deliveryTarget": {
+        "type": "string",
+        "description": "Channel-specific recipient identifier (e.g. your Telegram chat ID). Required to receive opportunity and test-message deliveries."
       }
     },
     "required": [],

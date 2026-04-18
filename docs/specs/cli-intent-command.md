@@ -13,8 +13,8 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 ### `index intent list`
 
 1. Calls `POST /api/intents/list` with optional pagination/filter body.
-2. Renders a table with columns: description (truncated to 50 chars), confidence, source type, status, created date.
-3. Flags: `--archived` includes archived intents, `--limit <n>` sets page size (default 20).
+2. Renders a table with columns: ID (short), signal (description truncated to 50 chars), status, source, created date.
+3. Flags: `--archived` includes archived intents, `--limit <n>` sets page size (backend default applies if omitted).
 
 ### `index intent show <id>`
 
@@ -59,7 +59,7 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 - The CLI is a pure HTTP client. No protocol internals may be imported.
 - User-facing copy uses "signal" (per IND-144). Internal code uses "intent" for variable names, API paths, and types.
 - Auth tokens are loaded from `~/.index/credentials.json` via the existing `CredentialStore`.
-- 401 responses produce "Session expired. Run `index login` to re-authenticate."
+- 401 responses produce "Session expired or invalid. Run `index login` to re-authenticate."
 - No external CLI framework — argument parsing uses the existing hand-rolled parser in `args.parser.ts`.
 
 ## Acceptance Criteria

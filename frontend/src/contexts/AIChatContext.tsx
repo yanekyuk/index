@@ -19,6 +19,32 @@ export interface DiscoveryOpportunity {
 }
 
 /**
+ * A draft opportunity delivered progressively during an orchestrator-driven
+ * chat discovery run. Populated by the `opportunity_draft_ready` stream
+ * event from the backend — one per accepted negotiation outcome — so the
+ * chat UI can render cards as they settle rather than waiting for the whole
+ * discovery fan-out to complete.
+ *
+ * `opportunity` mirrors the backend's Opportunity row; `counterparty`
+ * carries the minimum the card needs to render without a second-round-trip
+ * user lookup (name only — avatar falls back to initials).
+ */
+export interface StreamingDraft {
+  opportunityId: string;
+  opportunity: {
+    id: string;
+    status: string;
+    interpretation?: { reasoning?: string };
+    actors?: Array<{ userId: string; role?: string }>;
+  };
+  counterparty: {
+    userId: string;
+    name?: string;
+  };
+  receivedAt: number;
+}
+
+/**
  * Re-export OpportunityCardData for consumers that import from this context.
  */
 export type { OpportunityCardData } from "@/components/chat/OpportunityCardInChat";
@@ -40,7 +66,11 @@ export type TraceEventType =
   | "graph_start"
   | "graph_end"
   | "agent_start"
-  | "agent_end";
+  | "agent_end"
+  | "negotiation_session_start"
+  | "negotiation_session_end"
+  | "negotiation_turn"
+  | "negotiation_outcome";
 
 export interface TraceEvent {
   type: TraceEventType;
@@ -53,6 +83,23 @@ export interface TraceEvent {
   steps?: ToolCallStep[];
   hasToolCalls?: boolean;
   toolNames?: string[];
+  // Negotiation event fields
+  opportunityId?: string;
+  negotiationConversationId?: string;
+  sourceUserId?: string;
+  candidateUserId?: string;
+  candidateName?: string;
+  trigger?: "orchestrator" | "ambient";
+  startedAt?: number;
+  turnIndex?: number;
+  actor?: "source" | "candidate";
+  action?: "propose" | "accept" | "reject" | "counter" | "question";
+  reasoning?: string;
+  message?: string;
+  suggestedRoles?: { ownUser?: string; otherUser?: string };
+  outcome?: "accepted" | "rejected_stalled" | "waiting_for_agent" | "timed_out" | "turn_cap";
+  turnCount?: number;
+  agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
 interface ChatMessage {
@@ -67,6 +114,12 @@ interface ChatMessage {
   stoppedAt?: number;
   attachmentNames?: string[];
   discoveries?: DiscoveryOpportunity[];
+  /**
+   * Drafts streamed in via the orchestrator's opportunity_draft_ready events.
+   * Appended progressively during the stream; persists on the message so
+   * cards stay visible after the stream ends.
+   */
+  streamingDrafts?: StreamingDraft[];
   traceEvents?: TraceEvent[];
 }
 
@@ -249,6 +302,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       abortControllerRef.current = new AbortController();
       /** Local trace buffer scoped to this sendMessage call — avoids cross-message corruption. */
       const streamTraceEvents: TraceEvent[] = [];
+      /**
+       * Local streaming-draft buffer scoped to this sendMessage call. Flushed
+       * to the server on `done` so cards survive session reload.
+       */
+      const streamingDraftsBuffer: StreamingDraft[] = [];
 
       try {
         const bodyPayload: Record<string, unknown> = {
@@ -482,6 +540,115 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     );
                     break;
                   }
+                  case "negotiation_session_start": {
+                    const negSessionStartEvent: TraceEvent = {
+                      type: "negotiation_session_start",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      sourceUserId: event.sourceUserId,
+                      candidateUserId: event.candidateUserId,
+                      candidateName: event.candidateName,
+                      trigger: event.trigger,
+                      startedAt: event.startedAt,
+                    };
+                    streamTraceEvents.push(negSessionStartEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negSessionStartEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_turn": {
+                    const negTurnEvent: TraceEvent = {
+                      type: "negotiation_turn",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      turnIndex: event.turnIndex,
+                      actor: event.actor,
+                      action: event.action,
+                      reasoning: event.reasoning,
+                      message: event.message,
+                      suggestedRoles: event.suggestedRoles,
+                      durationMs: event.durationMs,
+                    };
+                    streamTraceEvents.push(negTurnEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negTurnEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_outcome": {
+                    const negOutcomeEvent: TraceEvent = {
+                      type: "negotiation_outcome",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      outcome: event.outcome,
+                      turnCount: event.turnCount,
+                      reasoning: event.reasoning,
+                      agreedRoles: event.agreedRoles,
+                    };
+                    streamTraceEvents.push(negOutcomeEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negOutcomeEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "negotiation_session_end": {
+                    const negSessionEndEvent: TraceEvent = {
+                      type: "negotiation_session_end",
+                      timestamp: Date.now(),
+                      opportunityId: event.opportunityId,
+                      negotiationConversationId: event.negotiationConversationId,
+                      durationMs: event.durationMs,
+                    };
+                    streamTraceEvents.push(negSessionEndEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), negSessionEndEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "opportunity_draft_ready": {
+                    // Plan B Task 9: orchestrator-triggered negotiations
+                    // stream accepted drafts back one at a time so the UI
+                    // can render cards progressively. Append to the
+                    // message's streamingDrafts list; the message-list
+                    // component renders them inline alongside the LLM text.
+                    // The buffer is flushed to message metadata on `done`
+                    // so cards survive session reload.
+                    const draft: StreamingDraft = {
+                      opportunityId: event.opportunityId,
+                      opportunity: event.opportunity,
+                      counterparty: event.counterparty,
+                      receivedAt: Date.now(),
+                    };
+                    streamingDraftsBuffer.push(draft);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const streamingDrafts = [...(msg.streamingDrafts || []), draft];
+                        return { ...msg, streamingDrafts };
+                      }),
+                    );
+                    break;
+                  }
                   case "done":
                     setMessages((prev) =>
                       prev.map((msg) => {
@@ -511,19 +678,29 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     // Refetch sessions after streaming completes (title is generated on backend)
                     refetchSessions();
-                    // Persist trace events for this message (non-blocking)
+                    // Persist trace events and streamed drafts for this
+                    // message (non-blocking). One POST carries both payloads
+                    // so rehydration on reload reproduces the full turn.
                     {
                       const serverMessageId = event.messageId as
                         | string
                         | undefined;
-                      if (serverMessageId && streamTraceEvents.length > 0) {
+                      const hasTrace = streamTraceEvents.length > 0;
+                      const hasDrafts = streamingDraftsBuffer.length > 0;
+                      if (serverMessageId && (hasTrace || hasDrafts)) {
+                        const payload: {
+                          traceEvents?: TraceEvent[];
+                          streamingDrafts?: StreamingDraft[];
+                        } = {};
+                        if (hasTrace) payload.traceEvents = streamTraceEvents;
+                        if (hasDrafts) payload.streamingDrafts = streamingDraftsBuffer;
                         apiClient
                           .post(
                             `/chat/message/${serverMessageId}/metadata`,
-                            { traceEvents: streamTraceEvents },
+                            payload,
                           )
                           .catch(() => {
-                            // Non-critical — trace persistence failure shouldn't break the chat
+                            // Non-critical — metadata persistence failure shouldn't break the chat
                           });
                       }
                     }
@@ -630,6 +807,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           content: string;
           createdAt: string;
           traceEvents?: TraceEvent[];
+          streamingDrafts?: StreamingDraft[] | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -656,6 +834,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           timestamp: new Date(m.createdAt),
           isStreaming: false,
           traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
+          ...(Array.isArray(m.streamingDrafts) && m.streamingDrafts.length > 0
+            ? { streamingDrafts: m.streamingDrafts }
+            : {}),
         })),
       );
     } catch (err) {

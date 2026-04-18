@@ -26,6 +26,7 @@
     "maintenance:migrate-chat": "bun ./src/cli/migrate-chat-to-conversations.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
+    "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bun test"
   },
@@ -86,6 +87,7 @@
   "resolutions": {
     "jws": "^4.0.1",
     "esbuild": "^0.25.0",
-    "ioredis": "5.9.1"
+    "ioredis": "5.9.1",
+    "@better-auth/utils": "0.4.0"
   }
 }

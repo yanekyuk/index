@@ -1,6 +1,6 @@
 import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
 
 // Enums
@@ -11,7 +11,7 @@ export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FU
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'negotiating', 'pending', 'stalled', 'accepted', 'rejected', 'expired']);
 export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
-export const transportChannelEnum = pgEnum('transport_channel', ['webhook', 'mcp']);
+export const transportChannelEnum = pgEnum('transport_channel', ['mcp']);
 export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 
 export interface OnboardingState {
@@ -414,10 +414,6 @@ export type Link = typeof linksTable.$inferSelect;
 export type NewLink = typeof linksTable.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Webhooks
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Agents
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -431,10 +427,16 @@ export const agents = pgTable('agents', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  notifyOnOpportunity: boolean('notify_on_opportunity').notNull().default(true),
+  dailySummaryEnabled: boolean('daily_summary_enabled').notNull().default(true),
+  handleNegotiations: boolean('handle_negotiations').notNull().default(false),
+  lastDailySummaryAt: timestamp('last_daily_summary_at', { withTimezone: true }),
 }, (table) => ({
   ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
   typeIdx: index('agents_type_idx').on(table.type),
+  lastSeenAtIdx: index('agents_last_seen_at_idx').on(table.lastSeenAt),
 }));
 
 export const agentTransports = pgTable('agent_transports', {
@@ -463,7 +465,75 @@ export const agentPermissions = pgTable('agent_permissions', {
   agentIdIdx: index('agent_permissions_agent_id_idx').on(table.agentId),
   userIdIdx: index('agent_permissions_user_id_idx').on(table.userId),
   agentUserIdx: index('agent_permissions_agent_user_idx').on(table.agentId, table.userId),
+  uniqueGlobalPermission: uniqueIndex('uniq_agent_permissions_global')
+    .on(table.agentId, table.userId)
+    .where(sql`${table.scope} = 'global'`),
 }));
+
+export const agentTestMessages = pgTable(
+  'agent_test_messages',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    requestedByUserId: text('requested_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    reservationToken: text('reservation_token'),
+    reservedAt: timestamp('reserved_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    byAgent: index('idx_agent_test_messages_agent_pending').on(
+      t.agentId,
+      t.reservedAt,
+    ),
+  }),
+);
+
+export type AgentTestMessage = typeof agentTestMessages.$inferSelect;
+export type NewAgentTestMessage = typeof agentTestMessages.$inferInsert;
+
+export const opportunityDeliveries = pgTable(
+  'opportunity_deliveries',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    opportunityId: text('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').references(() => agents.id, {
+      onDelete: 'set null',
+    }),
+    channel: text('channel').notNull(),
+    trigger: text('trigger').notNull(),
+    deliveredAtStatus: text('delivered_at_status').notNull(),
+    reservationToken: text('reservation_token'),
+    reservedAt: timestamp('reserved_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    uniqueCommitted: uniqueIndex('uniq_opp_deliveries_committed')
+      .on(t.userId, t.opportunityId, t.channel, t.deliveredAtStatus)
+      .where(sql`${t.deliveredAt} IS NOT NULL`),
+    reservationLookup: index('idx_opp_deliveries_open_reservations')
+      .on(t.userId, t.channel, t.reservedAt)
+      .where(sql`${t.deliveredAt} IS NULL`),
+  }),
+);
+
+export type OpportunityDelivery = typeof opportunityDeliveries.$inferSelect;
+export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations

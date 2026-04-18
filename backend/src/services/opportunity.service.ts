@@ -118,7 +118,7 @@ export class OpportunityService {
    */
   async getHomeView(
     userId: string,
-    options?: { networkId?: string; limit?: number; noCache?: boolean }
+    options?: { networkId?: string; limit?: number; noCache?: boolean; statuses?: OpportunityStatus[] }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
@@ -130,6 +130,7 @@ export class OpportunityService {
         networkId: options?.networkId,
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
+        statuses: options?.statuses,
       });
       if (result.error) {
         return { error: result.error };
@@ -327,29 +328,185 @@ export class OpportunityService {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
 
+    const counterpart = status === 'accepted'
+      ? (opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
+          ?? opp.actors.find((actor) => actor.userId !== userId))
+      : undefined;
+
+    if (counterpart) {
+      try {
+        await this.db.getOrCreateDM(userId, counterpart.userId);
+      } catch (err) {
+        logger.error('[OpportunityService.updateOpportunityStatus] getOrCreateDM failed; status left untouched', {
+          opportunityId,
+          userId,
+          counterpartUserId: counterpart.userId,
+          error: err,
+        });
+        return { error: 'Failed to create conversation for this opportunity', status: 500 };
+      }
+    }
+
     const updated = await this.db.updateOpportunityStatus(opportunityId, status);
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    if (status !== 'accepted') {
-      return { opportunity: updated };
-    }
-
-    const counterpart = opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
-      ?? opp.actors.find((actor) => actor.userId !== userId);
-
     if (!counterpart) {
       return { opportunity: updated };
     }
 
-    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
+    const counterpartUserId = counterpart.userId;
 
-    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true });
+    await this.db.acceptSiblingOpportunities(userId, counterpartUserId, opportunityId).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] acceptSiblingOpportunities failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId,
+        error: err,
+      });
+    });
+
+    // Accepter explicitly acted — restore if previously removed.
+    // Counterpart: add them to the accepter but honour any prior opt-out on their side.
+    await this.db.upsertContactMembership(userId, counterpartUserId, { restore: true }).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId,
+        error: err,
+      });
+    });
+    await this.db.upsertContactMembership(counterpartUserId, userId, { restore: false }).catch((err) => {
+      logger.error('[OpportunityService.updateOpportunityStatus] upsertContactMembership (counterpart) failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId,
+        error: err,
+      });
+    });
 
     return {
       opportunity: updated,
+      counterpartUserId,
+    };
+  }
+
+  /**
+   * Transition a `pending`/`draft` opportunity to `accepted` and surface the
+   * h2h conversation to navigate to. Used by the frontend's "Start Chat"
+   * button on both ambient and orchestrator opportunity cards.
+   *
+   * **Step ordering is failure-safe, not wrapped in a single transaction.**
+   * The four writes run in an order chosen so a partial failure never leaves
+   * the user in a permanent dead end:
+   *
+   * 1. `getOrCreateDM` — resolves the pair's conversation. DM existence is
+   *    independent of opportunity state (dmPair unique column handles
+   *    concurrency); if it throws, the opp is still at its original status
+   *    and the button re-appears, so a retry recovers.
+   * 2. `updateOpportunityStatus` → `accepted` — only happens once the DM is
+   *    known, so we never flip status without a destination to navigate to.
+   * 3. `acceptSiblingOpportunities` — matches the PATCH /status='accepted'
+   *    side effect; already transactional internally.
+   * 4. `upsertContactMembership` — idempotent; safe to re-run.
+   *
+   * Steps 3 and 4 are best-effort after the status flip: their failure must
+   * not block the user from reaching the chat (the opp is already accepted
+   * and the conversation already resolved). Errors are logged for later
+   * reconciliation.
+   *
+   * Does NOT insert a seed system message — IND-237 renders the accepted
+   * opportunity inline in the chat timeline, so a seed would duplicate it.
+   *
+   * @param opportunityId - The opportunity to accept and navigate from
+   * @param userId - The authenticated user (must be an actor)
+   * @returns `{ conversationId, counterpartUserId, opportunity }` on success, or `{ error, status }` on failure.
+   * @throws Does not throw for business-logic failures — every failure path
+   *   returns an `{ error, status }` tuple so controllers can map to HTTP.
+   */
+  async startChat(
+    opportunityId: string,
+    userId: string,
+  ): Promise<
+    | { conversationId: string; counterpartUserId: string; opportunity: Opportunity }
+    | { error: string; status: number }
+  > {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+    if (opp.status !== 'pending' && opp.status !== 'draft') {
+      return {
+        error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending or draft.`,
+        status: 400,
+      };
+    }
+    const isActor = opp.actors.some((a) => a.userId === userId);
+    if (!isActor) {
+      return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+    }
+
+    const counterpart =
+      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== userId)
+      ?? opp.actors.find((a) => a.userId !== userId);
+    if (!counterpart) {
+      return { error: 'Opportunity has no counterpart to chat with', status: 400 };
+    }
+
+    // Resolve the DM first — independent of opp state, safe to retry if it
+    // throws (opp is still pending/draft, button re-appears).
+    let conversation: { id: string };
+    try {
+      conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
+    } catch (err) {
+      logger.error('[OpportunityService.startChat] getOrCreateDM failed; opp left untouched', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+      return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
+    }
+
+    // Only flip status once we know the chat destination exists.
+    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted');
+    if (!updated) {
+      return { error: 'Failed to accept opportunity', status: 500 };
+    }
+
+    // Best-effort side effects — their failure must not block the user from
+    // reaching the chat. The opp is already accepted and the DM already
+    // resolved; these keep the home feed and contacts view in sync.
+    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId).catch((err) => {
+      logger.error('[OpportunityService.startChat] acceptSiblingOpportunities failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
+    await this.db.upsertContactMembership(userId, counterpart.userId, { restore: true }).catch((err) => {
+      logger.error('[OpportunityService.startChat] upsertContactMembership failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
+    await this.db.upsertContactMembership(counterpart.userId, userId, { restore: false }).catch((err) => {
+      logger.error('[OpportunityService.startChat] upsertContactMembership (counterpart) failed (non-blocking)', {
+        opportunityId,
+        userId,
+        counterpartUserId: counterpart.userId,
+        error: err,
+      });
+    });
+
+    return {
+      conversationId: conversation.id,
       counterpartUserId: counterpart.userId,
+      opportunity: updated,
     };
   }
 

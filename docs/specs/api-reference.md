@@ -543,7 +543,7 @@ Soft-delete a personal agent and deactivate its transports.
 
 ### POST /api/agents/:id/transports
 
-Add a transport to an owned personal agent. New deployments should use the `mcp` channel — the agent authenticates with an API key (see `POST /api/agents/:id/tokens`) and pulls work from the Index Network MCP server and the negotiation pickup endpoint below. The `webhook` channel is retained as a legacy enum value on the `agent_transports` table but is no longer used for negotiation delivery.
+Add a transport to an owned personal agent. The only supported channel is `mcp` — the agent authenticates with an API key (see `POST /api/agents/:id/tokens`) and pulls work from the Index Network MCP server and the negotiation pickup endpoint below. Transports are MCP-only.
 
 **Request body (mcp channel)**:
 ```json
@@ -608,6 +608,19 @@ Grant the current user a permission set on an agent.
 Revoke a permission from an agent.
 
 **Response**: `204 No Content`
+
+### GET /api/agents/:id/tokens
+
+List API keys bound to an owned personal agent. Raw key values are never returned — only stored metadata (id, name, creation timestamp).
+
+**Response**:
+```json
+{
+  "tokens": [
+    { "id": "...", "name": "My Claude Agent API Key", "createdAt": "..." }
+  ]
+}
+```
 
 ### POST /api/agents/:id/tokens
 
@@ -737,6 +750,19 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 ### GET /api/conversations
 
 List all conversations for the authenticated user.
+
+**Auth**: AuthGuard
+
+**Response**:
+```json
+{
+  "conversations": [...]
+}
+```
+
+### GET /api/conversations/negotiations
+
+List A2A agent-to-agent negotiation conversations for the authenticated user.
 
 **Auth**: AuthGuard
 
@@ -1933,6 +1959,36 @@ Update opportunity status.
 
 ---
 
+### POST /api/opportunities/:id/start-chat
+
+Atomically accept a `pending` or `draft` opportunity and resolve the h2h conversation for the actor pair. Backs the Start Chat button on both ambient (pending) and orchestrator (draft) opportunity cards so the frontend can navigate directly to `/chat/:conversationId` in a single round-trip.
+
+Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling acceptance, contact membership upsert), plus `getOrCreateDM(userA, userB)` to resolve/create the DM conversation. Does **not** insert a seed system message — the accepted opportunity itself renders inline in the chat timeline (per IND-237).
+
+**Auth**: AuthGuard
+
+**Path params**:
+- `id` — Opportunity ID (full UUID or short prefix; resolved server-side)
+
+**Request body**: empty
+
+**Response**:
+```json
+{
+  "conversationId": "string",
+  "counterpartUserId": "string",
+  "opportunity": { "id": "string", "status": "accepted", "...": "..." }
+}
+```
+
+**Error responses**:
+- `400` — Opportunity is not in `pending` or `draft` status
+- `403` — Caller is not an actor on the opportunity
+- `404` — Opportunity not found
+- `500` — Status update or DM resolution failed
+
+---
+
 ## Network Opportunity
 
 **Controller prefix**: `/networks` (separate controller registered alongside NetworkController)
@@ -2228,6 +2284,40 @@ Manually add a contact by email (creates ghost user if not registered).
 ```json
 {
   "result": { ... }
+}
+```
+
+### DELETE /api/users/contacts/:contactId
+
+Remove a contact from the authenticated user's personal network (soft delete of the `'contact'` membership).
+
+**Auth**: AuthGuard
+
+**Response**: `{ "success": true }` on success, `404` if the contact is not a member.
+
+### POST /api/users/:userId/negotiations
+
+Trigger a discovery negotiation between the authenticated viewer and the target user. Responds with `400` if the viewer targets themselves, `404` if the target does not exist, `409` if a negotiation between the two parties is already in flight.
+
+**Auth**: AuthGuard
+
+**Response** (`201`):
+```json
+{
+  "negotiation": {
+    "id": "...",
+    "counterparty": { "id": "...", "name": "...", "avatar": null },
+    "outcome": {
+      "hasOpportunity": true,
+      "role": "agent",
+      "turnCount": 4,
+      "reason": "accepted"
+    },
+    "turns": [
+      { "speaker": { "id": "...", "name": "...", "avatar": null }, "action": "propose", "reasoning": "...", "suggestedRoles": null, "createdAt": "..." }
+    ],
+    "createdAt": "..."
+  }
 }
 ```
 

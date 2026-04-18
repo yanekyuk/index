@@ -33,7 +33,7 @@ Each package.json uses npm's `os` and `cpu` fields so npm only downloads the mat
 
 ### Bin shim
 
-The main package's `bin` entry points to `bin/index.js`, a thin JavaScript shim that:
+The main package's `bin` entry points to `bin/index.cjs`, a thin JavaScript shim that:
 
 1. Determines the current platform and architecture (`process.platform`, `process.arch`).
 2. Looks for the platform binary in the corresponding `@indexnetwork/cli-{os}-{arch}` package.
@@ -88,7 +88,7 @@ CI behavior:
 
 1. `bun run build` in `packages/cli/` cross-compiles binaries for all 4 targets (linux-x64, linux-arm64, darwin-x64, darwin-arm64).
 2. Each platform package directory (`packages/cli/npm/{os}-{arch}/`) contains a valid `package.json` with correct `os`, `cpu`, `name`, and `version` fields.
-3. The bin shim (`packages/cli/bin/index.js`) correctly resolves and executes the platform binary.
+3. The bin shim (`packages/cli/bin/index.cjs`) correctly resolves and executes the platform binary.
 4. The bin shim falls back to the bundled JS when no platform binary is available.
 5. The `Bun.spawn()` replacement opens the browser correctly on macOS and Linux.
 6. The `Bun.serve()` replacement handles OAuth callbacks identically to the current implementation.

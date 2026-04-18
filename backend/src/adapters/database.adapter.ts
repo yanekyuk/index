@@ -719,6 +719,13 @@ export interface ChatMessageMeta {
   tokenCount?: number | null;
   traceEvents?: unknown;
   debugMeta?: unknown;
+  /**
+   * Orchestrator-driven draft opportunities streamed back via
+   * `opportunity_draft_ready` events during the response. Persisted so the
+   * rendered chat cards survive session reload — the frontend rehydrates
+   * these into message.streamingDrafts on loadSession.
+   */
+  streamingDrafts?: unknown;
   [key: string]: unknown;
 }
 
@@ -791,9 +798,9 @@ export class ChatDatabaseAdapter {
   /** @deprecated Use conversationDatabaseAdapter.verifyChatMessageOwnership */
   async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> { return _convDb().verifyChatMessageOwnership(messageId, userId); }
   /** @deprecated Use conversationDatabaseAdapter.upsertChatMessageMetadata */
-  async upsertMessageMetadata(params: { id: string; messageId: string; traceEvents?: unknown; debugMeta?: unknown }): Promise<void> { return _convDb().upsertChatMessageMetadata(params); }
+  async upsertMessageMetadata(params: { id: string; messageId: string; traceEvents?: unknown; debugMeta?: unknown; streamingDrafts?: unknown }): Promise<void> { return _convDb().upsertChatMessageMetadata(params); }
   /** @deprecated Use conversationDatabaseAdapter.getChatMessageMetadataByIds */
-  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
+  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
   /** @deprecated Use conversationDatabaseAdapter.upsertChatSessionMetadata */
   async upsertSessionMetadata(params: { id: string; sessionId: string; metadata: unknown }): Promise<void> { return _convDb().upsertChatSessionMetadata(params); }
   /** @deprecated Use conversationDatabaseAdapter.getChatSessionMetadata */
@@ -1238,7 +1245,7 @@ export class ChatDatabaseAdapter {
         const [memberCount] = await db
           .select({ count: count() })
           .from(schema.networkMembers)
-          .where(eq(schema.networkMembers.networkId, row.id));
+          .where(and(eq(schema.networkMembers.networkId, row.id), isNull(schema.networkMembers.deletedAt)));
         return {
           id: row.id,
           title: row.title,
@@ -1295,7 +1302,7 @@ export class ChatDatabaseAdapter {
         memberCount: count(schema.networkMembers.networkId),
       })
       .from(schema.networks)
-      .innerJoin(schema.networkMembers, eq(schema.networks.id, schema.networkMembers.networkId))
+      .innerJoin(schema.networkMembers, and(eq(schema.networks.id, schema.networkMembers.networkId), isNull(schema.networkMembers.deletedAt)))
       .where(
         and(
           isNull(schema.networks.deletedAt),
@@ -1370,7 +1377,7 @@ export class ChatDatabaseAdapter {
       const [countResult] = await db
         .select({ count: count() })
         .from(schema.networkMembers)
-        .where(eq(schema.networkMembers.networkId, row.id));
+        .where(and(eq(schema.networkMembers.networkId, row.id), isNull(schema.networkMembers.deletedAt)));
 
       result.push({
         id: row.id,
@@ -1619,7 +1626,7 @@ export class ChatDatabaseAdapter {
     const result = await Promise.all(
       ownerRows.map(async (row) => {
         const [memberCountResult, intentCountResult] = await Promise.all([
-          db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, row.networkId)),
+          db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, row.networkId), isNull(networkMembers.deletedAt))),
           db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, row.networkId)),
         ]);
         const perms = row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean } | null;
@@ -1665,7 +1672,7 @@ export class ChatDatabaseAdapter {
       })
       .from(networkMembers)
       .innerJoin(users, eq(networkMembers.userId, users.id))
-      .where(eq(networkMembers.networkId, networkId));
+      .where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt), isNull(users.deletedAt)));
 
     const [requestingUserEmailRow] = await db
       .select({ email: users.email })
@@ -1733,7 +1740,7 @@ export class ChatDatabaseAdapter {
       })
       .from(networkMembers)
       .innerJoin(users, eq(networkMembers.userId, users.id))
-      .where(eq(networkMembers.networkId, networkId));
+      .where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt), isNull(users.deletedAt)));
 
     const memberUserIds = members.map((m) => m.userId);
     const intentCountRows = memberUserIds.length > 0
@@ -1788,6 +1795,7 @@ export class ChatDatabaseAdapter {
           inArray(networkMembers.networkId, myIndexIds),
           isNull(networks.deletedAt),
           isNull(users.deletedAt),
+          isNull(networkMembers.deletedAt),
         )
       );
 
@@ -1978,7 +1986,7 @@ export class ChatDatabaseAdapter {
       throw new Error('Index not found after update');
     }
     const [memberCountResult, intentCountResult] = await Promise.all([
-      db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId)),
+      db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt))),
       db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
     const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
@@ -2112,7 +2120,7 @@ export class ChatDatabaseAdapter {
   }
 
   async getNetworkMemberCount(networkId: string): Promise<number> {
-    const [r] = await db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId));
+    const [r] = await db.select({ count: count() }).from(networkMembers).where(and(eq(networkMembers.networkId, networkId), isNull(networkMembers.deletedAt)));
     return Number(r?.count ?? 0);
   }
 
@@ -2590,7 +2598,7 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
   }
@@ -3283,6 +3291,25 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  /**
+   * Finds an existing DM conversation between two users, or creates one.
+   * Thin delegator to {@link ConversationDatabaseAdapter.getOrCreateDM} so
+   * OpportunityService can satisfy the OpportunityControllerDatabase
+   * interface without importing another service (per the services-must-not-
+   * import-services rule). Used by the Start Chat endpoint (Plan B Task 8).
+   *
+   * @param userA - First participant user ID.
+   * @param userB - Second participant user ID.
+   * @returns The existing or newly-created DM conversation (only the id).
+   * @throws Error when both IDs match (self-DMs are rejected) or when the
+   *   insert fails and no pre-existing row can be found after a unique
+   *   constraint collision (surfaced by the underlying ConversationDatabaseAdapter).
+   */
+  async getOrCreateDM(userA: string, userB: string): Promise<{ id: string }> {
+    const conversationAdapter = new ConversationDatabaseAdapter();
+    return conversationAdapter.getOrCreateDM(userA, userB);
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3619,7 +3646,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; statuses?: string[]; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
     const visibilityGuard = sql`(
@@ -3659,6 +3686,9 @@ export class OpportunityDatabaseAdapter {
           WHERE actor->>'networkId' = ${options.networkId}
         )
       )`);
+    }
+    if (options?.statuses?.length) {
+      conditions.push(inArray(opportunities.status, options.statuses as Array<typeof opportunities.$inferSelect.status>));
     }
     let q = db
       .select()
@@ -6140,6 +6170,46 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Looks up the negotiation task attached to an opportunity, preferring the
+   * most-recently-created row if multiple exist (shouldn't, but defensive).
+   *
+   * @param opportunityId - Opportunity id stored on task metadata
+   * @returns The task record or null
+   */
+  async getNegotiationTaskForOpportunity(opportunityId: string): Promise<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(
+        and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          sql`${schema.tasks.metadata}->>'opportunityId' = ${opportunityId}`,
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt))
+      .limit(1);
+
+    const [row] = rows;
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      conversationId: row.conversationId,
+      state: row.state as string,
+      metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
    * Gets all messages for a conversation, ordered by creation time (ascending).
    * Used by negotiation tools to reconstruct turn history.
    * @param conversationId - The conversation to fetch messages for
@@ -6832,8 +6902,13 @@ export class ConversationDatabaseAdapter {
     messageId: string;
     traceEvents?: unknown;
     debugMeta?: unknown;
+    streamingDrafts?: unknown;
   }): Promise<void> {
-    if (params.traceEvents === undefined && params.debugMeta === undefined) return;
+    if (
+      params.traceEvents === undefined &&
+      params.debugMeta === undefined &&
+      params.streamingDrafts === undefined
+    ) return;
 
     const [msg] = await db
       .select({ metadata: schema.messages.metadata })
@@ -6847,6 +6922,7 @@ export class ConversationDatabaseAdapter {
     const merged: ChatMessageMeta = { ...existing };
     if (params.traceEvents !== undefined) merged.traceEvents = params.traceEvents;
     if (params.debugMeta !== undefined) merged.debugMeta = params.debugMeta;
+    if (params.streamingDrafts !== undefined) merged.streamingDrafts = params.streamingDrafts;
 
     await db
       .update(schema.messages)
@@ -6857,7 +6933,7 @@ export class ConversationDatabaseAdapter {
   /**
    * Get message metadata (traceEvents, debugMeta) for a list of message IDs.
    */
-  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> {
+  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; streamingDrafts: unknown; createdAt: Date }>> {
     if (messageIds.length === 0) return [];
     const rows = await db
       .select({ id: schema.messages.id, metadata: schema.messages.metadata, createdAt: schema.messages.createdAt })
@@ -6871,6 +6947,7 @@ export class ConversationDatabaseAdapter {
         messageId: r.id,
         traceEvents: meta.traceEvents ?? null,
         debugMeta: meta.debugMeta ?? null,
+        streamingDrafts: meta.streamingDrafts ?? null,
         createdAt: r.createdAt,
       };
     });

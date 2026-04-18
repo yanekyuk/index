@@ -26,19 +26,32 @@ Adapters (database, embedder, cache, queue, scraper)
 Infrastructure (PostgreSQL + pgvector, Redis, OpenRouter LLMs)
 ```
 
-The protocol layer never imports adapters directly. All infrastructure dependencies are injected through interfaces defined in `packages/protocol/src/interfaces/` (database, embedder, cache, queue, scraper, storage). This makes every graph and agent testable with mocks.
+The protocol layer never imports adapters directly. All infrastructure dependencies are injected through interfaces defined in `packages/protocol/src/shared/interfaces/` (database, embedder, cache, queue, scraper, storage). This makes every graph and agent testable with mocks.
 
 ### Directory structure
 
+Graphs, state, agents, and tools are co-located in domain directories rather than flat `graphs/` / `states/` / `agents/` folders. Each domain owns its `{domain}.graph.ts`, `{domain}.state.ts`, `{domain}.agent.ts`, and `{domain}.tools.ts` siblings.
+
 ```
 packages/protocol/src/
-  graphs/           11 LangGraph state machines ({domain}.graph.ts)
-  states/           11 graph state definitions ({domain}.state.ts)
-  agents/           Flat, domain-prefixed AI agents
-  tools/            Chat tool definitions by domain
-  streamers/        SSE streaming for chat (chat.streamer.ts, response.streamer.ts)
-  support/          Infrastructure utilities (opportunity helpers, chat utils, protocol logger)
-  interfaces/       Adapter contracts (database, embedder, cache, queue, scraper)
+  agent/            Agent registry tools
+  chat/             Chat graph, state, tools, streamers
+  contact/          Contact tools
+  integration/      Integration tools
+  intent/           Intent graph, state, inferrer, reconciler, verifier, tools
+  maintenance/      Maintenance graph and helpers
+  mcp/              MCP session helpers
+  negotiation/      Negotiation graph, agent, insights, tools
+  network/          Network (index) graph
+    indexer/          Intent↔network indexer graph
+    membership/       Network membership graph
+  opportunity/      Opportunity graph, evaluator, introducer, presenter
+    feed/             Home feed graph and health scoring
+  profile/          Profile graph, generator, tools
+  shared/
+    agent/            model.config.ts, utility tools
+    hyde/             HyDE graph, generator, strategies
+    interfaces/       Adapter contracts (Database, Embedder, Cache, Queue, Scraper, Storage)
   docs/             Design papers
 ```
 
@@ -87,7 +100,7 @@ The factory pattern ensures no hardcoded infrastructure dependencies. Database i
 
 ### 3.1 Chat Graph
 
-**File:** `chat.graph.ts`
+**File:** `chat/chat.graph.ts`
 **Purpose:** ReAct-style agent loop -- the entry point for all user interactions via chat.
 **Nodes:** `agent_loop`
 **State:** `ChatGraphState` (userId, messages, sessionId, indexId, responseText, iterationCount, shouldContinue, error, debugMeta)
@@ -101,7 +114,7 @@ The graph supports streaming via `config.writer()` so text tokens and tool-activ
 
 ### 3.2 Intent Graph
 
-**File:** `intent.graph.ts`
+**File:** `intent/intent.graph.ts`
 **Purpose:** Extract, verify, reconcile, and persist user intents.
 **Nodes:** `prep`, `query`, `inference`, `verification`, `reconciler`, `executor`
 **State:** `IntentGraphState` (userId, inputContent, operationMode, targetIntentIds, indexId, inferredIntents, verifiedIntents, actions, executionResults, etc.)
@@ -125,7 +138,7 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 ### 3.3 Profile Graph
 
-**File:** `profile.graph.ts`
+**File:** `profile/profile.graph.ts`
 **Purpose:** Generate, embed, and maintain user profiles with optional web scraping and HyDE generation.
 **Nodes:** `check_state`, `scrape`, `auto_generate`, `use_prepopulated_profile`, `generate_profile`, `embed_save_profile`, `generate_hyde`, `embed_save_hyde`
 **State:** `ProfileGraphState` (userId, operationMode, input, forceUpdate, profile, hydeDescription, needs* flags, etc.)
@@ -145,27 +158,34 @@ The propose mode is a dry-run that extracts and verifies intents without persist
 
 ### 3.4 Opportunity Graph
 
-**File:** `opportunity.graph.ts`
-**Purpose:** End-to-end opportunity discovery: scoping, HyDE generation, vector search, evaluation, ranking, deduplication, negotiation, and persistence.
-**Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `persist`
-**State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, etc.)
+**File:** `opportunity/opportunity.graph.ts`
+**Purpose:** End-to-end opportunity discovery and lifecycle management: scoping, HyDE generation, vector search, evaluation, ranking, deduplication, negotiation, persistence, plus CRUD read/update/delete and `send` operations, and introducer-path validation/evaluation for contact-driven introductions.
+**Nodes:** `prep`, `scope`, `resolve`, `discovery`, `evaluation`, `ranking`, `intro_validation`, `intro_evaluation`, `persist`, `negotiate`, `read`, `update`, `delete_opp`, `send`
+**State:** `OpportunityGraphState` (userId, searchQuery, indexId, triggerIntentId, targetUserId, candidates, evaluatedOpportunities, trigger, dedupAlreadyAccepted, etc.)
 **Conditional edges:**
 - After `prep`: routes to `scope` or `END` (no index memberships)
 - After `discovery`: routes to `evaluation` or `END` (no candidates)
 - After `evaluation`: routes to `ranking` or `END` (no evaluated opportunities)
 
-**Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> END`
+**Flow:** `START -> prep -> scope -> resolve -> discovery -> evaluation -> ranking -> persist -> negotiate -> END`
 
 The graph supports three discovery paths:
 - **Intent-based (Path A):** Trigger intent is assigned to an index -- use its HyDE documents for search
 - **Profile-based (Path B/C):** Use profile embedding or query-generated HyDE documents for search
 - **Direct connection:** When `targetUserId` is set (user @-mentioned someone), bypass vector search and construct candidates from shared indexes
 
-**Dependencies:** `OpportunityGraphDatabase`, `Embedder`, compiled HyDE graph, optional `OpportunityEvaluator`, optional `NegotiationGraph`
+**Unified trigger model:** `OpportunityGraphState.trigger` (`'ambient' | 'orchestrator'`, default `'ambient'`) drives branches in the `persist` and `negotiate` nodes so the same graph serves both the queue-driven ambient flow and the chat-driven orchestrator flow. The tool layer passes `trigger: 'orchestrator'` whenever `context.sessionId` is set (i.e. the call comes from a chat session); all other callers inherit the ambient default.
+
+| Node | Ambient trigger | Orchestrator trigger |
+|---|---|---|
+| `persist` | Initial status = `options.initialStatus ?? 'pending'`. | Initial status = `options.initialStatus ?? 'negotiating'`. Also collects `dedupAlreadyAccepted` — accepted opps between the discoverer and each unique candidate — so the tool can tell the LLM to steer users toward the existing chat instead of creating a duplicate draft. |
+| `negotiate` | 5-min park window (`AMBIENT_PARK_WINDOW_MS`) with heartbeat-aware dispatcher. Results aggregate at the end of the fan-out. | 60-second park window (orchestrator cannot afford the ambient budget). Per-candidate `onCandidateResolved` hook flips each accepted opp to `draft` and emits an `opportunity_draft_ready` event via the requestContext `traceEmitter`, so the chat UI renders cards progressively. Honors `requestContext.abortSignal` — after the chat session closes, in-flight negotiations still finish via their park window but their cards are suppressed. |
+
+**Dependencies:** `OpportunityGraphDatabase`, `Embedder`, compiled HyDE graph, optional `OpportunityEvaluator`, optional `NegotiationGraph`, optional `AgentDispatcher`
 
 ### 3.5 HyDE Graph
 
-**File:** `hyde.graph.ts`
+**File:** `shared/hyde/hyde.graph.ts`
 **Purpose:** Cache-aware hypothetical document generation with dynamic lens inference.
 **Nodes:** `infer_lenses`, `check_cache`, `generate_missing`, `embed`, `cache_results`
 **State:** `HydeGraphState` (sourceType, sourceId, sourceText, profileContext, lenses, hydeDocuments, hydeEmbeddings, etc.)
@@ -178,12 +198,12 @@ The graph is designed for efficiency: it checks both Redis cache and PostgreSQL 
 
 **Dependencies:** `HydeGraphDatabase`, `EmbeddingGenerator`, `HydeCache`, `LensInferrer`, `HydeGenerator`
 
-### 3.6 Index Graph
+### 3.6 Network Graph
 
-**File:** `index.graph.ts`
-**Purpose:** CRUD operations for indexes (communities).
+**File:** `network/network.graph.ts`
+**Purpose:** CRUD operations for indexes (networks/communities).
 **Nodes:** `read`, `create`, `update`, `delete_idx`
-**State:** `IndexGraphState` (userId, operationMode, indexId, createInput, updateInput, readResult, mutationResult)
+**State:** `NetworkGraphState` (userId, operationMode, indexId, createInput, updateInput, readResult, mutationResult)
 **Conditional edges:**
 - From `START`: routes by `operationMode` to the matching CRUD node
 
@@ -191,14 +211,14 @@ The graph is designed for efficiency: it checks both Redis cache and PostgreSQL 
 
 All operations are database-only -- no LLM calls. Create sets the caller as owner; update and delete are owner-only. Delete requires the owner to be the sole member.
 
-**Dependencies:** `IndexGraphDatabase`
+**Dependencies:** `NetworkGraphDatabase`
 
-### 3.7 Index Membership Graph
+### 3.7 Network Membership Graph
 
-**File:** `network_membership.graph.ts`
+**File:** `network/membership/membership.graph.ts`
 **Purpose:** Manage member join/leave/invite for indexes.
 **Nodes:** `add_member`, `list_members`, `remove_member`
-**State:** `IndexMembershipGraphState` (userId, operationMode, indexId, targetUserId, readResult, mutationResult)
+**State:** `NetworkMembershipGraphState` (userId, operationMode, indexId, targetUserId, readResult, mutationResult)
 **Conditional edges:**
 - From `START`: routes by `operationMode` to the matching node
 
@@ -206,14 +226,14 @@ All operations are database-only -- no LLM calls. Create sets the caller as owne
 
 Self-join is only allowed for public indexes (`joinPolicy: 'anyone'`). Inviting others requires membership; for invite-only indexes, only the owner can add members.
 
-**Dependencies:** `IndexMembershipGraphDatabase`
+**Dependencies:** `NetworkMembershipGraphDatabase`
 
-### 3.8 Intent Index Graph
+### 3.8 Intent Network (Indexer) Graph
 
-**File:** `intent_index.graph.ts`
+**File:** `network/indexer/indexer.graph.ts`
 **Purpose:** Manage the many-to-many relationship between intents and indexes (the `intent_networks` junction table).
 **Nodes:** `assign`, `read`, `unassign`
-**State:** `IntentIndexGraphState` (userId, operationMode, intentId, indexId, skipEvaluation, evaluation, assignmentResult, etc.)
+**State:** `IntentNetworkGraphState` (userId, operationMode, intentId, indexId, skipEvaluation, evaluation, assignmentResult, etc.)
 **Conditional edges:**
 - From `START`: routes by `operationMode`
 
@@ -221,11 +241,11 @@ The `assign` node has two sub-paths:
 - **Direct assignment** (`skipEvaluation=true`): assigns immediately with score 1.0
 - **Evaluated assignment**: loads intent + index context, runs IntentIndexer agent to score relevancy, only assigns if score exceeds 0.7 threshold
 
-**Dependencies:** `IntentIndexGraphDatabase`
+**Dependencies:** `IntentNetworkGraphDatabase`
 
-### 3.9 Home Graph
+### 3.9 Home (Feed) Graph
 
-**File:** `home.graph.ts`
+**File:** `opportunity/feed/feed.graph.ts`
 **Purpose:** Build the opportunity home feed view with dynamic sections.
 **Nodes:** `loadOpportunities`, `checkPresenterCache`, `generateCardText`, `cachePresenterResults`, `checkCategorizerCache`, `categorizeDynamically`, `cacheCategorizerResults`, `normalizeAndSort`
 **State:** `HomeGraphState` (userId, indexId, limit, opportunities, cards, sections, cachedCards, sectionProposals, etc.)
@@ -239,9 +259,9 @@ This is a read-only graph (separate from the write-path maintenance graph). It u
 
 ### 3.10 Maintenance Graph
 
-**File:** `maintenance.graph.ts`
-**Purpose:** Evaluate feed health and trigger rediscovery when unhealthy.
-**Nodes:** `loadCurrentFeed`, `scoreFeedHealth`, `rediscover`, `logMaintenance`
+**File:** `maintenance/maintenance.graph.ts`
+**Purpose:** Evaluate feed health and trigger rediscovery (plus contact-based introducer discovery) when unhealthy.
+**Nodes:** `loadCurrentFeed`, `scoreFeedHealth`, `rediscover`, `introducerDiscovery`, `logMaintenance`
 **State:** `MaintenanceGraphState` (userId, currentOpportunities, activeIntents, healthResult, etc.)
 **Conditional edges:**
 - After `loadCurrentFeed`: routes to `scoreFeedHealth` or `END` (error)
@@ -253,7 +273,7 @@ The health scorer considers connection count, connector flow count, expired coun
 
 ### 3.11 Negotiation Graph
 
-**File:** `negotiation.graph.ts`
+**File:** `negotiation/negotiation.graph.ts`
 **Purpose:** Bilateral agent-to-agent negotiation to validate opportunity quality before persistence.
 **Nodes:** `init`, `turn`, `finalize`
 **State:** `NegotiationGraphState` (sourceUser, candidateUser, indexContext, seedAssessment, conversationId, taskId, messages, turnCount, currentSpeaker, lastTurn, outcome, maxTurns)
@@ -339,23 +359,20 @@ Scoring bands:
 **Model:** `google/gemini-2.5-flash`
 **Used by:** Home Graph (generateCardText node)
 
-### 4.8 Negotiation Proposer
+### 4.8 Index Negotiator
 
-**File:** `negotiation.proposer.ts`
-**Role:** Acts as the source user's agent in bilateral negotiation, generating proposals and counter-proposals.
-**Model:** `google/gemini-2.5-flash`
-**Input:** Own user context, other user context, index context, seed assessment, history
-**Output:** Negotiation turn with action (propose/counter/accept/reject), assessment (fitScore, reasoning, suggestedRoles)
-**Used by:** Negotiation Graph (turn node, when `currentSpeaker === "source"`)
+**File:** `negotiation/negotiation.agent.ts`
+**Role:** Unified system negotiation agent that advocates for whichever user is speaking in the current turn. The same agent class handles both the proposer (source) and responder (candidate) positions — behavior adapts from turn position (first turn proposes; subsequent turns counter/accept/reject) and from whose context is passed as `ownUser`.
+**Model:** `createModel("negotiator")` (configured via `model.config.ts`, defaults to `google/gemini-2.5-flash`).
+**Input:** `ownUser`, `otherUser`, `indexContext`, `seedAssessment`, `history`, `isFinalTurn?`, `isDiscoverer?`, `discoveryQuery?`
+**Output:** Negotiation turn with action (`propose`/`counter`/`accept`/`reject`), plus assessment (`fitScore`, `reasoning`, `suggestedRoles`)
+**Used by:** Negotiation Graph (`turn` node — the graph flips `currentSpeaker` each turn and invokes the same agent with the appropriate user's context).
 
-### 4.9 Negotiation Responder
+### 4.9 Negotiation Insights Generator
 
-**File:** `negotiation.responder.ts`
-**Role:** Acts as the candidate user's agent in bilateral negotiation, evaluating proposals and responding.
-**Model:** `google/gemini-2.5-flash`
-**Input:** Same shape as proposer
-**Output:** Same shape as proposer
-**Used by:** Negotiation Graph (turn node, when `currentSpeaker === "candidate"`)
+**File:** `negotiation/negotiation.insights.generator.ts`
+**Role:** Post-negotiation generator that synthesizes the full transcript into a short, presenter-ready summary of what was agreed, what was objected to, and where the match landed. Used by the opportunity presenter for post-negotiation cards (accepted/rejected/stalled).
+**Model:** `createModel("negotiationInsights")`.
 
 ### 4.10 Profile Generator
 
@@ -730,6 +747,14 @@ Agent names in trace events use kebab-case: `intent-inferrer`, `profile-generato
 
 Each graph node accumulates `agentTimings` (array of `{ name, durationMs }`) in its return state. These timings are aggregated by the ChatStreamer and included in the `debug_meta` event at the end of the response, providing per-agent performance visibility.
 
+**Negotiation events** (added 2026-04-17):
+
+- `negotiation_session_start` / `negotiation_session_end` — emitted by `negotiateCandidates` in `negotiation.graph.ts`, wrapping each per-candidate run. Carries `opportunityId`, `negotiationConversationId`, source/candidate user ids, `trigger` (`'orchestrator' | 'ambient'`), `startedAt`, and `durationMs` (on end).
+- `negotiation_turn` — emitted by the negotiation graph's `turnNode` after each successful turn. Carries `opportunityId`, `turnIndex`, `actor` (`'source' | 'candidate'`), `action` (`propose | accept | reject | counter | question`), `reasoning`, `message`, `suggestedRoles`, `durationMs`.
+- `negotiation_outcome` — emitted from `finalizeNode` on every terminal path (`accepted`, `rejected_stalled`, `waiting_for_agent`, `timed_out`, `turn_cap`). Carries `opportunityId`, `outcome`, `turnCount`, `reasoning`, `agreedRoles`.
+
+Consumers: the live TRACE panel uses these to render per-candidate negotiation nodes. `/debug/chat/:id` uses `debugMeta.orchestratorNegotiations.opportunityIds` (persisted from `negotiation_session_start` during the turn) to hydrate full negotiation history from `tasks` + `messages` + `opportunities`. Existing `agent_start/end` emissions in `negotiation.graph.ts` are retained for backward compatibility with the rolled-up `debugMeta.tools[].graphs[].agents[]` render path.
+
 ## 11. Model Configuration
 
 All LLM model settings are centralized in `packages/protocol/src/agents/model.config.ts`.
@@ -737,7 +762,8 @@ All LLM model settings are centralized in `packages/protocol/src/agents/model.co
 ### MODEL_CONFIG registry
 
 ```typescript
-export const MODEL_CONFIG = {
+// Excerpted from packages/protocol/src/shared/agent/model.config.ts
+const MODEL_CONFIG = {
   intentInferrer:       { model: "google/gemini-2.5-flash" },
   intentIndexer:        { model: "google/gemini-2.5-flash" },
   intentVerifier:       { model: "google/gemini-2.5-flash" },
@@ -749,13 +775,17 @@ export const MODEL_CONFIG = {
   lensInferrer:         { model: "google/gemini-2.5-flash" },
   opportunityEvaluator: { model: "google/gemini-2.5-flash" },
   opportunityPresenter: { model: "google/gemini-2.5-flash" },
-  negotiationProposer:  { model: "google/gemini-2.5-flash" },
-  negotiationResponder: { model: "google/gemini-2.5-flash" },
+  negotiator:           { model: "google/gemini-2.5-flash" },
+  negotiationInsights:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
   homeCategorizer:      { model: "google/gemini-2.5-flash" },
   suggestionGenerator:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
   chatTitleGenerator:   { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 32 },
   inviteGenerator:      { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 512 },
-  chat:                 { model: "google/gemini-3-pro-preview", maxTokens: 8192, reasoning: { effort: "low", exclude: true } },
+  chat: {
+    model: /* CHAT_MODEL env override, defaults to */ "google/gemini-3-pro-preview",
+    maxTokens: 8192,
+    reasoning: { effort: /* CHAT_REASONING_EFFORT env, defaults to */ "low", exclude: true },
+  },
 };
 ```
 
