@@ -159,8 +159,9 @@ export class ContactService {
 
   /**
    * Resolve contacts to user IDs without creating any memberships.
-   * Normalizes, filters non-human, deduplicates, looks up existing users,
-   * creates ghost users for unknowns, and enqueues enrichment for new ghosts.
+   * Normalizes, filters non-human, deduplicates by email, looks up existing users,
+   * and creates ghost users for unknowns. Does NOT enqueue enrichment — callers
+   * that apply further filtering (e.g. name-based dedup) should enqueue after filtering.
    *
    * @param ownerId - The requesting user (excluded from results)
    * @param contacts - Raw contact data (name, email)
@@ -223,13 +224,7 @@ export class ContactService {
       }
     }
 
-    const newGhostIdsArray = [...newGhostIds];
-    if (newGhostIdsArray.length > 0) {
-      await profileQueue.addEnrichUserJobBulk(newGhostIdsArray.map(id => ({ userId: id })));
-      logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsArray.length });
-    }
-
-    return { userIds, newGhostIds: newGhostIdsArray, skipped, details };
+    return { userIds, newGhostIds: [...newGhostIds], skipped, details };
   }
 
   /**
@@ -272,6 +267,15 @@ export class ContactService {
 
     await this.db.upsertContactMembershipBulk(ownerId, dedupedUserIds);
     await this.db.clearReverseOptOutBulk(ownerId, dedupedUserIds);
+
+    // Enqueue enrichment only for kept new ghosts (after dedup)
+    const newGhostIdsToEnrich = dedupResult.kept
+      .filter(d => d.isNew && resolved.newGhostIds.includes(d.userId))
+      .map(d => d.userId);
+    if (newGhostIdsToEnrich.length > 0) {
+      await profileQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id })));
+      logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
+    }
 
     const newCount = dedupResult.kept.filter(d => d.isNew).length;
     const result: ImportResult = {

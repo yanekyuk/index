@@ -4,6 +4,7 @@ import { ChatDatabaseAdapter, userDatabaseAdapter } from '../adapters/database.a
 import { getRedisClient } from '../adapters/cache.adapter';
 
 import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
+import { profileQueue } from '../queues/profile.queue';
 import type { ContactImporter, ImportResult } from '../types/integrations.types';
 import type { TelegramPrefs } from '../schemas/database.schema';
 import type { IntegrationConnection } from '../adapters/integration.adapter';
@@ -134,6 +135,15 @@ export class IntegrationService {
     }
 
     await this.db.addMembersBulkToIndex(networkId, dedupedUserIds);
+
+    // Enqueue enrichment only for kept new ghosts (after dedup)
+    const newGhostIdsToEnrich = dedupResult.kept
+      .filter(d => d.isNew && resolved.newGhostIds.includes(d.userId))
+      .map(d => d.userId);
+    if (newGhostIdsToEnrich.length > 0) {
+      await profileQueue.addEnrichUserJobBulk(newGhostIdsToEnrich.map(id => ({ userId: id })));
+      logger.info('[IntegrationService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsToEnrich.length });
+    }
 
     const newCount = dedupResult.kept.filter(d => d.isNew).length;
     return {
