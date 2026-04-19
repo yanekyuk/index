@@ -261,6 +261,30 @@ export default function Sidebar() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      
+
+      {/* Networks & Agent - above user dropdown */}
+      <nav className="flex-shrink-0 px-2 space-y-1 pb-2">
+        <button
+          onClick={() => navigate('/networks')}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+            isNetworksView ? 'bg-gray-100 text-black font-bold' : 'text-black font-medium hover:bg-gray-50'
+          }`}
+        >
+          <Network className="w-5 h-5" />
+          Networks
+        </button>
+        <button
+          onClick={() => navigate('/agent')}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+            isAgentsView ? 'bg-gray-100 text-black font-bold' : 'text-black font-medium hover:bg-gray-50'
+          }`}
+        >
+          <Bot className="w-5 h-5" />
+          Agent
+        </button>
+      </nav>
+
       {/* User Profile with Dropdown - always at bottom */}
       {user && (
         <div className="flex-shrink-0 px-4 py-4 relative" ref={userDropdownRef}>
@@ -288,17 +312,7 @@ export default function Sidebar() {
 
           {userDropdownOpen && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-gray-200 rounded-lg shadow-sm z-50 overflow-hidden">
-              {/* Nav items */}
               <div className="py-1.5">
-                <button
-                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
-                    isNetworksView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                  onClick={() => { setUserDropdownOpen(false); navigate('/networks'); }}
-                >
-                  <Network className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  Networks
-                </button>
                 <button
                   className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
                     isLibraryView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
@@ -316,15 +330,6 @@ export default function Sidebar() {
                 >
                   <UserIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   Profile
-                </button>
-                <button
-                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
-                    isAgentsView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                  onClick={() => { setUserDropdownOpen(false); navigate('/agent'); }}
-                >
-                  <Bot className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  Agent
                 </button>
               </div>
 
