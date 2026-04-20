@@ -22,6 +22,8 @@ export interface OpportunityJobData {
   networkIds?: string[];
   /** When set, run discovery on behalf of this contact user (introducer discovery). */
   contactUserId?: string;
+  /** When set (with job name 'negotiate_existing'), run negotiation for this existing opportunity. */
+  opportunityId?: string;
 }
 
 /** Minimal database interface for opportunity queue (used when deps provided in tests). */
@@ -124,14 +126,33 @@ export class OpportunityQueue {
   }
 
   /**
+   * Add a negotiate_existing job to run bilateral negotiation on an existing opportunity.
+   * @param data - opportunityId and userId that triggered the re-negotiation
+   */
+  async addNegotiateJob(data: { opportunityId: string; userId: string }): Promise<void> {
+    await this.queue.add(
+      'negotiate_existing',
+      { intentId: '', userId: data.userId, opportunityId: data.opportunityId },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: { age: 24 * 60 * 60 },
+      },
+    );
+  }
+
+  /**
    * Run the job handler for a given job name and payload. Used by the worker and by tests with injected deps.
-   * @param name - Job name (`discover_opportunities`)
+   * @param name - Job name (`discover_opportunities` or `negotiate_existing`)
    * @param data - Job payload
    */
   async processJob(name: string, data: OpportunityJobData): Promise<void> {
     switch (name) {
       case 'discover_opportunities':
         await this.handleDiscoverOpportunities(data);
+        break;
+      case 'negotiate_existing':
+        await this.handleNegotiateExisting(data);
         break;
       default:
         this.queueLogger.warn(`[OpportunityProcessor] Unknown job name: ${name}`);
@@ -260,6 +281,7 @@ export class OpportunityQueue {
         undefined,
         this.deps?.negotiationGraph,
         this.deps?.agentDispatcher,
+        async (opportunityId: string, userId: string) => this.addNegotiateJob({ opportunityId, userId }),
       ).createGraph();
       const result = await opportunityGraph.invoke(invokeOpts);
 
@@ -289,6 +311,56 @@ export class OpportunityQueue {
       });
     }
     this.logger.verbose('[OpportunityDiscovery] Discovery complete for intent', { intentId, userId });
+  }
+
+  /**
+   * Handle a negotiate_existing job: load the existing opportunity by ID and run bilateral negotiation.
+   * Used after introducer approval to trigger the normal negotiation flow.
+   */
+  private async handleNegotiateExisting(data: OpportunityJobData): Promise<void> {
+    const { opportunityId, userId } = data;
+    if (!opportunityId) {
+      this.logger.warn('[NegotiateExisting] Missing opportunityId, skipping', { userId });
+      return;
+    }
+
+    this.logger.info('[NegotiateExisting] Starting negotiation for existing opportunity', { opportunityId, userId });
+
+    const embedder: Embedder = new EmbedderAdapter();
+    const cache: HydeCache = new RedisCacheAdapter();
+    const inferrer = new LensInferrer();
+    const generator = new HydeGenerator();
+    const hydeGraph = new HydeGraphFactory(
+      this.graphDb as HydeGraphDatabase,
+      embedder,
+      cache,
+      inferrer,
+      generator
+    ).createGraph();
+
+    const opportunityGraph = new OpportunityGraphFactory(
+      this.graphDb as OpportunityGraphDatabase,
+      embedder,
+      hydeGraph,
+      undefined,
+      undefined,
+      this.deps?.negotiationGraph,
+      this.deps?.agentDispatcher,
+      async (oid: string, uid: string) => this.addNegotiateJob({ opportunityId: oid, userId: uid }),
+    ).createGraph();
+
+    try {
+      await opportunityGraph.invoke({
+        userId: userId as Id<'users'>,
+        operationMode: 'negotiate_existing',
+        opportunityId,
+        options: {},
+      });
+      this.logger.info('[NegotiateExisting] Negotiation complete', { opportunityId, userId });
+    } catch (err) {
+      this.logger.error('[NegotiateExisting] Graph failed', { opportunityId, userId, error: err });
+      throw err;
+    }
   }
 }
 
