@@ -4,7 +4,7 @@
 
 **Goal:** Prevent negotiation from running automatically for introducer-pattern opportunities; instead, gate negotiation behind an explicit introducer approval action.
 
-**Architecture:** Add `approved?: boolean` to `OpportunityActor`; per-opportunity check in `negotiateNode` skips opportunities whose introducer hasn't approved; new `approve_introduction` graph mode sets `approved: true` and enqueues a `negotiate_existing` job; new `negotiate_existing` graph mode loads an existing opportunity by ID and runs the negotiate node normally.
+**Architecture:** Add `approved?: boolean` to `OpportunityActor`; per-opportunity check in `negotiateNode` skips opportunities whose introducer hasn't approved; new `approve_introduction` graph mode sets `approved: true` and enqueues a `negotiate_existing` job; new `negotiate_existing` graph mode loads an existing opportunity by ID, runs the negotiate node, and — if accepted — queues notifications for non-introducer actors only (introducer is excluded).
 
 **Tech Stack:** TypeScript, LangGraph (`@langchain/langgraph`), Drizzle ORM, BullMQ, Bun test
 
@@ -385,8 +385,10 @@ git -c commit.gpgsign=false commit -m "feat(opportunity): gate negotiate node �
 In `opportunity.graph.spec.ts`, add:
 
 ```typescript
-test('negotiate_existing mode runs negotiation for a specific existing opportunity', async () => {
+test('negotiate_existing mode runs negotiation for a specific existing opportunity and notifies non-introducer actors', async () => {
   const negotiationInvocations: Array<{ sourceUser: { id: string }; candidateUser: { id: string } }> = [];
+  const notifiedUserIds: string[] = [];
+
   const mockNegotiationGraph: NegotiationGraphLike = {
     invoke: mock((input) => {
       negotiationInvocations.push({ sourceUser: input.sourceUser, candidateUser: input.candidateUser });
@@ -417,6 +419,9 @@ test('negotiate_existing mode runs negotiation for a specific existing opportuni
     negotiationGraph: mockNegotiationGraph,
     getOpportunity: () => Promise.resolve(existingOpp),
     updateOpportunityActorApproval: () => Promise.resolve(null),
+    queueNotification: async (opportunityId: string, recipientId: string) => {
+      notifiedUserIds.push(recipientId);
+    },
   });
 
   await compiledGraph.invoke({
@@ -428,6 +433,10 @@ test('negotiate_existing mode runs negotiation for a specific existing opportuni
   expect(negotiationInvocations).toHaveLength(1);
   expect(negotiationInvocations[0].sourceUser.id).toBe('target-user');
   expect(negotiationInvocations[0].candidateUser.id).toBe('candidate-user');
+
+  // Notifications sent to non-introducer actors only
+  expect(notifiedUserIds.sort()).toEqual(['candidate-user', 'target-user']);
+  expect(notifiedUserIds).not.toContain('introducer-user');
 });
 ```
 
@@ -567,7 +576,7 @@ const negotiateExistingNode = async (state: typeof OpportunityGraphState.State) 
     if (prompt) indexContextMap.set(candidateActor.networkId as string, prompt);
   }
 
-  await negotiateCandidates(
+  const acceptedResults = await negotiateCandidates(
     this.negotiationGraph,
     sourceUser,
     [candidate],
@@ -579,6 +588,16 @@ const negotiateExistingNode = async (state: typeof OpportunityGraphState.State) 
       trigger: 'ambient',
     },
   );
+
+  // Notify non-introducer actors if negotiation accepted.
+  // Introducer is intentionally excluded — they approved the introduction
+  // but are not a party to the connection itself.
+  if (acceptedResults.length > 0 && this.queueNotification) {
+    const nonIntroducerActors = actors.filter(a => a.role !== 'introducer');
+    for (const actor of nonIntroducerActors) {
+      await this.queueNotification(opp.id as string, actor.userId as string, 'high');
+    }
+  }
 
   return {};
 };
