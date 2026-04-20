@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import { _resetForTesting, handleOpportunityPickup } from '../index.js';
+import { _resetForTesting, handleOpportunityBatch } from '../index.js';
 import type { OpenClawPluginApi, SubagentRunOptions } from '../plugin-api.js';
 
 interface FakeApi {
@@ -46,10 +46,8 @@ const BASE_URL = 'http://localhost:3001';
 const AGENT_ID = 'agent-123';
 const API_KEY = 'test-api-key';
 
-const SAMPLE_PAYLOAD = {
+const SAMPLE_OPPORTUNITY = {
   opportunityId: 'opp-abc',
-  reservationToken: 'res-token-xyz',
-  reservationExpiresAt: '2026-04-16T00:00:00.000Z',
   rendered: {
     headline: 'Great match found',
     personalizedSummary: 'Alice is looking for a TypeScript engineer.',
@@ -58,7 +56,11 @@ const SAMPLE_PAYLOAD = {
   },
 };
 
-describe('handleOpportunityPickup', () => {
+const SAMPLE_BATCH_RESPONSE = {
+  opportunities: [SAMPLE_OPPORTUNITY],
+};
+
+describe('handleOpportunityBatch', () => {
   let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
@@ -71,42 +73,38 @@ describe('handleOpportunityPickup', () => {
     _resetForTesting();
   });
 
-  test('returns false on 204 — no dispatch, no confirm', async () => {
+  test('returns false when opportunities array is empty', async () => {
     const fetchCalls: string[] = [];
     global.fetch = mock(async (url: string | URL | Request) => {
       fetchCalls.push(String(url));
-      return new Response(null, { status: 204 });
+      return new Response(JSON.stringify({ opportunities: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityPickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
-    // Only the pickup call, no confirm
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]).toContain('/opportunities/pickup');
-    expect(fake.logger.warn).not.toHaveBeenCalled();
+    expect(fetchCalls[0]).toContain('/opportunities/pending');
   });
 
-  test('on 200, dispatches delivery with rendered body and headline, then confirms', async () => {
+  test('on 200 with opportunities, launches evaluator subagent with deliver: true', async () => {
     const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
     global.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
       const urlStr = String(url);
       fetchCalls.push({ url: urlStr, init });
-
-      if (urlStr.includes('/opportunities/pickup')) {
-        return new Response(JSON.stringify(SAMPLE_PAYLOAD), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      // confirm endpoint
-      return new Response(null, { status: 200 });
+      return new Response(JSON.stringify(SAMPLE_BATCH_RESPONSE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityPickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
     expect(result).toBe(true);
 
@@ -115,17 +113,14 @@ describe('handleOpportunityPickup', () => {
     const call = fake.subagentCalls[0];
     expect(call.deliver).toBe(true);
 
-    // Message should contain the headline and body content
-    expect(call.message).toContain(SAMPLE_PAYLOAD.rendered.headline);
-    expect(call.message).toContain(SAMPLE_PAYLOAD.rendered.personalizedSummary);
-    expect(call.message).toContain(SAMPLE_PAYLOAD.rendered.suggestedAction);
-    expect(call.message).toContain(SAMPLE_PAYLOAD.rendered.narratorRemark);
+    // Message should contain opportunity content
+    expect(call.message).toContain(SAMPLE_OPPORTUNITY.rendered.headline);
+    expect(call.message).toContain(SAMPLE_OPPORTUNITY.rendered.personalizedSummary);
+    expect(call.message).toContain(SAMPLE_OPPORTUNITY.rendered.suggestedAction);
+    expect(call.message).toContain(SAMPLE_OPPORTUNITY.rendered.narratorRemark);
 
-    // Confirm POST should have been made
-    expect(fetchCalls).toHaveLength(2);
-    const confirmCall = fetchCalls[1];
-    expect(confirmCall.url).toContain(`/opportunities/${SAMPLE_PAYLOAD.opportunityId}/delivered`);
-    expect(confirmCall.init?.method).toBe('POST');
+    // Only the pending fetch call — no confirm call
+    expect(fetchCalls).toHaveLength(1);
   });
 
   test('on non-2xx error (e.g. 500), logs warn, returns false, no dispatch', async () => {
@@ -134,7 +129,7 @@ describe('handleOpportunityPickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityPickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -144,46 +139,65 @@ describe('handleOpportunityPickup', () => {
   });
 
   test('dispatches with correct sessionKey and idempotencyKey format', async () => {
-    global.fetch = mock(async (url: string | URL | Request) => {
-      const urlStr = String(url);
-      if (urlStr.includes('/opportunities/pickup')) {
-        return new Response(JSON.stringify(SAMPLE_PAYLOAD), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(null, { status: 200 });
+    global.fetch = mock(async () => {
+      return new Response(JSON.stringify(SAMPLE_BATCH_RESPONSE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityPickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
     const call = fake.subagentCalls[0];
     expect(call.sessionKey).toBe('agent:main:telegram:direct:69340471');
-    expect(call.idempotencyKey).toBe(
-      `index:delivery:opportunity:${SAMPLE_PAYLOAD.opportunityId}:${SAMPLE_PAYLOAD.reservationToken}`,
-    );
+    expect(call.idempotencyKey).toMatch(/^index:delivery:opportunity-batch:agent-123:[a-z0-9]+$/);
   });
 
-  test('confirm POST includes reservationToken in body', async () => {
-    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
-    global.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
-      const urlStr = String(url);
-      fetchCalls.push({ url: urlStr, init });
-      if (urlStr.includes('/opportunities/pickup')) {
-        return new Response(JSON.stringify(SAMPLE_PAYLOAD), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(null, { status: 200 });
+  test('returns false and warns when delivery routing not configured', async () => {
+    global.fetch = mock(async () => {
+      return new Response(JSON.stringify(SAMPLE_BATCH_RESPONSE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityPickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    // Override pluginConfig to remove delivery routing
+    (fake.api as OpenClawPluginApi).pluginConfig = {};
+    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
-    const confirmCall = fetchCalls[1];
-    const confirmBody = JSON.parse(confirmCall.init?.body as string);
-    expect(confirmBody.reservationToken).toBe(SAMPLE_PAYLOAD.reservationToken);
+    expect(result).toBe(false);
+    expect(fake.subagentCalls).toHaveLength(0);
+    expect(fake.logger.warn).toHaveBeenCalled();
+    const warnArgs = fake.logger.warn.mock.calls[0] as string[];
+    expect(warnArgs[0]).toContain('delivery routing not configured');
+  });
+
+  test('same batch of IDs always produces same idempotencyKey', async () => {
+    const batchResponse = {
+      opportunities: [
+        { ...SAMPLE_OPPORTUNITY, opportunityId: 'opp-1' },
+        { ...SAMPLE_OPPORTUNITY, opportunityId: 'opp-2' },
+      ],
+    };
+
+    let callCount = 0;
+    global.fetch = mock(async () => {
+      callCount++;
+      return new Response(JSON.stringify(batchResponse), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const fake1 = buildFakeApi();
+    await handleOpportunityBatch(fake1.api, BASE_URL, AGENT_ID, API_KEY);
+
+    const fake2 = buildFakeApi();
+    await handleOpportunityBatch(fake2.api, BASE_URL, AGENT_ID, API_KEY);
+
+    expect(fake1.subagentCalls[0].idempotencyKey).toBe(fake2.subagentCalls[0].idempotencyKey);
+    expect(callCount).toBe(2);
   });
 });
