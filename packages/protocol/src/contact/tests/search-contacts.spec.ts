@@ -15,6 +15,7 @@ function makeContext(userId = "user-123"): ResolvedToolContext {
 
 interface CapturedTool {
   name: string;
+  querySchema: z.ZodType;
   handler: (input: { context: ResolvedToolContext; query: unknown }) => Promise<string>;
 }
 
@@ -26,7 +27,7 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
     querySchema: z.ZodType;
     handler: (input: { context: ResolvedToolContext; query: unknown }) => Promise<string>;
   }) => {
-    toolDefs.push({ name: def.name, handler: def.handler });
+    toolDefs.push({ name: def.name, querySchema: def.querySchema, handler: def.handler });
     return def;
   };
   createContactTools(defineTool as any, deps);
@@ -34,11 +35,21 @@ function captureTools(deps: ToolDeps): CapturedTool[] {
 }
 
 describe("search_contacts", () => {
-  test("forwards ownerId + q + limit and returns rows", async () => {
-    let captured: { ownerId: string; q: string; limit: number } | null = null;
+  test("accepts query and rejects legacy q", () => {
+    const tools = captureTools({
+      contactService: { searchContacts: async () => [] },
+    } as unknown as ToolDeps);
+    const tool = tools.find((t) => t.name === "search_contacts")!;
+
+    expect(tool.querySchema.safeParse({ query: "jane" }).success).toBe(true);
+    expect(tool.querySchema.safeParse({ q: "jane" }).success).toBe(false);
+  });
+
+  test("forwards ownerId + query + limit and returns rows", async () => {
+    let captured: { ownerId: string; query: string; limit: number } | null = null;
     const contactService = {
-      searchContacts: async (ownerId: string, q: string, limit: number) => {
-        captured = { ownerId, q, limit };
+      searchContacts: async (ownerId: string, query: string, limit: number) => {
+        captured = { ownerId, query, limit };
         return [
           {
             contactId: "cid-1",
@@ -54,10 +65,10 @@ describe("search_contacts", () => {
     const tool = tools.find((t) => t.name === "search_contacts")!;
     const result = await tool.handler({
       context: makeContext("alice"),
-      query: { q: "jane", limit: 10 },
+      query: { query: "jane", limit: 10 },
     });
     const parsed = JSON.parse(result);
-    expect(captured).toEqual({ ownerId: "alice", q: "jane", limit: 10 });
+    expect(captured).toEqual({ ownerId: "alice", query: "jane", limit: 10 });
     expect(parsed.success).toBe(true);
     expect(parsed.data.count).toBe(1);
     expect(parsed.data.contacts[0].email).toBe("jane@example.com");
@@ -66,14 +77,14 @@ describe("search_contacts", () => {
   test("defaults limit to 25", async () => {
     let capturedLimit: number | null = null;
     const contactService = {
-      searchContacts: async (_ownerId: string, _q: string, limit: number) => {
+      searchContacts: async (_ownerId: string, _query: string, limit: number) => {
         capturedLimit = limit;
         return [];
       },
     };
     const tools = captureTools({ contactService } as unknown as ToolDeps);
     const tool = tools.find((t) => t.name === "search_contacts")!;
-    await tool.handler({ context: makeContext(), query: { q: "anything" } });
+    await tool.handler({ context: makeContext(), query: { query: "anything" } });
     expect(capturedLimit).toBe(25);
   });
 });
