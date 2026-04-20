@@ -318,15 +318,25 @@ export async function handleOpportunityBatch(
 ): Promise<boolean> {
   const pendingUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pending`;
 
-  const res = await fetch(pendingUrl, {
-    method: 'GET',
-    headers: { 'x-api-key': apiKey },
-    signal: AbortSignal.timeout(15_000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(pendingUrl, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Opportunity pending fetch errored: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    increaseBackoff(api);
+    return false;
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     api.logger.warn(`Opportunity pending fetch failed: ${res.status} ${text}`);
+    increaseBackoff(api);
     return false;
   }
 
