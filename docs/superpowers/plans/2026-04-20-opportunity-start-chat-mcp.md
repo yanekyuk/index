@@ -94,142 +94,163 @@ git commit -m "feat(opportunity): expose getOrCreateDM on OpportunityGraphDataba
 ### Task 3: Write failing test for `update` node `accepted` path
 
 **Files:**
-- Modify: `packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts`
+- Create: `packages/protocol/src/opportunity/tests/opportunity.graph.update.spec.ts`
 
-- [ ] **Step 1: Add test for `accepted` path calling `getOrCreateDM`**
+> **Note:** Do NOT add to the existing `opportunity.graph.spec.ts` — it has pre-existing import bugs (`test` and `spyOn` not imported). Write a new standalone file following the pattern of `introducer-gating-lifecycle.spec.ts`.
+>
+> **Note:** Protocol tests must be run from the `backend/` directory so that `.env.test` (which contains `OPENROUTER_API_KEY`) is resolved. All `bun test` commands for protocol tests in this plan run from `backend/`.
 
-Append this `describe` block to `opportunity.graph.spec.ts` (after the existing test blocks):
+- [ ] **Step 1: Create the new spec file**
+
+Create `packages/protocol/src/opportunity/tests/opportunity.graph.update.spec.ts`:
 
 ```typescript
-describe('updateNode — accepted status', () => {
-  const userId = 'u0000000-0000-4000-8000-000000000001' as Id<'users'>;
-  const counterpartId = 'u0000000-0000-4000-8000-000000000002' as Id<'users'>;
-  const opportunityId = 'op000000-0000-4000-8000-000000000001';
-  const conversationId = 'conv0000-0000-4000-8000-000000000001';
-  const networkId = 'net00000-0000-4000-8000-000000000001' as Id<'networks'>;
+import { config } from 'dotenv';
+config({ path: '.env.test' });
 
-  const mockOpportunity = {
-    id: opportunityId,
-    status: 'pending',
-    actors: [
-      { userId, role: 'party', networkId },
-      { userId: counterpartId, role: 'party', networkId },
-    ],
-    detection: { source: 'manual' },
-    interpretation: { reasoning: '', confidence: 1 },
-    context: {},
-    confidence: 1,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    expiresAt: null,
-  } as unknown as Opportunity;
+import { describe, test, expect } from 'bun:test';
+import { OpportunityGraphFactory } from '../opportunity.graph.js';
+import type { Id } from '../../types/common.types.js';
+import type {
+  OpportunityGraphDatabase,
+  Opportunity,
+} from '../../shared/interfaces/database.interface.js';
+import type { Embedder } from '../../shared/interfaces/embedder.interface.js';
+import type { OpportunityEvaluatorLike } from '../opportunity.graph.js';
 
+const mockEvaluator: OpportunityEvaluatorLike = {
+  invokeEntityBundle: async () => [],
+};
+
+const dummyEmbedder = {
+  generate: async () => [],
+  search: async () => [],
+  searchWithHydeEmbeddings: async () => [],
+  searchWithProfileEmbedding: async () => [],
+} as unknown as Embedder;
+
+const dummyHyde = {
+  invoke: async () => ({ hydeEmbeddings: { mirror: [], reciprocal: [] } }),
+};
+
+function buildDb(overrides: Partial<OpportunityGraphDatabase>): OpportunityGraphDatabase {
+  const base: OpportunityGraphDatabase = {
+    getProfile: async () => null,
+    createOpportunity: async (data) => ({
+      ...data,
+      id: 'opp-1',
+      status: 'pending' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    }),
+    opportunityExistsBetweenActors: async () => false,
+    getAcceptedOpportunitiesBetweenActors: async () => [],
+    getOpportunityBetweenActors: async () => null,
+    findOverlappingOpportunities: async () => [],
+    getUserIndexIds: async () => [] as Id<'networks'>[],
+    getNetworkMemberships: async () => [],
+    getActiveIntents: async () => [],
+    getNetworkIdsForIntent: async () => [],
+    getNetwork: async () => null,
+    getNetworkMemberCount: async () => 0,
+    getIntentIndexScores: async () => [],
+    getNetworkMemberContext: async () => null,
+    getOpportunity: async () => null,
+    getOpportunitiesForUser: async () => [],
+    updateOpportunityStatus: async () => null,
+    updateOpportunityActorApproval: async () => null,
+    isNetworkMember: async () => true,
+    isIndexOwner: async () => false,
+    getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
+    getOrCreateDM: async () => ({ id: 'conv-default' }),
+    getIntent: async () => null,
+  };
+  return { ...base, ...overrides };
+}
+
+const USER_ID = 'u0000000-0000-4000-8000-000000000001' as Id<'users'>;
+const COUNTERPART_ID = 'u0000000-0000-4000-8000-000000000002' as Id<'users'>;
+const OPP_ID = 'op000000-0000-4000-8000-000000000001';
+const CONV_ID = 'conv0000-0000-4000-8000-000000000001';
+const NET_ID = 'net00000-0000-4000-8000-000000000001' as Id<'networks'>;
+
+const mockOpportunity = {
+  id: OPP_ID,
+  status: 'pending',
+  actors: [
+    { userId: USER_ID, role: 'party', networkId: NET_ID },
+    { userId: COUNTERPART_ID, role: 'party', networkId: NET_ID },
+  ],
+  detection: { source: 'manual' },
+  interpretation: { reasoning: '', confidence: 1 },
+  context: {},
+  confidence: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  expiresAt: null,
+} as unknown as Opportunity;
+
+describe('opportunity graph — update node (accepted)', () => {
   test('calls getOrCreateDM with userId and counterpart, returns conversationId', async () => {
-    let getOrCreateDMCalled = false;
-    let getOrCreateDMArgs: [string, string] | null = null;
+    let dmCalledWith: [string, string] | null = null;
 
-    const factory = createMockGraph({
-      getOpportunity: mockOpportunity,
+    const db = buildDb({
+      getOpportunity: async () => mockOpportunity,
+      updateOpportunityStatus: async () => null,
+      getOrCreateDM: async (a, b) => {
+        dmCalledWith = [a, b];
+        return { id: CONV_ID };
+      },
     });
 
-    // Override getOrCreateDM on the mock after factory creation is not possible
-    // directly — so we override via the deps approach: pass overrides
-    const overriddenDb: OpportunityGraphDatabase = {
-      ...factory['database' as never],
-      getOpportunity: () => Promise.resolve(mockOpportunity),
-      updateOpportunityStatus: () => Promise.resolve(null),
-      getOrCreateDM: (a: string, b: string) => {
-        getOrCreateDMCalled = true;
-        getOrCreateDMArgs = [a, b];
-        return Promise.resolve({ id: conversationId });
-      },
-    };
-
-    const overriddenFactory = new OpportunityGraphFactory(
-      overriddenDb,
-      { generate: () => Promise.resolve([]), search: () => Promise.resolve([]), searchWithHydeEmbeddings: () => Promise.resolve([]), searchWithProfileEmbedding: () => Promise.resolve([]) } as unknown as Embedder,
-      { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: [], reciprocal: [] } }) },
-      createMockEvaluator(),
-      async () => undefined,
-    );
-
-    const graph = overriddenFactory.createGraph();
+    const graph = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined).createGraph();
     const result = await graph.invoke({
-      userId,
-      operationMode: 'update',
-      opportunityId,
+      userId: USER_ID,
+      operationMode: 'update' as const,
+      opportunityId: OPP_ID,
       newStatus: 'accepted',
     });
 
     expect(result.mutationResult?.success).toBe(true);
-    expect(result.mutationResult?.conversationId).toBe(conversationId);
-    expect(getOrCreateDMCalled).toBe(true);
-    expect(getOrCreateDMArgs).toEqual([userId, counterpartId]);
+    expect(result.mutationResult?.conversationId).toBe(CONV_ID);
+    expect(dmCalledWith).toEqual([USER_ID, COUNTERPART_ID]);
   });
 
   test('does NOT call getOrCreateDM when newStatus is rejected', async () => {
-    let getOrCreateDMCalled = false;
+    let dmCalled = false;
 
-    const overriddenDb: OpportunityGraphDatabase = {
-      ...({} as OpportunityGraphDatabase),
-      getOpportunity: () => Promise.resolve(mockOpportunity),
-      updateOpportunityStatus: () => Promise.resolve(null),
-      getOrCreateDM: () => {
-        getOrCreateDMCalled = true;
-        return Promise.resolve({ id: conversationId });
+    const db = buildDb({
+      getOpportunity: async () => mockOpportunity,
+      updateOpportunityStatus: async () => null,
+      getOrCreateDM: async () => {
+        dmCalled = true;
+        return { id: CONV_ID };
       },
-      getUserIndexIds: () => Promise.resolve([networkId]),
-      getNetworkMemberships: async () => [],
-      getActiveIntents: async () => [],
-      getNetwork: async () => ({ id: networkId, title: 'Test' }),
-      getNetworkMemberCount: async () => 2,
-      getNetworkIdsForIntent: async () => [],
-      getIntentIndexScores: async () => [],
-      getNetworkMemberContext: async () => null,
-      getProfile: async () => null,
-      createOpportunity: async (data) => ({ ...data, id: 'opp-1', status: 'pending', createdAt: new Date(), updatedAt: new Date(), expiresAt: null }),
-      opportunityExistsBetweenActors: async () => false,
-      getOpportunityBetweenActors: async () => null,
-      findOverlappingOpportunities: async () => [],
-      getAcceptedOpportunitiesBetweenActors: async () => [],
-      getOpportunitiesForUser: async () => [],
-      updateOpportunityActorApproval: async () => null,
-      isNetworkMember: async () => true,
-      isIndexOwner: async () => false,
-      getUser: async (id) => ({ id, name: 'Test', email: 'test@example.com' }),
-      getIntent: async () => null,
-    } as unknown as OpportunityGraphDatabase;
+    });
 
-    const overriddenFactory = new OpportunityGraphFactory(
-      overriddenDb,
-      { generate: () => Promise.resolve([]), search: () => Promise.resolve([]), searchWithHydeEmbeddings: () => Promise.resolve([]), searchWithProfileEmbedding: () => Promise.resolve([]) } as unknown as Embedder,
-      { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: [], reciprocal: [] } }) },
-      createMockEvaluator(),
-      async () => undefined,
-    );
-
-    const graph = overriddenFactory.createGraph();
+    const graph = new OpportunityGraphFactory(db, dummyEmbedder, dummyHyde, mockEvaluator, async () => undefined).createGraph();
     const result = await graph.invoke({
-      userId,
-      operationMode: 'update',
-      opportunityId,
+      userId: USER_ID,
+      operationMode: 'update' as const,
+      opportunityId: OPP_ID,
       newStatus: 'rejected',
     });
 
     expect(result.mutationResult?.success).toBe(true);
     expect(result.mutationResult?.conversationId).toBeUndefined();
-    expect(getOrCreateDMCalled).toBe(false);
+    expect(dmCalled).toBe(false);
   });
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify they fail (run from `backend/` directory)**
 
 ```bash
-cd packages/protocol && bun test src/opportunity/tests/opportunity.graph.spec.ts 2>&1 | tail -20
+cd backend && bun test ../packages/protocol/src/opportunity/tests/opportunity.graph.update.spec.ts 2>&1 | tail -15
 ```
 
-Expected: both new tests fail — `getOrCreateDM` is not a method / `conversationId` is undefined.
+Expected: both new tests fail — `getOrCreateDM` is not a property on `OpportunityGraphDatabase` / `conversationId` is undefined.
 
 ---
 
@@ -269,18 +290,18 @@ In `opportunity.graph.ts`, replace lines 2756–2767 (from `await this.database.
           };
 ```
 
-- [ ] **Step 2: Run the new tests**
+- [ ] **Step 2: Run the new tests (from `backend/` directory)**
 
 ```bash
-cd packages/protocol && bun test src/opportunity/tests/opportunity.graph.spec.ts 2>&1 | tail -20
+cd backend && bun test ../packages/protocol/src/opportunity/tests/opportunity.graph.update.spec.ts 2>&1 | tail -15
 ```
 
 Expected: both new tests pass.
 
-- [ ] **Step 3: Run the full opportunity graph spec to check for regressions**
+- [ ] **Step 3: Run related protocol tests to check for regressions (from `backend/` directory)**
 
 ```bash
-cd packages/protocol && bun test src/opportunity/tests/ 2>&1 | tail -20
+cd backend && bun test ../packages/protocol/src/opportunity/tests/introducer-gating-lifecycle.spec.ts ../packages/protocol/src/opportunity/tests/opportunity.graph.update.spec.ts 2>&1 | tail -15
 ```
 
 Expected: all tests pass.
@@ -297,7 +318,7 @@ Expected: no errors.
 
 ```bash
 git add packages/protocol/src/opportunity/opportunity.graph.ts \
-        packages/protocol/src/opportunity/tests/opportunity.graph.spec.ts
+        packages/protocol/src/opportunity/tests/opportunity.graph.update.spec.ts
 git commit -m "feat(opportunity): call getOrCreateDM when accepting opportunity in graph update node"
 ```
 
