@@ -226,7 +226,7 @@ export class OpportunityDeliveryService {
   async commitDelivery(
     opportunityId: string,
     userId: string,
-    agentId: string,
+    agentId: string | null,
   ): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
@@ -256,17 +256,26 @@ export class OpportunityDeliveryService {
 
     if (existing.length > 0) return 'already_delivered';
 
-    await db.insert(opportunityDeliveries).values({
-      opportunityId,
-      userId,
-      agentId,
-      channel: CHANNEL,
-      trigger: TRIGGER_PENDING,
-      deliveredAtStatus: opp.status,
-      reservationToken: randomUUID(),
-      reservedAt: new Date(),
-      deliveredAt: new Date(),
-    });
+    try {
+      await db.insert(opportunityDeliveries).values({
+        opportunityId,
+        userId,
+        agentId,
+        channel: CHANNEL,
+        trigger: TRIGGER_PENDING,
+        deliveredAtStatus: opp.status,
+        reservationToken: randomUUID(),
+        reservedAt: new Date(),
+        deliveredAt: new Date(),
+      });
+    } catch (err) {
+      // Unique constraint violation — concurrent call already committed this delivery
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('unique') || msg.includes('duplicate')) {
+        return 'already_delivered';
+      }
+      throw err;
+    }
 
     return 'confirmed';
   }
