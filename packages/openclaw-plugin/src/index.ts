@@ -357,20 +357,29 @@ export async function handleOpportunityBatch(
 
   const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
 
-  await api.runtime.subagent.run({
-    sessionKey,
-    idempotencyKey: `index:delivery:opportunity-batch:${agentId}:${batchHash}`,
-    message: opportunityEvaluatorPrompt(
-      body.opportunities.map((o) => ({
-        opportunityId: o.opportunityId,
-        headline: o.rendered.headline,
-        personalizedSummary: o.rendered.personalizedSummary,
-        suggestedAction: o.rendered.suggestedAction,
-        narratorRemark: o.rendered.narratorRemark,
-      })),
-    ),
-    deliver: true,
-  });
+  try {
+    await api.runtime.subagent.run({
+      sessionKey,
+      idempotencyKey: `index:delivery:opportunity-batch:${agentId}:${batchHash}`,
+      message: opportunityEvaluatorPrompt(
+        body.opportunities.map((o) => ({
+          opportunityId: o.opportunityId,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+        })),
+      ),
+      deliver: true,
+    });
+  } catch (err) {
+    // Subagent dispatch failed — swallow so the poll loop doesn't escalate backoff
+    // on a runtime-side issue. The same batch will retry on the next tick.
+    api.logger.warn(
+      `Opportunity batch subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
 
   api.logger.info(
     `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) for evaluation`,
@@ -475,7 +484,7 @@ function hashOpportunityBatch(ids: string[]): string {
   for (let i = 0; i < str.length; i++) {
     h = Math.imul(31, h) + str.charCodeAt(i) | 0;
   }
-  return Math.abs(h).toString(36);
+  return (h >>> 0).toString(36);
 }
 
 function readConfig(api: OpenClawPluginApi, key: string): string {

@@ -269,9 +269,8 @@ export class OpportunityDeliveryService {
         deliveredAt: new Date(),
       });
     } catch (err) {
-      // Unique constraint violation — concurrent call already committed this delivery
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('unique') || msg.includes('duplicate')) {
+      // Postgres unique_violation (23505) — a concurrent call already committed this delivery.
+      if ((err as { code?: string }).code === '23505') {
         return 'already_delivered';
       }
       throw err;
