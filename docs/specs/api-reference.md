@@ -2520,7 +2520,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_index_membership` | Index | Remove a member from an index |
 | `create_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with filters |
-| `update_opportunity` | Opportunity | Accept or reject an opportunity |
+| `update_opportunity` | Opportunity | Accept or reject an opportunity. Accepting returns a `conversationId` (opens a DM between both parties) |
 | `list_contacts` | Contact | List user's contacts |
 | `add_contact` | Contact | Add a contact by email |
 | `remove_contact` | Contact | Remove a contact |
