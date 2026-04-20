@@ -2614,6 +2614,13 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
+  async updateOpportunityActorApproval(
+    id: string,
+    introducerUserId: string,
+    approved: boolean,
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
+  }
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
@@ -3725,6 +3732,26 @@ export class OpportunityDatabaseAdapter {
     const [row] = await db
       .update(opportunities)
       .set({ status, updatedAt: new Date() })
+      .where(eq(opportunities.id, id))
+      .returning();
+    return row ? toOpportunityRow(row) : null;
+  }
+
+  async updateOpportunityActorApproval(
+    id: string,
+    introducerUserId: string,
+    approved: boolean,
+  ): Promise<OpportunityRow | null> {
+    const existing = await this.getOpportunity(id);
+    if (!existing) return null;
+    const updatedActors = (existing.actors as schema.OpportunityActor[]).map((actor) =>
+      actor.role === 'introducer' && actor.userId === introducerUserId
+        ? { ...actor, approved }
+        : actor,
+    );
+    const [row] = await db
+      .update(opportunities)
+      .set({ actors: updatedActors, updatedAt: new Date() })
       .where(eq(opportunities.id, id))
       .returning();
     return row ? toOpportunityRow(row) : null;
