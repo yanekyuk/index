@@ -9,9 +9,22 @@ import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportu
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { Opportunity } from "../shared/interfaces/database.interface.js";
+import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
+
+/**
+ * Statuses for which `update_opportunity` must refuse mutations.
+ * - `accepted` / `rejected` / `expired`: terminal outcomes.
+ * - `negotiating`: an async negotiation graph is actively writing this row;
+ *   a concurrent user/agent override would race with it.
+ */
+const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
+  "accepted",
+  "rejected",
+  "expired",
+  "negotiating",
+]);
 
 /** Maximum number of opportunity cards to show per chat response. */
 const CHAT_DISPLAY_LIMIT = 3;
@@ -1066,14 +1079,30 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Valid opportunityId required.");
       }
 
+      // Always fetch the opportunity — needed for actor guard and state machine
+      const opportunity = await systemDb.getOpportunity(opportunityId);
+      if (!opportunity) {
+        return error("Opportunity not found.");
+      }
+
+      // Actor guard: caller must be a party to the opportunity
+      const isActor = opportunity.actors?.some((a) => a.userId === context.userId);
+      if (!isActor) {
+        return error("Opportunity not found.");
+      }
+
+      // Terminal-state and in-flight-negotiation guard.
+      // Not a full state-machine: the Zod enum already constrains the target status,
+      // and source statuses like `draft` / `latent` remain permitted.
+      if (UPDATE_OPPORTUNITY_BLOCKED_STATUSES.has(opportunity.status)) {
+        return error(`This opportunity is already ${opportunity.status} and cannot be updated.`);
+      }
+
       // Strict scope enforcement: when chat is index-scoped, verify opportunity is in that index
       if (context.networkId) {
-        const opportunity = await systemDb.getOpportunity(opportunityId);
-        if (!opportunity) {
-          return error("Opportunity not found.");
-        }
-        const opportunityIndexId = opportunity.context?.networkId
-          ?? opportunity.actors?.find((a) => a.networkId === context.networkId)?.networkId;
+        const opportunityIndexId =
+          opportunity.context?.networkId ??
+          opportunity.actors?.find((a) => a.networkId === context.networkId)?.networkId;
         if (!opportunityIndexId || opportunityIndexId !== context.networkId) {
           return error("Opportunity not found.");
         }
@@ -1098,15 +1127,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             opportunityId: result.mutationResult.opportunityId,
             status: query.status,
             message: result.mutationResult.message,
-            ...(result.mutationResult.notified && {
-              notified: result.mutationResult.notified,
-            }),
+            ...(result.mutationResult.notified && { notified: result.mutationResult.notified }),
             _graphTimings: [{ name: 'opportunity', durationMs: _updateGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return error(
-          result.mutationResult.error || "Failed to update opportunity.",
-        );
+        return error(result.mutationResult.error || "Failed to update opportunity.");
       }
       return error("Failed to update opportunity.");
     },

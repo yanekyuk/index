@@ -361,6 +361,15 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid intent ID format.");
       }
 
+      // Ownership guard: caller must own the intent
+      const intent = await deps.systemDb.getIntent(intentId);
+      if (!intent || intent.userId !== context.userId) {
+        return error("Intent not found or you can only update your own intents.");
+      }
+      if (intent.archivedAt) {
+        return error("This intent is archived and cannot be updated. Create a new intent instead.");
+      }
+
       // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
       if (context.networkId) {
         const db = deps.userDb;
@@ -424,6 +433,12 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const intentId = query.intentId?.trim() ?? "";
       if (!UUID_REGEX.test(intentId)) {
         return error("Invalid intent ID format.");
+      }
+
+      // Ownership guard: caller must own the intent
+      const intent = await deps.systemDb.getIntent(intentId);
+      if (!intent || intent.userId !== context.userId) {
+        return error("Intent not found or you can only delete your own intents.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
