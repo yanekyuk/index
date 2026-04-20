@@ -23,6 +23,7 @@ import {
 import { EmbedderAdapter } from "./adapters/embedder.adapter";
 import { ScraperAdapter } from "./adapters/scraper.adapter";
 import { intentQueue } from "./queues/intent.queue";
+import { opportunityQueue } from "./queues/opportunity.queue";
 import { chatSessionService } from "./services/chat.service";
 import { agentService } from "./services/agent.service";
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
@@ -75,5 +76,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
       agentService.grantDefaultSystemPermissions(userId),
     agentDispatcher,
     negotiationTimeoutQueue,
+    queueNegotiateExisting: (opportunityId, userId) =>
+      opportunityQueue.addNegotiateJob({ opportunityId, userId }),
   };
 }

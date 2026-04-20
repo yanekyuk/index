@@ -3742,19 +3742,25 @@ export class OpportunityDatabaseAdapter {
     introducerUserId: string,
     approved: boolean,
   ): Promise<OpportunityRow | null> {
-    const existing = await this.getOpportunity(id);
-    if (!existing) return null;
-    const updatedActors = (existing.actors as schema.OpportunityActor[]).map((actor) =>
-      actor.role === 'introducer' && actor.userId === introducerUserId
-        ? { ...actor, approved }
-        : actor,
-    );
-    const [row] = await db
-      .update(opportunities)
-      .set({ actors: updatedActors, updatedAt: new Date() })
-      .where(eq(opportunities.id, id))
-      .returning();
-    return row ? toOpportunityRow(row) : null;
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ actors: opportunities.actors })
+        .from(opportunities)
+        .where(eq(opportunities.id, id))
+        .for('update');
+      if (!locked) return null;
+      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
+        actor.role === 'introducer' && actor.userId === introducerUserId
+          ? { ...actor, approved }
+          : actor,
+      );
+      const [row] = await tx
+        .update(opportunities)
+        .set({ actors: updatedActors, updatedAt: new Date() })
+        .where(eq(opportunities.id, id))
+        .returning();
+      return row ? toOpportunityRow(row) : null;
+    });
   }
 
   async createOpportunityAndExpireIds(

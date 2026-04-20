@@ -137,6 +137,7 @@ export class OpportunityQueue {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
         removeOnComplete: { age: 24 * 60 * 60 },
+        removeOnFail: { age: 24 * 60 * 60 },
       },
     );
   }
@@ -326,17 +327,10 @@ export class OpportunityQueue {
 
     this.logger.info('[NegotiateExisting] Starting negotiation for existing opportunity', { opportunityId, userId });
 
+    // negotiate_existing bypasses the discovery pipeline entirely — HyDE is never invoked.
+    // Pass a no-op stub instead of constructing the full HyDE graph (and its RedisCacheAdapter, etc.).
     const embedder: Embedder = new EmbedderAdapter();
-    const cache: HydeCache = new RedisCacheAdapter();
-    const inferrer = new LensInferrer();
-    const generator = new HydeGenerator();
-    const hydeGraph = new HydeGraphFactory(
-      this.graphDb as HydeGraphDatabase,
-      embedder,
-      cache,
-      inferrer,
-      generator
-    ).createGraph();
+    const hydeGraph = { invoke: async () => ({ hydeEmbeddings: {} }) };
 
     const opportunityGraph = new OpportunityGraphFactory(
       this.graphDb as OpportunityGraphDatabase,
