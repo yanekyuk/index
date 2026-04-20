@@ -187,6 +187,57 @@ describe('OpportunityDeliveryService.pickupPending', () => {
   });
 });
 
+describe('fetchPendingCandidates', () => {
+  let userId: string;
+  let agentId: string;
+  const svc = new OpportunityDeliveryService(
+    new StubPresenter() as unknown as OpportunityPresenter,
+    stubPresenterDb as unknown as PresenterDatabase,
+  );
+
+  beforeEach(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+    userId = await seedUser();
+    agentId = await seedAgent(userId);
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
+  });
+
+  it('returns empty array when no eligible opportunities exist', async () => {
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toEqual([]);
+  });
+
+  it('returns candidate with rendered card for eligible pending opportunity', async () => {
+    const opportunityId = await seedOpportunity([userId], 'pending');
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toHaveLength(1);
+    expect(results[0].opportunityId).toBe(opportunityId);
+    expect(results[0].rendered.headline).toBeTruthy();
+  });
+
+  it('excludes opportunity already committed in delivery ledger', async () => {
+    const opportunityId = await seedOpportunity([userId], 'pending');
+    await svc.commitDelivery(opportunityId, userId, agentId);
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toEqual([]);
+  });
+
+  it('excludes opportunity when agent has notify_on_opportunity=false', async () => {
+    await seedOpportunity([userId], 'pending');
+    const mutedUserId = await seedUser();
+    const mutedAgentId = await seedAgent(mutedUserId, false);
+    // seed opportunity for muted user
+    await seedOpportunity([mutedUserId], 'pending');
+    const results = await svc.fetchPendingCandidates(mutedAgentId);
+    expect(results).toEqual([]);
+  });
+});
+
 describe('commitDelivery', () => {
   let userId: string;
   let agentId: string;
