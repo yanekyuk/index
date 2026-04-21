@@ -243,6 +243,7 @@ function getOrCreateMcpServer(): McpServer {
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     chatSession: deps.chatSession,
+    deliveryLedger: deps.deliveryLedger,
     graphs,
   };
 
