@@ -3317,6 +3317,17 @@ export class ChatDatabaseAdapter {
     return conversationAdapter.getOrCreateDM(userA, userB);
   }
 
+  /**
+   * Clears hiddenAt for a user on a conversation, making it visible again.
+   * Thin delegator to {@link ConversationDatabaseAdapter.unhideConversation}
+   * so OpportunityService can call it after reusing an existing DM that the
+   * user had previously hidden.
+   */
+  async unhideConversation(userId: string, conversationId: string): Promise<void> {
+    const conversationAdapter = new ConversationDatabaseAdapter();
+    return conversationAdapter.unhideConversation(userId, conversationId);
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
