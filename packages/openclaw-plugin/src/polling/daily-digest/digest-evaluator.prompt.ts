@@ -1,4 +1,4 @@
-import type { OpportunityCandidate } from '../ambient-discovery/opportunity-evaluator.prompt.js';
+import type { OpportunityCandidate } from '../../prompts/opportunity-evaluator.prompt.js';
 import { sanitizeField } from '../../lib/utils/sanitize.js';
 
 /**
