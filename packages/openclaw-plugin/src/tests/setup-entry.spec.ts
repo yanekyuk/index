@@ -64,6 +64,7 @@ describe('setup wizard', () => {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
@@ -94,6 +95,7 @@ describe('setup wizard', () => {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
@@ -135,6 +137,7 @@ describe('setup wizard', () => {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
@@ -150,6 +153,7 @@ describe('setup wizard', () => {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
@@ -276,24 +280,30 @@ describe('setup wizard', () => {
     expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestMaxCount');
   });
 
-  test('skips digest section entirely when digestEnabled is already configured', async () => {
+  test('uses existing digest config as defaults when re-running setup', async () => {
     const fake = buildFakeCtx({
       existingConfig: { digestEnabled: 'true', digestTime: '07:00', digestMaxCount: '3' },
       promptResponses: {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
 
     const digestSelect = fake.selectCalls.find((s) => s.label === 'Daily digest');
-    expect(digestSelect).toBeUndefined();
+    expect(digestSelect).toBeDefined();
 
-    const paths = fake.configWrites.map((w) => w.path);
-    expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestEnabled');
-    expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestTime');
-    expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestMaxCount');
+    // Existing values surfaced as defaults so pressing Enter keeps them
+    const digestTimePrompt = fake.promptCalls.find((p) => p.label === 'Digest time (HH:MM, 24-hour local time)');
+    expect(digestTimePrompt?.opts?.default).toBe('07:00');
+
+    const digestMaxPrompt = fake.promptCalls.find((p) => p.label === 'Max opportunities per digest');
+    expect(digestMaxPrompt?.opts?.default).toBe('3');
+
+    expect(fake.configWrites.find((w) => w.path.endsWith('digestTime'))?.value).toBe('07:00');
+    expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('3');
   });
 
   test('uses existing agentId as default when re-running setup', async () => {
@@ -302,6 +312,7 @@ describe('setup wizard', () => {
       promptResponses: {
         'API key': 'key-789',
       },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
@@ -315,7 +326,7 @@ describe('setup wizard', () => {
     expect(agentWrite?.value).toBe('existing-agent-456');
   });
 
-  test('skips delivery section when deliveryChannel is already configured', async () => {
+  test('shows delivery section with existing config as defaults when re-running setup', async () => {
     const fake = buildFakeCtx({
       channels: { telegram: { token: 'bot-token' } },
       existingConfig: { deliveryChannel: 'telegram', deliveryTarget: '12345' },
@@ -323,11 +334,25 @@ describe('setup wizard', () => {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
+      selectResponses: {
+        'Delivery channel': 'telegram',
+        'Daily digest': 'true',
+      },
     });
 
     await setup(fake.ctx);
 
     const deliverySelect = fake.selectCalls.find((s) => s.label === 'Delivery channel');
-    expect(deliverySelect).toBeUndefined();
+    expect(deliverySelect).toBeDefined();
+
+    // Existing channel annotated as (current)
+    const telegramChoice = deliverySelect!.choices.find((c) => c.value === 'telegram');
+    expect(telegramChoice?.label).toContain('(current)');
+
+    // Existing target surfaced as default so pressing Enter keeps it
+    const targetPrompt = fake.promptCalls.find(
+      (p) => p.label === 'Telegram chat ID (message @userinfobot on Telegram to find yours)',
+    );
+    expect(targetPrompt?.opts?.default).toBe('12345');
   });
 });

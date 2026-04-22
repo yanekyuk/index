@@ -106,10 +106,13 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     .filter(([, val]) => val && typeof val === 'object')
     .map(([id]) => id);
 
-  if (configuredChannels.length > 0 && !existing('deliveryChannel')) {
+  if (configuredChannels.length > 0) {
+    const currentChannel = existing('deliveryChannel') || '';
     const choices = [
       ...configuredChannels.map((id) => ({
-        label: CHANNEL_LABELS[id] || id,
+        label: id === currentChannel
+          ? `${CHANNEL_LABELS[id] || id} (current)`
+          : (CHANNEL_LABELS[id] || id),
         value: id,
       })),
       { label: 'Skip', value: '' },
@@ -119,7 +122,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 
     if (selectedChannel) {
       const targetLabel = TARGET_PROMPTS[selectedChannel] || `${selectedChannel} recipient ID`;
-      const deliveryTarget = await ctx.prompt(targetLabel);
+      const deliveryTarget = await ctx.prompt(targetLabel, {
+        default: existing('deliveryTarget') || undefined,
+      });
 
       if (deliveryTarget) {
         await ctx.configSet(`${configPrefix}.deliveryChannel`, selectedChannel);
@@ -129,20 +134,22 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   }
 
   // --- Daily digest config ---
-  if (!existing('digestEnabled')) {
-    const digestEnabled = await ctx.select('Daily digest', [
-      { label: 'Enabled (default)', value: 'true' },
-      { label: 'Disabled', value: 'false' },
-    ]);
-    await ctx.configSet(`${configPrefix}.digestEnabled`, digestEnabled);
+  const digestEnabled = await ctx.select('Daily digest', [
+    { label: 'Enabled (default)', value: 'true' },
+    { label: 'Disabled', value: 'false' },
+  ]);
+  await ctx.configSet(`${configPrefix}.digestEnabled`, digestEnabled);
 
-    if (digestEnabled !== 'false') {
-      const digestTime = await ctx.prompt('Digest time (HH:MM, 24-hour local time)', { default: '08:00' });
-      await ctx.configSet(`${configPrefix}.digestTime`, digestTime);
+  if (digestEnabled !== 'false') {
+    const digestTime = await ctx.prompt('Digest time (HH:MM, 24-hour local time)', {
+      default: existing('digestTime') || '08:00',
+    });
+    await ctx.configSet(`${configPrefix}.digestTime`, digestTime);
 
-      const digestMaxCount = await ctx.prompt('Max opportunities per digest', { default: '10' });
-      await ctx.configSet(`${configPrefix}.digestMaxCount`, digestMaxCount);
-    }
+    const digestMaxCount = await ctx.prompt('Max opportunities per digest', {
+      default: existing('digestMaxCount') || '10',
+    });
+    await ctx.configSet(`${configPrefix}.digestMaxCount`, digestMaxCount);
   }
 
   // --- Register MCP server ---
@@ -150,7 +157,7 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   const mcpDef = {
     url: `${normalizedUrl}/mcp`,
     transport: 'streamable-http',
-    headers: { 'x-api-key': apiKey },
+    headers: { 'x-api-key': resolvedApiKey },
   };
   await ctx.configSet('mcp.servers.index-network', mcpDef);
 }

@@ -58,3 +58,4 @@ evaluator/.env
 # Generated skills (local workspace dev output)
 # ===================
 /skills/**/SKILL.md
+.superpowers/
