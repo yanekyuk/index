@@ -20,6 +20,8 @@
 
 import type { OpenClawPluginApi } from './plugin-api.js';
 import { buildDeliverySessionKey, dispatchDelivery } from './delivery.dispatcher.js';
+import { msUntilNextDigest } from './digest.scheduler.js';
+import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
 import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
 import { registerSetupCli } from './setup.cli.js';
@@ -43,6 +45,9 @@ let backoffMultiplier = 1;
 
 /** Handle returned by setInterval, stored so tests can inspect or clear it. */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Handle returned by setTimeout for daily digest, stored so tests can clear it. */
+let digestTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Registers the `openclaw index-network setup` CLI command if the host
@@ -179,6 +184,33 @@ export function register(api: OpenClawPluginApi): void {
   };
 
   scheduleNext();
+
+  // Schedule daily digest
+  const digestEnabled = readConfig(api, 'digestEnabled') !== 'false';
+  if (digestEnabled) {
+    const digestTime = readConfig(api, 'digestTime') || '08:00';
+    const _parsedMax = parseInt(readConfig(api, 'digestMaxCount') || '10', 10);
+    const digestMaxCount = Math.max(1, Number.isNaN(_parsedMax) ? 10 : _parsedMax);
+
+    const scheduleDigest = () => {
+      const delay = msUntilNextDigest(digestTime);
+      api.logger.info(`Daily digest scheduled for ${digestTime} (in ${Math.round(delay / 60000)} minutes)`);
+
+      digestTimer = setTimeout(async () => {
+        api.logger.info('Daily digest triggered');
+        try {
+          await handleDailyDigest(api, baseUrl, agentId, apiKey, digestMaxCount);
+        } catch (err) {
+          api.logger.error(
+            `Daily digest error: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        scheduleDigest(); // Schedule next day's digest
+      }, delay);
+    };
+
+    scheduleDigest();
+  }
 
   // First poll after a short delay to let the gateway fully start.
   // This initial poll also runs a reachability check on the backend.
@@ -462,6 +494,108 @@ export async function handleTestMessagePickup(
   return true;
 }
 
+/**
+ * Fetches all undelivered pending opportunities and delivers a daily digest
+ * of the top N ranked by value.
+ *
+ * @param api - OpenClaw plugin API.
+ * @param baseUrl - Index Network backend URL.
+ * @param agentId - Agent ID for API calls.
+ * @param apiKey - API key for authentication.
+ * @param maxCount - Maximum opportunities to include (default 10).
+ * @returns `true` if a digest was dispatched, `false` otherwise.
+ * @internal
+ */
+export async function handleDailyDigest(
+  api: OpenClawPluginApi,
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+  maxCount: number = 10,
+): Promise<boolean> {
+  const pendingUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pending`;
+
+  let res: Response;
+  try {
+    res = await fetch(pendingUrl, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Daily digest fetch errored: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    api.logger.warn(`Daily digest fetch failed: ${res.status} ${text}`);
+    return false;
+  }
+
+  const body = (await res.json()) as {
+    opportunities: Array<{
+      opportunityId: string;
+      rendered: {
+        headline: string;
+        personalizedSummary: string;
+        suggestedAction: string;
+        narratorRemark: string;
+      };
+    }>;
+  };
+
+  if (!body.opportunities.length) {
+    api.logger.info('Daily digest: no pending opportunities');
+    return false;
+  }
+
+  const sessionKey = buildDeliverySessionKey(api);
+  if (!sessionKey) {
+    api.logger.warn(
+      'Daily digest: delivery routing not configured — skipping. ' +
+        'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
+    );
+    return false;
+  }
+
+  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
+  const effectiveMax = Math.min(maxCount, body.opportunities.length);
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  try {
+    await api.runtime.subagent.run({
+      sessionKey,
+      idempotencyKey: `index:delivery:daily-digest:${agentId}:${dateStr}:${batchHash}`,
+      message: digestEvaluatorPrompt(
+        body.opportunities.map((o) => ({
+          opportunityId: o.opportunityId,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+        })),
+        effectiveMax,
+      ),
+      deliver: true,
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Daily digest subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  api.logger.info(
+    `Daily digest dispatched: ${body.opportunities.length} candidate(s), max ${effectiveMax} to deliver`,
+    { agentId },
+  );
+
+  return true;
+}
+
 function increaseBackoff(api: OpenClawPluginApi): void {
   if (backoffMultiplier < MAX_BACKOFF_MULTIPLIER) {
     backoffMultiplier = Math.min(backoffMultiplier * 2, MAX_BACKOFF_MULTIPLIER);
@@ -513,5 +647,9 @@ export function _resetForTesting(): void {
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
+  }
+  if (digestTimer) {
+    clearTimeout(digestTimer);
+    digestTimer = null;
   }
 }
