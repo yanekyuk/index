@@ -20,6 +20,7 @@
 
 import type { OpenClawPluginApi } from './plugin-api.js';
 import { buildDeliverySessionKey, dispatchDelivery } from './delivery.dispatcher.js';
+import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
 import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
 import { registerSetupCli } from './setup.cli.js';
@@ -458,6 +459,107 @@ export async function handleTestMessagePickup(
       `Test-message confirm failed for ${body.id}: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
+
+  return true;
+}
+
+/**
+ * Fetches all undelivered pending opportunities and delivers a daily digest
+ * of the top N ranked by value.
+ *
+ * @param api - OpenClaw plugin API.
+ * @param baseUrl - Index Network backend URL.
+ * @param agentId - Agent ID for API calls.
+ * @param apiKey - API key for authentication.
+ * @param maxCount - Maximum opportunities to include (default 10).
+ * @returns `true` if a digest was dispatched, `false` otherwise.
+ * @internal
+ */
+export async function handleDailyDigest(
+  api: OpenClawPluginApi,
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+  maxCount: number = 10,
+): Promise<boolean> {
+  const pendingUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pending`;
+
+  let res: Response;
+  try {
+    res = await fetch(pendingUrl, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Daily digest fetch errored: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    api.logger.warn(`Daily digest fetch failed: ${res.status} ${text}`);
+    return false;
+  }
+
+  const body = (await res.json()) as {
+    opportunities: Array<{
+      opportunityId: string;
+      rendered: {
+        headline: string;
+        personalizedSummary: string;
+        suggestedAction: string;
+        narratorRemark: string;
+      };
+    }>;
+  };
+
+  if (!body.opportunities.length) {
+    api.logger.info('Daily digest: no pending opportunities');
+    return false;
+  }
+
+  const sessionKey = buildDeliverySessionKey(api);
+  if (!sessionKey) {
+    api.logger.warn(
+      'Daily digest: delivery routing not configured — skipping. ' +
+        'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
+    );
+    return false;
+  }
+
+  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
+  const effectiveMax = Math.min(maxCount, body.opportunities.length);
+
+  try {
+    await api.runtime.subagent.run({
+      sessionKey,
+      idempotencyKey: `index:delivery:daily-digest:${agentId}:${batchHash}`,
+      message: digestEvaluatorPrompt(
+        body.opportunities.map((o) => ({
+          opportunityId: o.opportunityId,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+        })),
+        effectiveMax,
+      ),
+      deliver: true,
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Daily digest subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  api.logger.info(
+    `Daily digest dispatched: ${body.opportunities.length} candidate(s), max ${effectiveMax} to deliver`,
+    { agentId },
+  );
 
   return true;
 }
