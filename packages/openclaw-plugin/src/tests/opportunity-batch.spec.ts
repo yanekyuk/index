@@ -14,7 +14,7 @@ interface FakeApi {
   };
 }
 
-function buildFakeApi(deliveryConfigured = true): FakeApi {
+function buildFakeApi(deliveryConfigured = true, configGetModel?: unknown): FakeApi {
   const subagentCalls: SubagentRunOptions[] = [];
   const logger = {
     debug: mock(() => {}),
@@ -39,6 +39,9 @@ function buildFakeApi(deliveryConfigured = true): FakeApi {
     },
     logger,
     registerHttpRoute: mock(() => {}),
+    ...(configGetModel !== undefined && {
+      configGet: async () => configGetModel,
+    }),
   };
 
   return { api, subagentCalls, logger };
@@ -189,6 +192,48 @@ describe('handleOpportunityBatch', () => {
     await handleOpportunityBatch(fake2.api, BASE_URL, AGENT_ID, API_KEY);
 
     expect(fake1.subagentCalls[0].idempotencyKey).toBe(fake2.subagentCalls[0].idempotencyKey);
+  });
+
+  test('passes model string from configGet to subagent', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi(true, 'anthropic/claude-sonnet-4-6');
+    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+
+    expect(fake.subagentCalls[0].model).toBe('anthropic/claude-sonnet-4-6');
+  });
+
+  test('passes primary from configGet object to subagent', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi(true, { primary: 'anthropic/claude-opus-4-6', fallbacks: ['openai/gpt-4o'] });
+    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+
+    expect(fake.subagentCalls[0].model).toBe('anthropic/claude-opus-4-6');
+  });
+
+  test('passes undefined model when configGet is absent', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi(true); // no configGet
+    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+
+    expect(fake.subagentCalls[0].model).toBeUndefined();
   });
 
   test('calls /api/agents/:agentId/opportunities/pending with GET', async () => {

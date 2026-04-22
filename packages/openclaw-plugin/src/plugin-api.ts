@@ -86,6 +86,24 @@ export interface OpenClawPluginApi {
   registerHttpRoute(options: RouteOptions): void;
   /** Write a value into the OpenClaw config. Available since OpenClaw >=0.1.0. */
   configSet?(path: string, value: unknown): Promise<void>;
+  /** Read a value from the OpenClaw config by dot-path (e.g. 'agents.defaults.model'). */
+  configGet?(path: string): Promise<unknown>;
   /** Register a CLI subcommand (e.g. `openclaw index-network setup`). */
   registerCli?: CliRegistration;
+}
+
+/**
+ * Reads the configured default model from OpenClaw's agents.defaults.model.
+ * The value can be a plain string or an object with a `primary` key.
+ * Returns `undefined` if configGet is unavailable or no model is set.
+ */
+export async function readModel(api: OpenClawPluginApi): Promise<string | undefined> {
+  if (!api.configGet) return undefined;
+  const value = await api.configGet('agents.defaults.model').catch(() => undefined);
+  if (typeof value === 'string' && value) return value;
+  if (value && typeof value === 'object' && 'primary' in value) {
+    const primary = (value as { primary: unknown }).primary;
+    return typeof primary === 'string' && primary ? primary : undefined;
+  }
+  return undefined;
 }

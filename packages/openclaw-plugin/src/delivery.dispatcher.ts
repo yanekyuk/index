@@ -1,4 +1,5 @@
 import type { OpenClawPluginApi, SubagentRunResult } from './plugin-api.js';
+import { readModel } from './plugin-api.js';
 import { deliveryPrompt } from './prompts/delivery.prompt.js';
 
 export interface DeliveryRequest {
@@ -43,11 +44,14 @@ export async function dispatchDelivery(
     return null;
   }
 
+  const model = await readModel(api);
+
   return api.runtime.subagent.run({
     sessionKey,
     idempotencyKey: request.idempotencyKey,
     message: deliveryPrompt(request.rendered),
     deliver: true,
+    model,
   });
 }
 

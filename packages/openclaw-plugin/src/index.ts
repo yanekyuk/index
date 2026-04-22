@@ -19,6 +19,7 @@
  */
 
 import type { OpenClawPluginApi } from './plugin-api.js';
+import { readModel } from './plugin-api.js';
 import { buildDeliverySessionKey, dispatchDelivery } from './delivery.dispatcher.js';
 import { msUntilNextDigest } from './digest.scheduler.js';
 import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
@@ -317,6 +318,8 @@ async function handleNegotiationPickup(
     ? turn.turn.history[turn.turn.history.length - 1]
     : null;
 
+  const model = await readModel(api);
+
   try {
     await api.runtime.subagent.run({
       sessionKey: `index:negotiation:${turn.negotiationId}`,
@@ -330,6 +333,7 @@ async function handleNegotiationPickup(
         context: turn.context,
       }),
       deliver: false,
+      model,
     });
     api.logger.info(`Subagent launched for negotiation ${turn.taskId}`);
   } catch (err) {
@@ -406,11 +410,13 @@ export async function handleOpportunityBatch(
   }
 
   const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const model = await readModel(api);
 
   try {
     await api.runtime.subagent.run({
       sessionKey,
-      idempotencyKey: `index:delivery:opportunity-batch:${agentId}:${batchHash}`,
+      idempotencyKey: `index:delivery:opportunity-batch:${agentId}:${dateStr}:${batchHash}`,
       message: opportunityEvaluatorPrompt(
         body.opportunities.map((o) => ({
           opportunityId: o.opportunityId,
@@ -421,6 +427,7 @@ export async function handleOpportunityBatch(
         })),
       ),
       deliver: true,
+      model,
     });
   } catch (err) {
     // Subagent dispatch failed — swallow so the poll loop doesn't escalate backoff
@@ -572,6 +579,7 @@ export async function handleDailyDigest(
   const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
   const effectiveMax = Math.min(maxCount, body.opportunities.length);
   const dateStr = new Date().toISOString().slice(0, 10);
+  const model = await readModel(api);
 
   try {
     await api.runtime.subagent.run({
@@ -588,6 +596,7 @@ export async function handleDailyDigest(
         effectiveMax,
       ),
       deliver: true,
+      model,
     });
   } catch (err) {
     api.logger.warn(

@@ -6,6 +6,7 @@ import type { OpenClawPluginApi, SubagentRunResult } from '../plugin-api.js';
 function makeApi(
   runResult: SubagentRunResult,
   pluginConfig: Record<string, unknown> = { deliveryChannel: 'telegram', deliveryTarget: '69340471' },
+  configGetModel?: unknown,
 ): OpenClawPluginApi {
   return {
     id: 'test-plugin',
@@ -23,6 +24,9 @@ function makeApi(
       error: mock(() => {}),
     },
     registerHttpRoute: mock(() => {}),
+    ...(configGetModel !== undefined && {
+      configGet: async () => configGetModel,
+    }),
   } as OpenClawPluginApi;
 }
 
@@ -65,6 +69,42 @@ describe('dispatchDelivery', () => {
     const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
     expect(callArgs.message).toContain('# Opportunity Update');
     expect(callArgs.message).toContain('Bob wants to connect about the seed round.');
+  });
+
+  test('passes model string from configGet to subagent', async () => {
+    const api = makeApi({ runId: 'run-model-1' }, undefined, 'anthropic/claude-sonnet-4-6');
+
+    await dispatchDelivery(api, {
+      rendered: { headline: 'h', body: 'b' },
+      idempotencyKey: 'idem-model-1',
+    });
+
+    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(callArgs.model).toBe('anthropic/claude-sonnet-4-6');
+  });
+
+  test('passes primary from configGet object to subagent', async () => {
+    const api = makeApi({ runId: 'run-model-2' }, undefined, { primary: 'anthropic/claude-opus-4-6' });
+
+    await dispatchDelivery(api, {
+      rendered: { headline: 'h', body: 'b' },
+      idempotencyKey: 'idem-model-2',
+    });
+
+    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(callArgs.model).toBe('anthropic/claude-opus-4-6');
+  });
+
+  test('passes undefined model when configGet is absent', async () => {
+    const api = makeApi({ runId: 'run-model-3' });
+
+    await dispatchDelivery(api, {
+      rendered: { headline: 'h', body: 'b' },
+      idempotencyKey: 'idem-model-3',
+    });
+
+    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(callArgs.model).toBeUndefined();
   });
 
   test('returns null and skips subagent.run when deliveryChannel is missing', async () => {
