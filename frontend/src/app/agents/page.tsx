@@ -412,7 +412,7 @@ export default function AgentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [agentsService, agents, isAuthenticated, keysVersion, newlyCreatedKey]);
+  }, [agentsService, agents, isAuthenticated, keysVersion]);
   
 
   const personalAgents = useMemo(
