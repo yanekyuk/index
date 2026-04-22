@@ -25,7 +25,7 @@ import { msUntilNextDigest } from './digest.scheduler.js';
 import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
 import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
-import { registerSetupCli } from './setup.cli.js';
+import { registerSetupCli } from './setup/setup.cli.js';
 
 /** Base polling interval: 5 minutes. */
 const POLL_INTERVAL_MS = 300_000;
