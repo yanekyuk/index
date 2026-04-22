@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Bot, Check, ChevronDown, ChevronRight, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import ClientLayout from '@/components/ClientLayout';
 import { ContentContainer } from '@/components/layout';
@@ -43,36 +44,29 @@ function permissionLabel(action: string): string {
   }
 }
 
-function CodeBlock({ code, label }: { code: string; label: string }) {
+function ClickableCodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
-  async function handleCopy(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function handleCopy() {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1500);
     } catch { /* silent */ }
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-        >
-          {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <pre className="bg-gray-50 border border-gray-200 rounded-sm p-3 text-xs text-gray-700 overflow-x-auto font-mono select-text whitespace-pre-wrap break-all">
-        {code}
-      </pre>
-    </div>
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label="Copy code block"
+      className="relative w-full text-left group bg-gray-50 border border-gray-200 rounded-sm p-3 hover:bg-green-50 hover:border-green-300 transition-colors"
+    >
+      <span className="block text-xs text-gray-700 font-mono whitespace-pre-wrap break-all pr-16">{code}</span>
+      <span className="absolute top-2 right-2 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+        {copied ? '✓ Copied' : '⧉ Copy'}
+      </span>
+    </button>
   );
 }
 
@@ -100,12 +94,146 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const keyPlaceholder = apiKey || 'YOUR_API_KEY';
-  const agentPlaceholder = agentId || 'YOUR_AGENT_ID';
+function WizardRow({
+  prompt,
+  description,
+  value,
+  copyable,
+}: {
+  prompt: string;
+  description: string;
+  value: string;
+  copyable?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
 
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || 'http://localhost:3001';
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* silent */ }
+  }
+
+  return (
+    <>
+      <div className="flex flex-col justify-center p-3 border-b border-r border-gray-200 bg-gray-50">
+        <span className="text-xs font-medium text-gray-700">{prompt}</span>
+        <span className="text-xs text-gray-400 mt-0.5">{description}</span>
+      </div>
+      {copyable ? (
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label={`Copy ${prompt} value`}
+          className="relative group flex items-start p-3 border-b border-gray-200 bg-gray-50 hover:bg-green-50 hover:border-green-300 transition-colors text-left font-mono text-xs text-gray-700 whitespace-pre-wrap break-all"
+        >
+          <span className="pr-16">{value}</span>
+          <span className="absolute top-2 right-2 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+            {copied ? '✓ Copied' : '⧉ Copy'}
+          </span>
+        </button>
+      ) : (
+        <div className="flex items-center p-3 border-b border-gray-200 text-xs text-gray-500 italic">
+          {value}
+        </div>
+      )}
+    </>
+  );
+}
+
+function WizardPromptGrid({
+  serverUrl,
+  agentId,
+  apiKey,
+}: {
+  serverUrl: string;
+  agentId: string;
+  apiKey: string;
+}) {
+  return (
+    <div className="border border-gray-200 rounded-sm overflow-hidden">
+      <div className="grid grid-cols-2 border-b border-gray-200 bg-gray-100 px-3 py-2">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Prompt</span>
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Value</span>
+      </div>
+      <div className="grid grid-cols-2">
+        <WizardRow prompt="Server URL" description="Index Network API endpoint" value={serverUrl} copyable />
+        <WizardRow prompt="Agent ID" description="Your personal agent's unique identifier" value={agentId} copyable />
+        <WizardRow prompt="API Key" description="The API key you just generated" value={apiKey} copyable />
+        <div className="col-span-2 px-3 py-2 border-b border-gray-200 bg-gray-100">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Optional</span>
+        </div>
+        <WizardRow
+          prompt="Delivery channel"
+          description="Platform to receive notifications (Telegram, Discord, Slack, etc.)"
+          value="select or skip"
+        />
+        <WizardRow
+          prompt="Delivery target"
+          description="Your user ID or handle on the chosen platform"
+          value="your ID"
+        />
+        <WizardRow
+          prompt="Daily digest"
+          description="Receive a daily summary of opportunities"
+          value="enable / disable"
+        />
+        <WizardRow
+          prompt="Digest time"
+          description="Time to send the daily digest (24-hour format)"
+          value="08:00 (default)"
+        />
+        <WizardRow
+          prompt="Max per digest"
+          description="Maximum number of opportunities included per digest"
+          value="10 (default)"
+        />
+      </div>
+    </div>
+  );
+}
+
+function OpenClawSetup({
+  install,
+  update,
+  setup,
+}: {
+  install: string;
+  update: string;
+  setup: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-3 items-start">
+        <div className="flex flex-col items-center pt-1 shrink-0">
+          <div className="w-2 h-2 rounded-full bg-gray-300" />
+          <div className="w-px h-4 bg-gray-200 my-1" />
+          <div className="w-2 h-2 rounded-full bg-gray-300" />
+        </div>
+        <div className="flex-1 space-y-2">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Install (first time)</p>
+            <ClickableCodeBlock code={install} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Update (if already installed)</p>
+            <ClickableCodeBlock code={update} />
+          </div>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500 mb-1">Run setup wizard</p>
+        <ClickableCodeBlock code={setup} />
+      </div>
+    </div>
+  );
+}
+
+function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
+  const keyValue = apiKey || 'YOUR_API_KEY';
+  const agentValue = agentId || 'YOUR_AGENT_ID';
+  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || 'https://api.index.network';
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -115,7 +243,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           type: 'http',
           url: mcpUrl,
           headers: {
-            'x-api-key': keyPlaceholder,
+            'x-api-key': keyValue,
           },
         },
       },
@@ -128,58 +256,87 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   - name: index-network
     url: ${mcpUrl}
     headers:
-      x-api-key: ${keyPlaceholder}`;
+      x-api-key: ${keyValue}`;
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
-
+  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
   const openclawSetup = `openclaw index-network setup`;
 
   return (
-    <div className="border border-gray-200 rounded-sm" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(!expanded); }}
-        className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-      >
-        {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        Setup Instructions
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-gray-100">
-          <div className="pt-3">
-            <CodeBlock code={claudeConfig} label="Claude Code / OpenCode" />
-          </div>
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Claude Code / OpenCode</p>
+        <ClickableCodeBlock code={claudeConfig} />
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hermes Agent</p>
+        <ClickableCodeBlock code={hermesConfig} />
+      </div>
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
+        <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
+        <WizardPromptGrid serverUrl={protocolUrl} agentId={agentValue} apiKey={keyValue} />
+      </div>
+    </div>
+  );
+}
+
+function ApiKeyCreatedModal({
+  agentName,
+  agentId,
+  apiKey,
+  onClose,
+}: {
+  agentName: string;
+  agentId: string;
+  apiKey: string;
+  onClose: () => void;
+}) {
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  async function handleCopyKey() {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 1500);
+    } catch { /* silent */ }
+  }
+
+  return (
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-sm shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-6 focus:outline-none">
           <div>
-            <CodeBlock code={hermesConfig} label="Hermes Agent" />
+            <Dialog.Title className="text-lg font-semibold text-gray-900">API Key Created</Dialog.Title>
+            <Dialog.Description className="text-sm text-gray-500 mt-1">For: {agentName}</Dialog.Description>
           </div>
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <CodeBlock code={openclawInstall} label="1. Install plugin" />
-            <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
-            <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
-              <p className="text-xs text-gray-500 font-ibm-plex-mono">
-                The setup wizard will prompt for these values:
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Server URL</span>
-                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{protocolUrl}</code>
-                <CopyButton text={protocolUrl} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Agent ID</span>
-                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{agentPlaceholder}</code>
-                <CopyButton text={agentPlaceholder} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">API Key</span>
-                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{keyPlaceholder}</code>
-                <CopyButton text={keyPlaceholder} />
-              </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-sm p-4 space-y-3">
+            <p className="text-sm font-medium text-amber-800">Copy this key now — it won't be shown again</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-white border border-amber-200 rounded-sm px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
+                {apiKey}
+              </code>
+              <Button variant="outline" size="sm" onClick={handleCopyKey}>
+                {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </Button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Your Agent ID and API key are pre-filled below. Pick the platform you use.
+            </p>
+            <SetupInstructions apiKey={apiKey} agentId={agentId} />
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-gray-100">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -196,7 +353,6 @@ export default function AgentsPage() {
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentDescription, setNewAgentDescription] = useState('');
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<{ agentId: string; key: string } | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
   const [generatingForAgentId, setGeneratingForAgentId] = useState<string | null>(null);
   const [keysVersion, setKeysVersion] = useState(0);
 
@@ -212,21 +368,17 @@ export default function AgentsPage() {
     }
 
     let cancelled = false;
-    setLoading(true);
     agentsService
       .list()
       .then((result) => {
         if (!cancelled) {
           setAgents(result);
+          setLoading(false);
         }
       })
       .catch((err) => {
         if (!cancelled) {
           error('Failed to load agents', err instanceof Error ? err.message : undefined);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
           setLoading(false);
         }
       });
@@ -262,7 +414,7 @@ export default function AgentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [agentsService, agents, isAuthenticated, keysVersion, newlyCreatedKey]);
+  }, [agentsService, agents, isAuthenticated, keysVersion]);
   
 
   const personalAgents = useMemo(
@@ -273,6 +425,8 @@ export default function AgentsPage() {
     () => agents.filter((agent) => agent.type === 'system'),
     [agents],
   );
+
+  const modalAgent = newlyCreatedKey ? agents.find((a) => a.id === newlyCreatedKey.agentId) : null;
 
   async function refreshAgents() {
     const next = await agentsService.list();
@@ -339,16 +493,6 @@ export default function AgentsPage() {
       success('Agent API key revoked');
     } catch (err) {
       error('Failed to revoke agent API key', err instanceof Error ? err.message : undefined);
-    }
-  }
-
-  async function handleCopyKey(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2000);
-    } catch {
-      error('Failed to copy key');
     }
   }
 
@@ -450,7 +594,6 @@ export default function AgentsPage() {
                   <div className="space-y-4">
                     {personalAgents.map((agent) => {
                       const agentKeys = keysByAgent[agent.id] ?? [];
-                      const createdKeyForAgent = newlyCreatedKey?.agentId === agent.id ? newlyCreatedKey.key : null;
 
                       return (
                         <div key={agent.id} className="border border-gray-200 rounded-sm p-4 bg-white space-y-4">
@@ -474,6 +617,12 @@ export default function AgentsPage() {
                             </div>
                           </div>
 
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 shrink-0">Agent ID</span>
+                            <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-0.5 font-mono text-gray-600 flex-1 min-w-0 break-all">{agent.id}</code>
+                            <CopyButton text={agent.id} />
+                          </div>
+
                           <div>
                             <div className="flex items-center justify-between gap-4 mb-2">
                               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">API Keys</p>
@@ -487,23 +636,9 @@ export default function AgentsPage() {
                               </Button>
                             </div>
 
-                            {createdKeyForAgent ? (
-                              <div className="mb-3 bg-amber-50 border border-amber-200 rounded-sm p-3">
-                                <p className="text-sm font-medium text-amber-800 mb-2">Copy this API key now. It will not be shown again.</p>
-                                <div className="flex items-center gap-2">
-                                  <code className="flex-1 bg-white border border-amber-200 rounded-sm px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
-                                    {createdKeyForAgent}
-                                  </code>
-                                  <Button variant="outline" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCopyKey(createdKeyForAgent); }}>
-                                    {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {agentKeys.length === 0 && !createdKeyForAgent ? (
+                            {agentKeys.length === 0 ? (
                               <p className="text-sm text-gray-400">No agent-linked API keys yet.</p>
-                            ) : agentKeys.length === 0 ? null : (
+                            ) : (
                               <div className="border border-gray-200 rounded-sm overflow-hidden">
                                 <table className="w-full text-sm">
                                   <thead>
@@ -539,7 +674,6 @@ export default function AgentsPage() {
                               </div>
                             )}
 
-                            <SetupInstructions apiKey={createdKeyForAgent ?? undefined} agentId={agent.id} />
                           </div>
                         </div>
                       );
@@ -547,10 +681,30 @@ export default function AgentsPage() {
                   </div>
                 )}
               </section>
+
+              <hr className="border-gray-200" />
+              <section>
+                <div className="mb-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Setup Instructions</h2>
+                  <p className="text-sm text-gray-500">
+                    Connect a personal agent to Index Network using any platform below. Copy your Agent ID from the card above, then generate and copy an API key.
+                  </p>
+                </div>
+                <SetupInstructions />
+              </section>
             </div>
           )}
         </ContentContainer>
       </div>
+
+      {newlyCreatedKey ? (
+        <ApiKeyCreatedModal
+          agentName={modalAgent?.name ?? 'Agent'}
+          agentId={newlyCreatedKey.agentId}
+          apiKey={newlyCreatedKey.key}
+          onClose={() => setNewlyCreatedKey(null)}
+        />
+      ) : null}
     </ClientLayout>
   );
 }
