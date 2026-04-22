@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { digestEvaluatorPrompt } from '../prompts/digest-evaluator.prompt.js';
+import { digestEvaluatorPrompt } from '../polling/daily-digest/digest-evaluator.prompt.js';
 
 describe('digestEvaluatorPrompt', () => {
   it('includes max count in prompt', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { msUntilNextDigest } from '../digest.scheduler.js';
+import { msUntilNextDigest } from '../polling/daily-digest/daily-digest.scheduler.js';
 
 describe('msUntilNextDigest', () => {
   it('returns ms until same day if before digest time', () => {

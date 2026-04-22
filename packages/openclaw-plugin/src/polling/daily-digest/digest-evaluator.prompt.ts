@@ -1,5 +1,5 @@
-import type { OpportunityCandidate } from './opportunity-evaluator.prompt.js';
-import { sanitizeField } from '../lib/utils/sanitize.js';
+import type { OpportunityCandidate } from '../ambient-discovery/opportunity-evaluator.prompt.js';
+import { sanitizeField } from '../../lib/utils/sanitize.js';
 
 /**
  * Builds the task prompt for the daily digest evaluator subagent.
