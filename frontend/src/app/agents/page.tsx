@@ -198,7 +198,7 @@ export default function AgentsPage() {
   const { success, error } = useNotifications();
 
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(isAuthenticated);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState('');
