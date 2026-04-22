@@ -181,6 +181,7 @@ export function register(api: OpenClawPluginApi): void {
       triggerPoll();
       scheduleNext();
     }, delay);
+    pollTimer.unref();
   };
 
   scheduleNext();
@@ -207,6 +208,7 @@ export function register(api: OpenClawPluginApi): void {
         }
         scheduleDigest(); // Schedule next day's digest
       }, delay);
+      digestTimer.unref();
     };
 
     scheduleDigest();
@@ -217,7 +219,7 @@ export function register(api: OpenClawPluginApi): void {
   setTimeout(() => {
     checkBackendReachability(api, baseUrl);
     triggerPoll();
-  }, 5_000);
+  }, 5_000).unref();
 }
 
 // --- Plugin entry ---
