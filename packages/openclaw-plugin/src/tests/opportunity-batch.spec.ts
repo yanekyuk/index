@@ -253,4 +253,53 @@ describe('handleOpportunityBatch', () => {
     expect(fetchCalls[0].url).toContain(`/agents/${AGENT_ID}/opportunities/pending`);
     expect(fetchCalls[0].init?.method).toBe('GET');
   });
+
+  test('does not launch subagent on second call with identical opportunity set', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    const first = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const second = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    expect(fake.subagentCalls).toHaveLength(1);
+  });
+
+  test('launches subagent again when opportunity set changes between calls', async () => {
+    const SECOND_CANDIDATE = {
+      opportunityId: 'opp-xyz',
+      rendered: {
+        headline: 'Another match',
+        personalizedSummary: 'Bob is looking for a designer.',
+        suggestedAction: 'Connect with Bob.',
+        narratorRemark: 'Solid fit.',
+      },
+    };
+
+    let callCount = 0;
+    global.fetch = mock(async () => {
+      callCount++;
+      const opportunities = callCount === 1
+        ? [SAMPLE_CANDIDATE]
+        : [SAMPLE_CANDIDATE, SECOND_CANDIDATE];
+      return new Response(JSON.stringify({ opportunities }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    const first = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const second = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+    expect(fake.subagentCalls).toHaveLength(2);
+  });
 });

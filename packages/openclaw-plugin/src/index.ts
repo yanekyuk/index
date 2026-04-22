@@ -38,6 +38,9 @@ const POLL_PATH = '/index-network/poll';
 /** Tracks in-flight turns so we don't re-launch subagents for already-claimed work. */
 const inflight = new Set<string>();
 
+/** Hash of the last opportunity batch dispatched to the evaluator subagent. Used to skip unchanged batches. */
+let lastOpportunityBatchHash: string | null = null;
+
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
 
@@ -410,6 +413,12 @@ export async function handleOpportunityBatch(
   }
 
   const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
+
+  if (batchHash === lastOpportunityBatchHash) {
+    api.logger.debug('Opportunity batch unchanged since last poll — skipping subagent.');
+    return false;
+  }
+
   const dateStr = new Date().toISOString().slice(0, 10);
   const model = await readModel(api);
 
@@ -429,6 +438,7 @@ export async function handleOpportunityBatch(
       deliver: true,
       model,
     });
+    lastOpportunityBatchHash = batchHash;
   } catch (err) {
     // Subagent dispatch failed — swallow so the poll loop doesn't escalate backoff
     // on a runtime-side issue. The same batch will retry on the next tick.
@@ -661,6 +671,7 @@ export function _resetForTesting(): void {
   registered = false;
   backoffMultiplier = 1;
   inflight.clear();
+  lastOpportunityBatchHash = null;
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
