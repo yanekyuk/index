@@ -59,6 +59,7 @@ function ClickableCodeBlock({ code }: { code: string }) {
     <button
       type="button"
       onClick={handleCopy}
+      aria-label="Copy code block"
       className="relative w-full text-left group bg-gray-50 border border-gray-200 rounded-sm p-3 hover:bg-green-50 hover:border-green-300 transition-colors"
     >
       <span className="block text-xs text-gray-700 font-mono whitespace-pre-wrap break-all pr-16">{code}</span>
@@ -124,6 +125,7 @@ function WizardRow({
         <button
           type="button"
           onClick={handleCopy}
+          aria-label={`Copy ${prompt} value`}
           className="relative group flex items-start p-3 border-b border-gray-200 bg-gray-50 hover:bg-green-50 hover:border-green-300 transition-colors text-left font-mono text-xs text-gray-700 whitespace-pre-wrap break-all"
         >
           <span className="pr-16">{value}</span>
@@ -695,9 +697,9 @@ export default function AgentsPage() {
         </ContentContainer>
       </div>
 
-      {newlyCreatedKey && modalAgent ? (
+      {newlyCreatedKey ? (
         <ApiKeyCreatedModal
-          agentName={modalAgent.name}
+          agentName={modalAgent?.name ?? 'Agent'}
           agentId={newlyCreatedKey.agentId}
           apiKey={newlyCreatedKey.key}
           onClose={() => setNewlyCreatedKey(null)}
