@@ -86,6 +86,7 @@ describe('handleDailyDigest', () => {
     expect(subagentRunCalls[0].message).toContain('opp-1');
     expect(subagentRunCalls[0].message).toContain('opp-2');
     expect(subagentRunCalls[0].idempotencyKey).toContain('daily-digest');
+    expect(subagentRunCalls[0].idempotencyKey).toMatch(/\d{4}-\d{2}-\d{2}/); // date included
   });
 
   it('returns false when no opportunities pending', async () => {
@@ -167,6 +168,40 @@ describe('handleDailyDigest', () => {
 
     expect(result).toBe(false);
     expect(subagentRunCalls).toHaveLength(0);
+    expect(mockApi.logger.warn).toHaveBeenCalled();
+  });
+
+  it('returns false when subagent dispatch throws', async () => {
+    const mockResponse = {
+      opportunities: [
+        {
+          opportunityId: 'opp-1',
+          rendered: {
+            headline: 'H',
+            personalizedSummary: 'S',
+            suggestedAction: 'A',
+            narratorRemark: '',
+          },
+        },
+      ],
+    };
+
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify(mockResponse), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    mockApi.runtime.subagent.run = mock(async () => {
+      throw new Error('Subagent runtime error');
+    });
+
+    const result = await handleDailyDigest(
+      mockApi,
+      'https://test.example.com',
+      'agent-123',
+      'api-key-123',
+    );
+
+    expect(result).toBe(false);
     expect(mockApi.logger.warn).toHaveBeenCalled();
   });
 });

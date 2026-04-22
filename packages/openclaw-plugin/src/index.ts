@@ -189,7 +189,8 @@ export function register(api: OpenClawPluginApi): void {
   const digestEnabled = readConfig(api, 'digestEnabled') !== 'false';
   if (digestEnabled) {
     const digestTime = readConfig(api, 'digestTime') || '08:00';
-    const digestMaxCount = Math.max(1, parseInt(readConfig(api, 'digestMaxCount') || '10', 10) || 10);
+    const _parsedMax = parseInt(readConfig(api, 'digestMaxCount') || '10', 10);
+    const digestMaxCount = Math.max(1, Number.isNaN(_parsedMax) ? 10 : _parsedMax);
 
     const scheduleDigest = () => {
       const delay = msUntilNextDigest(digestTime);
@@ -562,11 +563,12 @@ export async function handleDailyDigest(
 
   const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
   const effectiveMax = Math.min(maxCount, body.opportunities.length);
+  const dateStr = new Date().toISOString().slice(0, 10);
 
   try {
     await api.runtime.subagent.run({
       sessionKey,
-      idempotencyKey: `index:delivery:daily-digest:${agentId}:${batchHash}`,
+      idempotencyKey: `index:delivery:daily-digest:${agentId}:${dateStr}:${batchHash}`,
       message: digestEvaluatorPrompt(
         body.opportunities.map((o) => ({
           opportunityId: o.opportunityId,
