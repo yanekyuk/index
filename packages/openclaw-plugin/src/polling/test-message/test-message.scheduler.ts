@@ -12,6 +12,12 @@ export interface TestMessageSchedulerConfig {
   logger: PluginLogger;
 }
 
+/**
+ * Starts the test message scheduler, which periodically triggers the
+ * `/index-network/poll/test-message` route via local fetch.
+ *
+ * @param config - Scheduler configuration including gateway port and token.
+ */
 export function start(config: TestMessageSchedulerConfig): void {
   if (timer) { clearTimeout(timer); }
 
@@ -36,6 +42,11 @@ export function start(config: TestMessageSchedulerConfig): void {
   setTimeout(trigger, 5_000).unref();
 }
 
+/**
+ * Increases the backoff multiplier on consecutive failures.
+ *
+ * @param logger - Logger for reporting the new backoff interval.
+ */
 export function increaseBackoff(logger: PluginLogger): void {
   if (backoffMultiplier < MAX_BACKOFF_MULTIPLIER) {
     backoffMultiplier = Math.min(backoffMultiplier * 2, MAX_BACKOFF_MULTIPLIER);
@@ -45,6 +56,7 @@ export function increaseBackoff(logger: PluginLogger): void {
   }
 }
 
+/** Resets the backoff multiplier to 1 after a successful poll. */
 export function resetBackoff(): void {
   backoffMultiplier = 1;
 }

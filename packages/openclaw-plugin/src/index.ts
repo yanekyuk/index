@@ -1,18 +1,14 @@
 /**
  * Index Network — OpenClaw plugin entry point.
  *
- * Polls the Index Network backend for pending negotiation turns via:
+ * Registers four HTTP routes (one per polling domain) and starts their
+ * respective schedulers:
  *
- *   POST /agents/:agentId/negotiations/pickup
+ *   POST /index-network/poll/negotiator         — negotiation turn pickup
+ *   POST /index-network/poll/ambient-discovery  — opportunity batch evaluation
+ *   POST /index-network/poll/test-message       — test message pickup
  *
- * Because `api.runtime.subagent.run()` is request-scoped in OpenClaw (only
- * available inside an HTTP route handler), the plugin registers a route at
- * `POST /index-network/poll` and the background interval triggers it via a
- * local fetch. This gives each poll cycle a proper request scope.
- *
- * When a turn is found, dispatches a silent subagent that calls
- * `get_negotiation` + `respond_to_negotiation` on the parent's Index Network
- * MCP pool to decide and submit the response.
+ * Daily digest is scheduled directly (no HTTP route needed).
  *
  * Uses `definePluginEntry` from the OpenClaw plugin SDK so that CLI commands
  * (e.g. `openclaw index-network setup`) are properly registered.
