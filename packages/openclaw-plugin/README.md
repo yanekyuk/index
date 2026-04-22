@@ -42,7 +42,7 @@ The skill then re-registers the MCP server with an `x-api-key` header so every t
 
 ## Automatic opportunity delivery (v1)
 
-Once the plugin is configured with an `agentId`, `apiKey`, `deliveryChannel`, and `deliveryTarget`, it polls the Index Network backend every 30 seconds for pending opportunities and test messages. When one is found, the plugin:
+Once the plugin is configured with an `agentId`, `apiKey`, `deliveryChannel`, and `deliveryTarget`, it polls the Index Network backend every 5 minutes for pending opportunities and test messages. When one is found, the plugin:
 
 1. Picks it up via `POST /agents/:agentId/opportunities/pickup` or `POST /agents/:agentId/test-messages/pickup` (reservation-based, 60 s TTL).
 2. Dispatches a subagent with `deliver: true`, routed to `agent:main:<deliveryChannel>:direct:<deliveryTarget>`, so the rendered card is announced to the user on the configured channel.
@@ -78,6 +78,18 @@ openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.delivery
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget YOUR_CHAT_ID
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
 ```
+
+### Daily Digest
+
+In addition to real-time polling every 5 minutes, the plugin sends a daily digest of lower-priority opportunities at a configurable time.
+
+| Config Key | Default | Description |
+|------------|---------|-------------|
+| `digestEnabled` | `true` | Set to `"false"` to disable daily digest |
+| `digestTime` | `"08:00"` | Time to send digest in HH:MM format (24-hour, local timezone) |
+| `digestMaxCount` | `10` | Maximum opportunities to include in digest |
+
+The digest ranks all pending opportunities by relevance and delivers the top N. Opportunities not included roll over to the next day's digest.
 
 ### Resilience
 
