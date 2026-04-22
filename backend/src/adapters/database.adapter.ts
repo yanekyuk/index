@@ -806,6 +806,11 @@ export class ChatDatabaseAdapter {
   /** @deprecated Use conversationDatabaseAdapter.getChatSessionMetadata */
   async getSessionMetadata(sessionId: string): Promise<{ id: string; sessionId: string; metadata: unknown; createdAt: Date; updatedAt: Date } | undefined> { return _convDb().getChatSessionMetadata(sessionId); }
 
+  // Negotiation context methods — required by HomeGraphDatabase
+  async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
+  async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
+  async getArtifactsForTask(taskId: string) { return _convDb().getArtifactsForTask(taskId); }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Chat Graph Methods (Profiles, Intents, Indexes)
   // ─────────────────────────────────────────────────────────────────────────────
