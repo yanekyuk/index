@@ -69,7 +69,6 @@ function ClickableCodeBlock({ code }: { code: string }) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -280,7 +279,6 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ApiKeyCreatedModal({
   agentName,
   agentId,
@@ -353,7 +351,6 @@ export default function AgentsPage() {
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentDescription, setNewAgentDescription] = useState('');
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<{ agentId: string; key: string } | null>(null);
-  const [copiedKey, setCopiedKey] = useState(false);
   const [generatingForAgentId, setGeneratingForAgentId] = useState<string | null>(null);
   const [keysVersion, setKeysVersion] = useState(0);
 
@@ -427,6 +424,8 @@ export default function AgentsPage() {
     [agents],
   );
 
+  const modalAgent = newlyCreatedKey ? agents.find((a) => a.id === newlyCreatedKey.agentId) : null;
+
   async function refreshAgents() {
     const next = await agentsService.list();
     setAgents(next);
@@ -492,16 +491,6 @@ export default function AgentsPage() {
       success('Agent API key revoked');
     } catch (err) {
       error('Failed to revoke agent API key', err instanceof Error ? err.message : undefined);
-    }
-  }
-
-  async function handleCopyKey(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedKey(true);
-      setTimeout(() => setCopiedKey(false), 2000);
-    } catch {
-      error('Failed to copy key');
     }
   }
 
@@ -603,7 +592,6 @@ export default function AgentsPage() {
                   <div className="space-y-4">
                     {personalAgents.map((agent) => {
                       const agentKeys = keysByAgent[agent.id] ?? [];
-                      const createdKeyForAgent = newlyCreatedKey?.agentId === agent.id ? newlyCreatedKey.key : null;
 
                       return (
                         <div key={agent.id} className="border border-gray-200 rounded-sm p-4 bg-white space-y-4">
@@ -627,6 +615,12 @@ export default function AgentsPage() {
                             </div>
                           </div>
 
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 shrink-0">Agent ID</span>
+                            <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-0.5 font-mono text-gray-600 flex-1 min-w-0 break-all">{agent.id}</code>
+                            <CopyButton text={agent.id} />
+                          </div>
+
                           <div>
                             <div className="flex items-center justify-between gap-4 mb-2">
                               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">API Keys</p>
@@ -640,23 +634,9 @@ export default function AgentsPage() {
                               </Button>
                             </div>
 
-                            {createdKeyForAgent ? (
-                              <div className="mb-3 bg-amber-50 border border-amber-200 rounded-sm p-3">
-                                <p className="text-sm font-medium text-amber-800 mb-2">Copy this API key now. It will not be shown again.</p>
-                                <div className="flex items-center gap-2">
-                                  <code className="flex-1 bg-white border border-amber-200 rounded-sm px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
-                                    {createdKeyForAgent}
-                                  </code>
-                                  <Button variant="outline" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCopyKey(createdKeyForAgent); }}>
-                                    {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {agentKeys.length === 0 && !createdKeyForAgent ? (
+                            {agentKeys.length === 0 ? (
                               <p className="text-sm text-gray-400">No agent-linked API keys yet.</p>
-                            ) : agentKeys.length === 0 ? null : (
+                            ) : (
                               <div className="border border-gray-200 rounded-sm overflow-hidden">
                                 <table className="w-full text-sm">
                                   <thead>
@@ -692,7 +672,6 @@ export default function AgentsPage() {
                               </div>
                             )}
 
-                            <SetupInstructions apiKey={createdKeyForAgent ?? undefined} agentId={agent.id} />
                           </div>
                         </div>
                       );
@@ -700,10 +679,30 @@ export default function AgentsPage() {
                   </div>
                 )}
               </section>
+
+              <hr className="border-gray-200" />
+              <section>
+                <div className="mb-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-1">Setup Instructions</h2>
+                  <p className="text-sm text-gray-500">
+                    Connect a personal agent to Index Network using any platform below. Copy your Agent ID from the card above, then generate and copy an API key.
+                  </p>
+                </div>
+                <SetupInstructions />
+              </section>
             </div>
           )}
         </ContentContainer>
       </div>
+
+      {newlyCreatedKey && modalAgent ? (
+        <ApiKeyCreatedModal
+          agentName={modalAgent.name}
+          agentId={newlyCreatedKey.agentId}
+          apiKey={newlyCreatedKey.key}
+          onClose={() => setNewlyCreatedKey(null)}
+        />
+      ) : null}
     </ClientLayout>
   );
 }
