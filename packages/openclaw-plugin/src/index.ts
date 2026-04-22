@@ -20,6 +20,7 @@
 
 import type { OpenClawPluginApi } from './plugin-api.js';
 import { buildDeliverySessionKey, dispatchDelivery } from './delivery.dispatcher.js';
+import { msUntilNextDigest } from './digest.scheduler.js';
 import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
 import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
@@ -44,6 +45,9 @@ let backoffMultiplier = 1;
 
 /** Handle returned by setInterval, stored so tests can inspect or clear it. */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Handle returned by setTimeout for daily digest, stored so tests can clear it. */
+let digestTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Registers the `openclaw index-network setup` CLI command if the host
@@ -180,6 +184,32 @@ export function register(api: OpenClawPluginApi): void {
   };
 
   scheduleNext();
+
+  // Schedule daily digest
+  const digestEnabled = readConfig(api, 'digestEnabled') !== 'false';
+  if (digestEnabled) {
+    const digestTime = readConfig(api, 'digestTime') || '08:00';
+    const digestMaxCount = parseInt(readConfig(api, 'digestMaxCount') || '10', 10);
+
+    const scheduleDigest = () => {
+      const delay = msUntilNextDigest(digestTime);
+      api.logger.info(`Daily digest scheduled for ${digestTime} (in ${Math.round(delay / 60000)} minutes)`);
+
+      digestTimer = setTimeout(async () => {
+        api.logger.info('Daily digest triggered');
+        try {
+          await handleDailyDigest(api, baseUrl, agentId, apiKey, digestMaxCount);
+        } catch (err) {
+          api.logger.error(
+            `Daily digest error: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        scheduleDigest(); // Schedule next day's digest
+      }, delay);
+    };
+
+    scheduleDigest();
+  }
 
   // First poll after a short delay to let the gateway fully start.
   // This initial poll also runs a reachability check on the backend.
@@ -615,5 +645,9 @@ export function _resetForTesting(): void {
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
+  }
+  if (digestTimer) {
+    clearTimeout(digestTimer);
+    digestTimer = null;
   }
 }
