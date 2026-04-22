@@ -75,6 +75,9 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 const logger = protocolLogger('OpportunityGraph');
 
+/** Time window for persist-node dedup. Parallel jobs arrive within seconds; 10 min catches those while allowing new opportunities for long-connected pairs. */
+const DEDUP_WINDOW_MS = 10 * 60 * 1000;
+
 /** Input shape for the HyDE graph invoke call (query-based embedding). */
 export interface HydeGeneratorInvokeInput {
   sourceType: 'query';
@@ -2372,15 +2375,32 @@ export class OpportunityGraphFactory {
                 : [];
               if (overlapping.length > 0) {
                 const existing = overlapping[0];
+                const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
                 const sameIntroducer = existing.actors?.some(
                   (actor) => actor.role === 'introducer' && actor.userId === state.userId,
                 );
-                if (existing.status === 'expired' && sameIntroducer) {
-                  const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
-                  if (reactivated) reactivatedOpportunities.push(reactivated);
-                  continue;
-                }
-                if (existing.status === 'latent') {
+
+                if (existing.status === 'expired' || existing.status === 'stalled') {
+                  // Reactivate expired or stalled opportunities (only if same introducer for expired).
+                  // A different introducer creating for an expired pair falls through to new creation —
+                  // the prior expiry belongs to the original introducer, not this one.
+                  // Stalled opportunities are reactivated regardless of age: a stalled negotiation
+                  // is still in-flight for this pair, so we resume it rather than create a parallel one.
+                  if (existing.status === 'stalled' || sameIntroducer) {
+                    // Introduction path always targets 'draft' (chat-only surface) rather than using
+                    // initialStatus, because introductions are always chat-initiated, not background-discovered.
+                    const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                    if (reactivated) {
+                      logger.verbose('[Graph:Persist] Reactivated opportunity (introduction path)', {
+                        opportunityId: existing.id,
+                        candidateUserId,
+                        previousStatus: existing.status,
+                      });
+                      reactivatedOpportunities.push(reactivated);
+                    }
+                    continue;
+                  }
+                } else if (existing.status === 'latent') {
                   // Upgrade latent to draft for introduction path
                   const upgraded = await this.database.updateOpportunityStatus(existing.id, 'draft');
                   if (upgraded) {
@@ -2391,16 +2411,27 @@ export class OpportunityGraphFactory {
                     reactivatedOpportunities.push(upgraded);
                   }
                   continue;
-                }
-                if (existing.status !== 'expired' && candidateUserId) {
+                } else if (isRecent && candidateUserId) {
+                  // Time-gated skip: only skip if opportunity was created within DEDUP_WINDOW_MS
                   existingBetweenActors.push({
                     candidateUserId: candidateUserId as Id<'users'>,
                     networkId: (state.networkId ?? indexIdForActors ?? '') as Id<'networks'>,
                     existingOpportunityId: existing.id as Id<'opportunities'>,
                     existingStatus: existing.status,
                   });
+                  logger.verbose('[Graph:Persist] Skipping recent duplicate (introduction path)', {
+                    candidateUserId,
+                    existingStatus: existing.status,
+                    existingOpportunityId: existing.id,
+                  });
                   continue;
                 }
+                // Else: existing opportunity is old enough, allow new opportunity creation
+                logger.verbose('[Graph:Persist] Allowing new opportunity; existing is outside dedup window (introduction path)', {
+                  candidateUserId,
+                  existingStatus: existing.status,
+                  existingOpportunityId: existing.id,
+                });
               }
 
               data = {
@@ -2477,17 +2508,23 @@ export class OpportunityGraphFactory {
               if (overlapping.length > 0) {
                 const existing = overlapping[0];
                 const existingIndexId = (existing.context?.networkId ?? state.networkId ?? state.userNetworks?.[0] ?? '') as Id<'networks'>;
+                const isRecent = new Date(existing.createdAt).getTime() > Date.now() - DEDUP_WINDOW_MS;
 
-                if (existing.status === 'expired') {
+                if (existing.status === 'expired' || existing.status === 'stalled') {
+                  // Reactivate expired or stalled opportunities.
+                  // Stalled opportunities are reactivated regardless of age: a stalled negotiation
+                  // is still in-flight for this pair, so we resume it rather than create a parallel one.
                   const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
                   if (reactivated) {
-                    logger.verbose('[Graph:Persist] Reactivated expired opportunity', {
+                    logger.verbose('[Graph:Persist] Reactivated opportunity', {
                       opportunityId: existing.id,
                       candidateUserId,
+                      previousStatus: existing.status,
                       newStatus: initialStatus,
                     });
                     reactivatedOpportunities.push(reactivated);
                   }
+                  continue;
                 } else if (existing.status === 'latent' && initialStatus !== 'latent') {
                   // Upgrade latent (background-discovered) to the higher-priority status (e.g. pending)
                   const upgraded = await this.database.updateOpportunityStatus(existing.id, initialStatus);
@@ -2500,20 +2537,31 @@ export class OpportunityGraphFactory {
                     });
                     reactivatedOpportunities.push(upgraded);
                   }
-                } else if (candidateUserId) {
+                  continue;
+                } else if (isRecent && candidateUserId) {
+                  // Time-gated skip: only skip if opportunity was created within DEDUP_WINDOW_MS
+                  // This prevents parallel job duplicates while allowing new discoveries for long-connected pairs
                   existingBetweenActors.push({
                     candidateUserId: candidateUserId as Id<'users'>,
                     networkId: existingIndexId,
                     existingOpportunityId: existing.id as Id<'opportunities'>,
                     existingStatus: existing.status,
                   });
-                  logger.verbose('[Graph:Persist] Skipping duplicate; opportunity already exists between actors', {
+                  logger.verbose('[Graph:Persist] Skipping recent duplicate; opportunity created within dedup window', {
                     candidateUserId,
                     existingStatus: existing.status,
                     existingOpportunityId: existing.id,
+                    createdAt: existing.createdAt,
                   });
+                  continue;
                 }
-                continue;
+                // Else: existing opportunity is old enough (>10 min), allow new opportunity creation
+                logger.verbose('[Graph:Persist] Allowing new opportunity; existing is outside dedup window', {
+                  candidateUserId,
+                  existingStatus: existing.status,
+                  existingOpportunityId: existing.id,
+                  createdAt: existing.createdAt,
+                });
               }
 
               data = {
