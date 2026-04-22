@@ -19,31 +19,18 @@
  */
 
 import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
-import { dispatchDelivery } from './lib/delivery/delivery.dispatcher.js';
 import * as negotiatorPoller from './polling/negotiator/negotiator.poller.js';
 import * as negotiatorScheduler from './polling/negotiator/negotiator.scheduler.js';
 import * as dailyDigestPoller from './polling/daily-digest/daily-digest.poller.js';
 import * as dailyDigestScheduler from './polling/daily-digest/daily-digest.scheduler.js';
 import * as ambientDiscoveryPoller from './polling/ambient-discovery/ambient-discovery.poller.js';
 import * as ambientDiscoveryScheduler from './polling/ambient-discovery/ambient-discovery.scheduler.js';
+import * as testMessagePoller from './polling/test-message/test-message.poller.js';
+import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
 import { registerSetupCli } from './setup/setup.cli.js';
-
-/** Base polling interval: 5 minutes. */
-const POLL_INTERVAL_MS = 300_000;
-
-/** Max backoff multiplier (caps at ~8 minutes). */
-const MAX_BACKOFF_MULTIPLIER = 16;
-
-const POLL_PATH = '/index-network/poll';
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
-
-/** Current backoff multiplier — increases on consecutive failures, resets on success. */
-let backoffMultiplier = 1;
-
-/** Handle returned by setInterval, stored so tests can inspect or clear it. */
-let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Registers the `openclaw index-network setup` CLI command if the host
@@ -135,26 +122,27 @@ export function register(api: OpenClawPluginApi): void {
   const gatewayPort = api.config?.gateway?.port ?? 18789;
   const gatewayToken = api.config?.gateway?.auth?.token ?? '';
 
-  // Route MUST use auth: 'gateway' (not 'plugin') — subagent.run() requires
-  // operator.write scope, which only gateway-authed routes receive.
+  // Register test-message route
   api.registerHttpRoute({
-    path: POLL_PATH,
+    path: '/index-network/poll/test-message',
     auth: 'gateway',
     match: 'exact',
-    handler: async (req, res) => {
+    handler: async (_req, res) => {
       try {
-        await poll(api, baseUrl, agentId, apiKey);
+        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey });
         res.statusCode = 200;
         res.end('ok');
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        api.logger.error(`Poll handler error: ${msg}`);
+        api.logger.error(`Test-message poll handler error: ${msg}`);
         res.statusCode = 500;
         res.end(msg);
       }
       return true;
     },
   });
+
+  testMessageScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
 
   // Register negotiator route
   const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
@@ -219,34 +207,7 @@ export function register(api: OpenClawPluginApi): void {
   api.logger.info('Index Network polling started', {
     plugin: api.id,
     agentId,
-    intervalMs: POLL_INTERVAL_MS,
   });
-
-  // Trigger polling via self-POST to the registered route
-  const triggerPoll = () => {
-    const url = `http://127.0.0.1:${gatewayPort}${POLL_PATH}`;
-    fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${gatewayToken}`,
-      },
-      signal: AbortSignal.timeout(30_000),
-    }).catch((err) => {
-      api.logger.error(`Poll trigger failed: ${err instanceof Error ? err.message : String(err)}`);
-    });
-  };
-
-  // Schedule polling with dynamic backoff
-  const scheduleNext = () => {
-    const delay = POLL_INTERVAL_MS * backoffMultiplier;
-    pollTimer = setTimeout(() => {
-      triggerPoll();
-      scheduleNext();
-    }, delay);
-    pollTimer.unref();
-  };
-
-  scheduleNext();
 
   // Schedule daily digest
   const digestEnabled = readConfig(api, 'digestEnabled') !== 'false';
@@ -262,11 +223,9 @@ export function register(api: OpenClawPluginApi): void {
     });
   }
 
-  // First poll after a short delay to let the gateway fully start.
-  // This initial poll also runs a reachability check on the backend.
+  // Reachability check after a short delay to let the gateway fully start.
   setTimeout(() => {
     checkBackendReachability(api, baseUrl);
-    triggerPoll();
   }, 5_000).unref();
 }
 
@@ -279,87 +238,6 @@ export default {
   description: 'Find the right people and let them find you.',
   register,
 };
-
-async function poll(
-  api: OpenClawPluginApi,
-  baseUrl: string,
-  agentId: string,
-  apiKey: string,
-): Promise<void> {
-  await handleTestMessagePickup(api, baseUrl, agentId, apiKey);
-}
-
-/**
- * Handles one test-message pickup cycle. Picks up a pending test message,
- * dispatches it via `dispatchDelivery`, then confirms delivery.
- *
- * @returns `true` if a test message was dispatched, `false` otherwise.
- * @internal
- */
-export async function handleTestMessagePickup(
-  api: OpenClawPluginApi,
-  baseUrl: string,
-  agentId: string,
-  apiKey: string,
-): Promise<boolean> {
-  const pickupUrl = `${baseUrl}/api/agents/${agentId}/test-messages/pickup`;
-
-  const res = await fetch(pickupUrl, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey },
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (res.status === 204) {
-    return false;
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    api.logger.warn(`Test-message pickup failed: ${res.status} ${text}`);
-    return false;
-  }
-
-  const body = (await res.json()) as {
-    id: string;
-    content: string;
-    reservationToken: string;
-  };
-
-  const dispatchResult = await dispatchDelivery(api, {
-    rendered: { headline: 'Test message', body: body.content },
-    idempotencyKey: `index:delivery:test:${body.id}:${body.reservationToken}`,
-  });
-
-  // If delivery routing wasn't configured, don't confirm — let reservation expire so we can retry once configured.
-  if (dispatchResult === null) {
-    return false;
-  }
-
-  // Confirm delivery — failures are warnings only, dispatch already happened
-  const confirmUrl = `${baseUrl}/api/agents/${agentId}/test-messages/${body.id}/delivered`;
-  await fetch(confirmUrl, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
-    body: JSON.stringify({ reservationToken: body.reservationToken }),
-    signal: AbortSignal.timeout(10_000),
-  }).catch((err) => {
-    api.logger.warn(
-      `Test-message confirm failed for ${body.id}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
-
-  return true;
-}
-
-function increaseBackoff(api: OpenClawPluginApi): void {
-  if (backoffMultiplier < MAX_BACKOFF_MULTIPLIER) {
-    backoffMultiplier = Math.min(backoffMultiplier * 2, MAX_BACKOFF_MULTIPLIER);
-    api.logger.info(
-      `Backing off — next poll in ${(POLL_INTERVAL_MS * backoffMultiplier / 1000).toFixed(0)}s`,
-    );
-  }
-}
 
 /**
  * One-time startup check: verifies the backend is reachable. Logs an
@@ -388,14 +266,10 @@ function readConfig(api: OpenClawPluginApi, key: string): string {
  */
 export function _resetForTesting(): void {
   registered = false;
-  backoffMultiplier = 1;        // still used by index.ts poll loop until Task 6
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
-  }
   negotiatorPoller._resetForTesting();
   negotiatorScheduler._resetForTesting();
   dailyDigestScheduler._resetForTesting();
   ambientDiscoveryPoller._resetForTesting();
   ambientDiscoveryScheduler._resetForTesting();
+  testMessageScheduler._resetForTesting();
 }
