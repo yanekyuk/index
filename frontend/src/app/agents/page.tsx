@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import * as Dialog from '@radix-ui/react-dialog';
 import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import ClientLayout from '@/components/ClientLayout';
@@ -229,11 +230,9 @@ function OpenClawSetup({
 }
 
 function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const keyPlaceholder = apiKey || 'YOUR_API_KEY';
-  const agentPlaceholder = agentId || 'YOUR_AGENT_ID';
-
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || 'http://localhost:3001';
+  const keyValue = apiKey || 'YOUR_API_KEY';
+  const agentValue = agentId || 'YOUR_AGENT_ID';
+  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || 'https://api.index.network';
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -243,7 +242,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           type: 'http',
           url: mcpUrl,
           headers: {
-            'x-api-key': keyPlaceholder,
+            'x-api-key': keyValue,
           },
         },
       },
@@ -256,49 +255,88 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   - name: index-network
     url: ${mcpUrl}
     headers:
-      x-api-key: ${keyPlaceholder}`;
+      x-api-key: ${keyValue}`;
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
-
+  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
   const openclawSetup = `openclaw index-network setup`;
 
   return (
-    <div className="border border-gray-200 rounded-sm" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(!expanded); }}
-        className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-      >
-        <span className="text-sm">{expanded ? '−' : '+'}</span>
-        Setup Instructions
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-gray-100">
-          <div className="pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Claude Code / OpenCode</p>
-            </div>
-            <ClickableCodeBlock code={claudeConfig} />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Hermes Agent</p>
-            </div>
-            <ClickableCodeBlock code={hermesConfig} />
-          </div>
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <OpenClawSetup install={openclawInstall} update="openclaw plugins update indexnetwork-openclaw-plugin" setup={openclawSetup} />
-            <div className="bg-gray-50 border border-gray-200 rounded-sm p-3">
-              <p className="text-xs text-gray-500 font-ibm-plex-mono mb-2">
-                The setup wizard will prompt for these values:
-              </p>
-              <WizardPromptGrid serverUrl={protocolUrl} agentId={agentPlaceholder} apiKey={keyPlaceholder} />
-            </div>
-          </div>
-        </div>
-      )}
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Claude Code / OpenCode</p>
+        <ClickableCodeBlock code={claudeConfig} />
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hermes Agent</p>
+        <ClickableCodeBlock code={hermesConfig} />
+      </div>
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
+        <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
+        <WizardPromptGrid serverUrl={protocolUrl} agentId={agentValue} apiKey={keyValue} />
+      </div>
     </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function ApiKeyCreatedModal({
+  agentName,
+  agentId,
+  apiKey,
+  onClose,
+}: {
+  agentName: string;
+  agentId: string;
+  apiKey: string;
+  onClose: () => void;
+}) {
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  async function handleCopyKey() {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 1500);
+    } catch { /* silent */ }
+  }
+
+  return (
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-50" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-sm shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-6 focus:outline-none">
+          <div>
+            <Dialog.Title className="text-lg font-semibold text-gray-900">API Key Created</Dialog.Title>
+            <Dialog.Description className="text-sm text-gray-500 mt-1">For: {agentName}</Dialog.Description>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-sm p-4 space-y-3">
+            <p className="text-sm font-medium text-amber-800">Copy this key now — it won't be shown again</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-white border border-amber-200 rounded-sm px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
+                {apiKey}
+              </code>
+              <Button variant="outline" size="sm" onClick={handleCopyKey}>
+                {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Your Agent ID and API key are pre-filled below. Pick the platform you use.
+            </p>
+            <SetupInstructions apiKey={apiKey} agentId={agentId} />
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-gray-100">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
