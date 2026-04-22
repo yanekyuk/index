@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import { _resetForTesting, handleTestMessagePickup } from '../index.js';
-import type { OpenClawPluginApi, SubagentRunOptions } from '../plugin-api.js';
+import { handle as handleTestMessagePickup } from '../polling/test-message/test-message.poller.js';
+import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plugin-api.js';
 
 interface FakeApi {
   api: OpenClawPluginApi;
@@ -51,12 +51,10 @@ describe('handleTestMessagePickup', () => {
 
   beforeEach(() => {
     originalFetch = global.fetch;
-    _resetForTesting();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
-    _resetForTesting();
   });
 
   test('204 response → returns false, no dispatch, no confirm POST', async () => {
@@ -67,7 +65,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -98,7 +96,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(true);
 
@@ -124,7 +122,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -148,7 +146,7 @@ describe('handleTestMessagePickup', () => {
 
     const fake = buildFakeApi();
     // Should not throw
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(true);
     expect(fake.subagentCalls).toHaveLength(1);

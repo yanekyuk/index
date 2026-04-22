@@ -4,7 +4,7 @@ import { register, _resetForTesting } from '../index.js';
 import type {
   OpenClawPluginApi,
   SubagentRunOptions,
-} from '../plugin-api.js';
+} from '../lib/openclaw/plugin-api.js';
 
 interface FakeApi {
   api: OpenClawPluginApi;

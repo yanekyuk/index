@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { handleDailyDigest, _resetForTesting } from '../index.js';
-import type { OpenClawPluginApi } from '../plugin-api.js';
+import { handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
+import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
 describe('handleDailyDigest', () => {
   let mockApi: OpenClawPluginApi;
@@ -9,7 +9,6 @@ describe('handleDailyDigest', () => {
   let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
-    _resetForTesting();
     subagentRunCalls = [];
     originalFetch = global.fetch;
 
@@ -40,7 +39,6 @@ describe('handleDailyDigest', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
-    _resetForTesting();
   });
 
   it('dispatches digest with top N prompt when opportunities exist', async () => {
@@ -71,13 +69,12 @@ describe('handleDailyDigest', () => {
       new Response(JSON.stringify(mockResponse), { status: 200 }),
     ) as unknown as typeof fetch;
 
-    const result = await handleDailyDigest(
-      mockApi,
-      'https://test.example.com',
-      'agent-123',
-      'api-key-123',
-      5,
-    );
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 5,
+    });
 
     expect(result).toBe(true);
     expect(subagentRunCalls).toHaveLength(1);
@@ -94,12 +91,12 @@ describe('handleDailyDigest', () => {
       new Response(JSON.stringify({ opportunities: [] }), { status: 200 }),
     ) as unknown as typeof fetch;
 
-    const result = await handleDailyDigest(
-      mockApi,
-      'https://test.example.com',
-      'agent-123',
-      'api-key-123',
-    );
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
 
     expect(result).toBe(false);
     expect(subagentRunCalls).toHaveLength(0);
@@ -126,12 +123,12 @@ describe('handleDailyDigest', () => {
       new Response(JSON.stringify(mockResponse), { status: 200 }),
     ) as unknown as typeof fetch;
 
-    const result = await handleDailyDigest(
-      mockApi,
-      'https://test.example.com',
-      'agent-123',
-      'api-key-123',
-    );
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
 
     expect(result).toBe(false);
     expect(subagentRunCalls).toHaveLength(0);
@@ -142,12 +139,12 @@ describe('handleDailyDigest', () => {
       throw new Error('Network error');
     }) as unknown as typeof fetch;
 
-    const result = await handleDailyDigest(
-      mockApi,
-      'https://test.example.com',
-      'agent-123',
-      'api-key-123',
-    );
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
 
     expect(result).toBe(false);
     expect(subagentRunCalls).toHaveLength(0);
@@ -159,12 +156,12 @@ describe('handleDailyDigest', () => {
       new Response('Internal Server Error', { status: 500 }),
     ) as unknown as typeof fetch;
 
-    const result = await handleDailyDigest(
-      mockApi,
-      'https://test.example.com',
-      'agent-123',
-      'api-key-123',
-    );
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
 
     expect(result).toBe(false);
     expect(subagentRunCalls).toHaveLength(0);
@@ -194,12 +191,12 @@ describe('handleDailyDigest', () => {
       throw new Error('Subagent runtime error');
     });
 
-    const result = await handleDailyDigest(
-      mockApi,
-      'https://test.example.com',
-      'agent-123',
-      'api-key-123',
-    );
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
 
     expect(result).toBe(false);
     expect(mockApi.logger.warn).toHaveBeenCalled();
