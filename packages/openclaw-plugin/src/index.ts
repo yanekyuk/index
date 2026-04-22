@@ -419,8 +419,6 @@ export async function handleOpportunityBatch(
     return false;
   }
 
-  lastOpportunityBatchHash = batchHash;
-
   const dateStr = new Date().toISOString().slice(0, 10);
   const model = await readModel(api);
 
@@ -440,6 +438,7 @@ export async function handleOpportunityBatch(
       deliver: true,
       model,
     });
+    lastOpportunityBatchHash = batchHash;
   } catch (err) {
     // Subagent dispatch failed — swallow so the poll loop doesn't escalate backoff
     // on a runtime-side issue. The same batch will retry on the next tick.

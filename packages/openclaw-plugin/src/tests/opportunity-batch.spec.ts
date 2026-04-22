@@ -295,9 +295,11 @@ describe('handleOpportunityBatch', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const first = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const second = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
 
+    expect(first).toBe(true);
+    expect(second).toBe(true);
     expect(fake.subagentCalls).toHaveLength(2);
   });
 });
