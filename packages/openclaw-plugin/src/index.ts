@@ -1,7 +1,7 @@
 /**
  * Index Network — OpenClaw plugin entry point.
  *
- * Registers four HTTP routes (one per polling domain) and starts their
+ * Registers three HTTP routes across four polling domains and starts their
  * respective schedulers:
  *
  *   POST /index-network/poll/negotiator         — negotiation turn pickup
