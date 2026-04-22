@@ -135,4 +135,38 @@ describe('handleDailyDigest', () => {
     expect(result).toBe(false);
     expect(subagentRunCalls).toHaveLength(0);
   });
+
+  it('returns false on fetch network error', async () => {
+    global.fetch = mock(async () => {
+      throw new Error('Network error');
+    }) as unknown as typeof fetch;
+
+    const result = await handleDailyDigest(
+      mockApi,
+      'https://test.example.com',
+      'agent-123',
+      'api-key-123',
+    );
+
+    expect(result).toBe(false);
+    expect(subagentRunCalls).toHaveLength(0);
+    expect(mockApi.logger.warn).toHaveBeenCalled();
+  });
+
+  it('returns false on non-200 response', async () => {
+    global.fetch = mock(async () =>
+      new Response('Internal Server Error', { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const result = await handleDailyDigest(
+      mockApi,
+      'https://test.example.com',
+      'agent-123',
+      'api-key-123',
+    );
+
+    expect(result).toBe(false);
+    expect(subagentRunCalls).toHaveLength(0);
+    expect(mockApi.logger.warn).toHaveBeenCalled();
+  });
 });

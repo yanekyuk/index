@@ -29,4 +29,20 @@ describe('msUntilNextDigest', () => {
     // 14:30 → 15:45 = 1h 15m = 75 minutes
     expect(result).toBe(75 * 60 * 1000);
   });
+
+  it('throws on invalid format (non-numeric)', () => {
+    expect(() => msUntilNextDigest('8am')).toThrow('Invalid digestTime "8am" — expected HH:MM format');
+  });
+
+  it('throws on invalid format (missing colon)', () => {
+    expect(() => msUntilNextDigest('0800')).toThrow('Invalid digestTime "0800" — expected HH:MM format');
+  });
+
+  it('throws on out-of-range hours', () => {
+    expect(() => msUntilNextDigest('25:00')).toThrow('Invalid digestTime "25:00" — hours must be 0-23, minutes 0-59');
+  });
+
+  it('throws on out-of-range minutes', () => {
+    expect(() => msUntilNextDigest('08:60')).toThrow('Invalid digestTime "08:60" — hours must be 0-23, minutes 0-59');
+  });
 });
