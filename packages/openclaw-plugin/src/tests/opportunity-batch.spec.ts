@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import { _resetForTesting, handleOpportunityBatch } from '../index.js';
+import { handle as handleOpportunityBatch, _resetForTesting } from '../polling/ambient-discovery/ambient-discovery.poller.js';
 import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plugin-api.js';
 
 interface FakeApi {
@@ -83,7 +83,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -95,7 +95,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -111,7 +111,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(false); // no deliveryChannel/deliveryTarget
-    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -127,7 +127,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(true);
     expect(fake.subagentCalls).toHaveLength(1);
@@ -143,7 +143,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     const message = fake.subagentCalls[0].message;
     expect(message).toContain(SAMPLE_CANDIDATE.opportunityId);
@@ -161,7 +161,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake.subagentCalls[0].sessionKey).toBe('agent:main:telegram:direct:69340471');
   });
@@ -177,7 +177,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake1 = buildFakeApi();
-    await handleOpportunityBatch(fake1.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake1.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     _resetForTesting();
 
@@ -189,7 +189,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake2 = buildFakeApi();
-    await handleOpportunityBatch(fake2.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake2.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake1.subagentCalls[0].idempotencyKey).toBe(fake2.subagentCalls[0].idempotencyKey);
   });
@@ -203,7 +203,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(true, 'anthropic/claude-sonnet-4-6');
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake.subagentCalls[0].model).toBe('anthropic/claude-sonnet-4-6');
   });
@@ -217,7 +217,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(true, { primary: 'anthropic/claude-opus-4-6', fallbacks: ['openai/gpt-4o'] });
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake.subagentCalls[0].model).toBe('anthropic/claude-opus-4-6');
   });
@@ -231,7 +231,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(true); // no configGet
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake.subagentCalls[0].model).toBeUndefined();
   });
@@ -247,7 +247,7 @@ describe('handleOpportunityBatch', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0].url).toContain(`/agents/${AGENT_ID}/opportunities/pending`);
@@ -263,8 +263,8 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const first = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
-    const second = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const first = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const second = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(first).toBe(true);
     expect(second).toBe(false);
@@ -295,8 +295,8 @@ describe('handleOpportunityBatch', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const first = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
-    const second = await handleOpportunityBatch(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const first = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const second = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(first).toBe(true);
     expect(second).toBe(true);

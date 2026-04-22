@@ -1,4 +1,4 @@
-import { sanitizeField } from '../lib/utils/sanitize.js';
+import { sanitizeField } from '../../lib/utils/sanitize.js';
 
 export interface OpportunityCandidate {
   opportunityId: string;

@@ -19,13 +19,13 @@
  */
 
 import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
-import { readModel } from './lib/openclaw/plugin-api.js';
-import { buildDeliverySessionKey, dispatchDelivery } from './lib/delivery/delivery.dispatcher.js';
-import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
+import { dispatchDelivery } from './lib/delivery/delivery.dispatcher.js';
 import * as negotiatorPoller from './polling/negotiator/negotiator.poller.js';
 import * as negotiatorScheduler from './polling/negotiator/negotiator.scheduler.js';
 import * as dailyDigestPoller from './polling/daily-digest/daily-digest.poller.js';
 import * as dailyDigestScheduler from './polling/daily-digest/daily-digest.scheduler.js';
+import * as ambientDiscoveryPoller from './polling/ambient-discovery/ambient-discovery.poller.js';
+import * as ambientDiscoveryScheduler from './polling/ambient-discovery/ambient-discovery.scheduler.js';
 import { registerSetupCli } from './setup/setup.cli.js';
 
 /** Base polling interval: 5 minutes. */
@@ -35,9 +35,6 @@ const POLL_INTERVAL_MS = 300_000;
 const MAX_BACKOFF_MULTIPLIER = 16;
 
 const POLL_PATH = '/index-network/poll';
-
-/** Hash of the last opportunity batch dispatched to the evaluator subagent. Used to skip unchanged batches. */
-let lastOpportunityBatchHash: string | null = null;
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
@@ -191,6 +188,34 @@ export function register(api: OpenClawPluginApi): void {
     negotiatorScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
   }
 
+  // Register ambient discovery route
+  api.registerHttpRoute({
+    path: '/index-network/poll/ambient-discovery',
+    auth: 'gateway',
+    match: 'exact',
+    handler: async (_req, res) => {
+      try {
+        const result = await ambientDiscoveryPoller.handle(api, { baseUrl, agentId, apiKey });
+        if (!result) {
+          ambientDiscoveryScheduler.increaseBackoff(api.logger);
+        } else {
+          ambientDiscoveryScheduler.resetBackoff();
+        }
+        res.statusCode = 200;
+        res.end('ok');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        api.logger.error(`Ambient discovery poll handler error: ${msg}`);
+        ambientDiscoveryScheduler.increaseBackoff(api.logger);
+        res.statusCode = 500;
+        res.end(msg);
+      }
+      return true;
+    },
+  });
+
+  ambientDiscoveryScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
+
   api.logger.info('Index Network polling started', {
     plugin: api.id,
     agentId,
@@ -261,116 +286,7 @@ async function poll(
   agentId: string,
   apiKey: string,
 ): Promise<void> {
-  await handleOpportunityBatch(api, baseUrl, agentId, apiKey);
-
   await handleTestMessagePickup(api, baseUrl, agentId, apiKey);
-}
-
-/**
- * Fetches all undelivered pending opportunities in one request, then launches
- * a single evaluator+delivery subagent that scores them, writes the delivery
- * ledger for chosen ones, and delivers one message to the user.
- *
- * @returns `true` if a subagent was launched, `false` if no candidates or no routing.
- * @internal
- */
-export async function handleOpportunityBatch(
-  api: OpenClawPluginApi,
-  baseUrl: string,
-  agentId: string,
-  apiKey: string,
-): Promise<boolean> {
-  const pendingUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pending`;
-
-  let res: Response;
-  try {
-    res = await fetch(pendingUrl, {
-      method: 'GET',
-      headers: { 'x-api-key': apiKey },
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch (err) {
-    api.logger.warn(
-      `Opportunity pending fetch errored: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    increaseBackoff(api);
-    return false;
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    api.logger.warn(`Opportunity pending fetch failed: ${res.status} ${text}`);
-    increaseBackoff(api);
-    return false;
-  }
-
-  const body = (await res.json()) as {
-    opportunities: Array<{
-      opportunityId: string;
-      rendered: {
-        headline: string;
-        personalizedSummary: string;
-        suggestedAction: string;
-        narratorRemark: string;
-      };
-    }>;
-  };
-
-  if (!body.opportunities.length) {
-    return false;
-  }
-
-  const sessionKey = buildDeliverySessionKey(api);
-  if (!sessionKey) {
-    api.logger.warn(
-      'Index Network delivery routing not configured — skipping opportunity batch. ' +
-        'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
-    );
-    return false;
-  }
-
-  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
-
-  if (batchHash === lastOpportunityBatchHash) {
-    api.logger.debug('Opportunity batch unchanged since last poll — skipping subagent.');
-    return false;
-  }
-
-  const dateStr = new Date().toISOString().slice(0, 10);
-  const model = await readModel(api);
-
-  try {
-    await api.runtime.subagent.run({
-      sessionKey,
-      idempotencyKey: `index:delivery:opportunity-batch:${agentId}:${dateStr}:${batchHash}`,
-      message: opportunityEvaluatorPrompt(
-        body.opportunities.map((o) => ({
-          opportunityId: o.opportunityId,
-          headline: o.rendered.headline,
-          personalizedSummary: o.rendered.personalizedSummary,
-          suggestedAction: o.rendered.suggestedAction,
-          narratorRemark: o.rendered.narratorRemark,
-        })),
-      ),
-      deliver: true,
-      model,
-    });
-    lastOpportunityBatchHash = batchHash;
-  } catch (err) {
-    // Subagent dispatch failed — swallow so the poll loop doesn't escalate backoff
-    // on a runtime-side issue. The same batch will retry on the next tick.
-    api.logger.warn(
-      `Opportunity batch subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-
-  api.logger.info(
-    `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) for evaluation`,
-    { agentId },
-  );
-
-  return true;
 }
 
 /**
@@ -461,16 +377,6 @@ function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void
   });
 }
 
-/** Deterministic short hash of a sorted list of opportunity IDs for idempotency keys. */
-function hashOpportunityBatch(ids: string[]): string {
-  const str = [...ids].sort().join(',');
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(31, h) + str.charCodeAt(i) | 0;
-  }
-  return (h >>> 0).toString(36);
-}
-
 function readConfig(api: OpenClawPluginApi, key: string): string {
   const val = api.pluginConfig[key];
   return typeof val === 'string' ? val : '';
@@ -482,14 +388,14 @@ function readConfig(api: OpenClawPluginApi, key: string): string {
  */
 export function _resetForTesting(): void {
   registered = false;
-  backoffMultiplier = 1;
-  lastOpportunityBatchHash = null;
+  backoffMultiplier = 1;        // still used by index.ts poll loop until Task 6
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
   }
-  // digestTimer is now owned by dailyDigestScheduler
   negotiatorPoller._resetForTesting();
   negotiatorScheduler._resetForTesting();
   dailyDigestScheduler._resetForTesting();
+  ambientDiscoveryPoller._resetForTesting();
+  ambientDiscoveryScheduler._resetForTesting();
 }
