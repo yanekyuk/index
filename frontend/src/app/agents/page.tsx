@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Bot, Check, ChevronDown, ChevronRight, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import ClientLayout from '@/components/ClientLayout';
 import { ContentContainer } from '@/components/layout';
@@ -43,36 +43,28 @@ function permissionLabel(action: string): string {
   }
 }
 
-function CodeBlock({ code, label }: { code: string; label: string }) {
+function ClickableCodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
-  async function handleCopy(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function handleCopy() {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1500);
     } catch { /* silent */ }
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-        >
-          {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-      <pre className="bg-gray-50 border border-gray-200 rounded-sm p-3 text-xs text-gray-700 overflow-x-auto font-mono select-text whitespace-pre-wrap break-all">
-        {code}
-      </pre>
-    </div>
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="relative w-full text-left group bg-gray-50 border border-gray-200 rounded-sm p-3 hover:bg-green-50 hover:border-green-300 transition-colors"
+    >
+      <span className="block text-xs text-gray-700 font-mono whitespace-pre-wrap break-all pr-16">{code}</span>
+      <span className="absolute top-2 right-2 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+        {copied ? '✓ Copied' : '⧉ Copy'}
+      </span>
+    </button>
   );
 }
 
@@ -141,21 +133,37 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(!expanded); }}
         className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
       >
-        {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        <span className="text-sm">{expanded ? '−' : '+'}</span>
         Setup Instructions
       </button>
       {expanded && (
         <div className="px-4 pb-4 space-y-4 border-t border-gray-100">
           <div className="pt-3">
-            <CodeBlock code={claudeConfig} label="Claude Code / OpenCode" />
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Claude Code / OpenCode</p>
+            </div>
+            <ClickableCodeBlock code={claudeConfig} />
           </div>
           <div>
-            <CodeBlock code={hermesConfig} label="Hermes Agent" />
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Hermes Agent</p>
+            </div>
+            <ClickableCodeBlock code={hermesConfig} />
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <CodeBlock code={openclawInstall} label="1. Install plugin" />
-            <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">1. Install plugin</p>
+              </div>
+              <ClickableCodeBlock code={openclawInstall} />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">2. Run setup wizard</p>
+              </div>
+              <ClickableCodeBlock code={openclawSetup} />
+            </div>
             <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
               <p className="text-xs text-gray-500 font-ibm-plex-mono">
                 The setup wizard will prompt for these values:
@@ -190,7 +198,7 @@ export default function AgentsPage() {
   const { success, error } = useNotifications();
 
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(isAuthenticated);
   const [creating, setCreating] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState('');
@@ -212,21 +220,17 @@ export default function AgentsPage() {
     }
 
     let cancelled = false;
-    setLoading(true);
     agentsService
       .list()
       .then((result) => {
         if (!cancelled) {
           setAgents(result);
+          setLoading(false);
         }
       })
       .catch((err) => {
         if (!cancelled) {
           error('Failed to load agents', err instanceof Error ? err.message : undefined);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
           setLoading(false);
         }
       });
