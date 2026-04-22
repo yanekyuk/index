@@ -1,15 +1,5 @@
 import type { OpportunityCandidate } from './opportunity-evaluator.prompt.js';
-
-/**
- * Sanitize a counterparty-authored string so it cannot break out of the fenced
- * candidate block or forge a new candidate row.
- */
-function sanitizeField(value: string): string {
-  return value
-    .replace(/\r?\n/g, ' ')
-    .replace(/=====/g, '= = = = =')
-    .replace(/\[(\d+)\]\s*opportunityId:/gi, '[$1] opportunity_id:');
-}
+import { sanitizeField } from './sanitize.js';
 
 /**
  * Builds the task prompt for the daily digest evaluator subagent.

@@ -33,6 +33,24 @@
       "deliveryTarget": {
         "type": "string",
         "description": "Channel-specific recipient identifier (e.g. your Telegram chat ID). Required to receive opportunity and test-message deliveries."
+      },
+      "digestEnabled": {
+        "type": "string",
+        "enum": ["true", "false"],
+        "default": "true",
+        "description": "Set to \"false\" to disable daily digest."
+      },
+      "digestTime": {
+        "type": "string",
+        "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
+        "default": "08:00",
+        "description": "Time to send digest in HH:MM format (24-hour, local timezone)."
+      },
+      "digestMaxCount": {
+        "type": "string",
+        "pattern": "^[0-9]+$",
+        "default": "10",
+        "description": "Maximum opportunities to include in daily digest."
       }
     },
     "required": [],

@@ -1,3 +1,5 @@
+import { sanitizeField } from './sanitize.js';
+
 export interface OpportunityCandidate {
   opportunityId: string;
   headline: string;
@@ -14,17 +16,6 @@ export interface OpportunityCandidate {
  * @param candidates - All undelivered opportunities to evaluate.
  * @returns The task prompt string passed to `api.runtime.subagent.run`.
  */
-/**
- * Sanitize a counterparty-authored string so it cannot break out of the fenced
- * candidate block or forge a new candidate row. Collapses newlines and neutralizes
- * any occurrence of the fence token or candidate-row prefix.
- */
-function sanitizeField(value: string): string {
-  return value
-    .replace(/\r?\n/g, ' ')
-    .replace(/=====/g, '= = = = =')
-    .replace(/\[(\d+)\]\s*opportunityId:/gi, '[$1] opportunity_id:');
-}
 
 export function opportunityEvaluatorPrompt(candidates: OpportunityCandidate[]): string {
   const allowedIds = candidates.map((c) => c.opportunityId);
