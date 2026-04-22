@@ -215,7 +215,7 @@ export function register(api: OpenClawPluginApi): void {
     dailyDigestScheduler.start({
       digestTime,
       logger: api.logger,
-      onTrigger: () => dailyDigestPoller.handle(api, { baseUrl, agentId, apiKey, maxCount: digestMaxCount }),
+      onTrigger: async () => { await dailyDigestPoller.handle(api, { baseUrl, agentId, apiKey, maxCount: digestMaxCount }); },
     });
   }
 
