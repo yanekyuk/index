@@ -1,6 +1,6 @@
-import type { OpenClawPluginApi, SubagentRunResult } from './plugin-api.js';
-import { readModel } from './plugin-api.js';
-import { deliveryPrompt } from './prompts/delivery.prompt.js';
+import type { OpenClawPluginApi, SubagentRunResult } from '../openclaw/plugin-api.js';
+import { readModel } from '../openclaw/plugin-api.js';
+import { deliveryPrompt } from './delivery.prompt.js';
 
 export interface DeliveryRequest {
   rendered: { headline: string; body: string };

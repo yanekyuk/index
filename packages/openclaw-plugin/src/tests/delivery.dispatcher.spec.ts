@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
-import { dispatchDelivery } from '../delivery.dispatcher.js';
-import type { OpenClawPluginApi, SubagentRunResult } from '../plugin-api.js';
+import { dispatchDelivery } from '../lib/delivery/delivery.dispatcher.js';
+import type { OpenClawPluginApi, SubagentRunResult } from '../lib/openclaw/plugin-api.js';
 
 function makeApi(
   runResult: SubagentRunResult,

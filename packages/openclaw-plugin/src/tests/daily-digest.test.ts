@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { handleDailyDigest, _resetForTesting } from '../index.js';
-import type { OpenClawPluginApi } from '../plugin-api.js';
+import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
 describe('handleDailyDigest', () => {
   let mockApi: OpenClawPluginApi;

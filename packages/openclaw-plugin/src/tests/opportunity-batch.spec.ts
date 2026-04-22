@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import { _resetForTesting, handleOpportunityBatch } from '../index.js';
-import type { OpenClawPluginApi, SubagentRunOptions } from '../plugin-api.js';
+import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plugin-api.js';
 
 interface FakeApi {
   api: OpenClawPluginApi;

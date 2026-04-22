@@ -18,9 +18,9 @@
  * (e.g. `openclaw index-network setup`) are properly registered.
  */
 
-import type { OpenClawPluginApi } from './plugin-api.js';
-import { readModel } from './plugin-api.js';
-import { buildDeliverySessionKey, dispatchDelivery } from './delivery.dispatcher.js';
+import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
+import { readModel } from './lib/openclaw/plugin-api.js';
+import { buildDeliverySessionKey, dispatchDelivery } from './lib/delivery/delivery.dispatcher.js';
 import { msUntilNextDigest } from './digest.scheduler.js';
 import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
 import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
