@@ -85,7 +85,7 @@ In addition to real-time polling every 5 minutes, the plugin sends a daily diges
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
-| `digestEnabled` | `true` | Set to `"false"` to disable daily digest |
+| `digestEnabled` | `"true"` | Set to `"false"` to disable daily digest |
 | `digestTime` | `"08:00"` | Time to send digest in HH:MM format (24-hour, local timezone) |
 | `digestMaxCount` | `10` | Maximum opportunities to include in digest |
 

@@ -189,7 +189,7 @@ export function register(api: OpenClawPluginApi): void {
   const digestEnabled = readConfig(api, 'digestEnabled') !== 'false';
   if (digestEnabled) {
     const digestTime = readConfig(api, 'digestTime') || '08:00';
-    const digestMaxCount = parseInt(readConfig(api, 'digestMaxCount') || '10', 10);
+    const digestMaxCount = Math.max(1, parseInt(readConfig(api, 'digestMaxCount') || '10', 10) || 10);
 
     const scheduleDigest = () => {
       const delay = msUntilNextDigest(digestTime);
