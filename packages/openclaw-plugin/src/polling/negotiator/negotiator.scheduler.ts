@@ -19,6 +19,7 @@ export interface NegotiatorSchedulerConfig {
  * @param config - Scheduler configuration (gatewayPort, gatewayToken, logger).
  */
 export function start(config: NegotiatorSchedulerConfig): void {
+  if (timer) { clearTimeout(timer); }
   const trigger = () => {
     fetch(`http://127.0.0.1:${config.gatewayPort}/index-network/poll/negotiator`, {
       method: 'POST',

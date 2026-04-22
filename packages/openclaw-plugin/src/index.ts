@@ -182,6 +182,7 @@ export function register(api: OpenClawPluginApi): void {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           api.logger.error(`Negotiator poll handler error: ${msg}`);
+          negotiatorScheduler.increaseBackoff(api.logger);
           res.statusCode = 500;
           res.end(msg);
         }
