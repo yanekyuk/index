@@ -24,7 +24,8 @@ import { buildDeliverySessionKey, dispatchDelivery } from './lib/delivery/delive
 import { msUntilNextDigest } from './digest.scheduler.js';
 import { digestEvaluatorPrompt } from './prompts/digest-evaluator.prompt.js';
 import { opportunityEvaluatorPrompt } from './prompts/opportunity-evaluator.prompt.js';
-import { turnPrompt } from './prompts/turn.prompt.js';
+import * as negotiatorPoller from './polling/negotiator/negotiator.poller.js';
+import * as negotiatorScheduler from './polling/negotiator/negotiator.scheduler.js';
 import { registerSetupCli } from './setup/setup.cli.js';
 
 /** Base polling interval: 5 minutes. */
@@ -34,9 +35,6 @@ const POLL_INTERVAL_MS = 300_000;
 const MAX_BACKOFF_MULTIPLIER = 16;
 
 const POLL_PATH = '/index-network/poll';
-
-/** Tracks in-flight turns so we don't re-launch subagents for already-claimed work. */
-const inflight = new Set<string>();
 
 /** Hash of the last opportunity batch dispatched to the evaluator subagent. Used to skip unchanged batches. */
 let lastOpportunityBatchHash: string | null = null;
@@ -164,6 +162,37 @@ export function register(api: OpenClawPluginApi): void {
     },
   });
 
+  // Register negotiator route
+  const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
+  if (negotiationMode !== 'disabled') {
+    api.registerHttpRoute({
+      path: '/index-network/poll/negotiator',
+      auth: 'gateway',
+      match: 'exact',
+      handler: async (_req, res) => {
+        try {
+          const result = await negotiatorPoller.handle(api, { baseUrl, agentId, apiKey });
+          if (result === 'network_error') {
+            negotiatorScheduler.increaseBackoff(api.logger);
+          } else {
+            negotiatorScheduler.resetBackoff();
+          }
+          res.statusCode = 200;
+          res.end('ok');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          api.logger.error(`Negotiator poll handler error: ${msg}`);
+          res.statusCode = 500;
+          res.end(msg);
+        }
+        return true;
+      },
+    });
+
+    // Start negotiator scheduler
+    negotiatorScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
+  }
+
   api.logger.info('Index Network polling started', {
     plugin: api.id,
     agentId,
@@ -248,105 +277,9 @@ async function poll(
   agentId: string,
   apiKey: string,
 ): Promise<void> {
-  const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
-  if (negotiationMode !== 'disabled') {
-    const negotiationResult = await handleNegotiationPickup(api, baseUrl, agentId, apiKey);
-    if (negotiationResult === 'network_error') return; // already bumped backoff
-  }
-
   await handleOpportunityBatch(api, baseUrl, agentId, apiKey);
 
   await handleTestMessagePickup(api, baseUrl, agentId, apiKey);
-}
-
-/**
- * Handles one negotiation pickup cycle.
- *
- * @returns `'handled'` if a turn was dispatched, `'idle'` if nothing was pending,
- *   or `'network_error'` if the request failed (backoff already bumped).
- */
-async function handleNegotiationPickup(
-  api: OpenClawPluginApi,
-  baseUrl: string,
-  agentId: string,
-  apiKey: string,
-): Promise<'handled' | 'idle' | 'network_error'> {
-  const pickupUrl = `${baseUrl}/api/agents/${agentId}/negotiations/pickup`;
-
-  const res = await fetch(pickupUrl, {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey },
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  if (res.status === 204) {
-    // Nothing pending — reset backoff on successful communication
-    backoffMultiplier = 1;
-    return 'idle';
-  }
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    api.logger.warn(`Pickup request failed: ${res.status} ${body}`);
-    increaseBackoff(api);
-    return 'network_error';
-  }
-
-  // Successful pickup — reset backoff
-  backoffMultiplier = 1;
-
-  const turn = (await res.json()) as {
-    negotiationId: string;
-    taskId: string;
-    opportunity: { id: string; reasoning: string } | null;
-    turn: {
-      number: number;
-      deadline: string;
-      history: Array<{ turnNumber: number; agent: string; action: string; message?: string | null }>;
-      counterpartyAction: string;
-    };
-    context: import('./prompts/turn.prompt.js').TurnContext | null;
-  };
-
-  const inflightKey = `${turn.taskId}:${turn.turn.number}`;
-  if (inflight.has(inflightKey)) {
-    api.logger.debug(`Turn ${inflightKey} already in-flight, skipping.`);
-    return 'idle';
-  }
-  inflight.add(inflightKey);
-
-  api.logger.info(`Negotiation turn picked up: ${turn.taskId} turn ${turn.turn.number}`);
-
-  const lastEntry = turn.turn.history.length > 0
-    ? turn.turn.history[turn.turn.history.length - 1]
-    : null;
-
-  const model = await readModel(api);
-
-  try {
-    await api.runtime.subagent.run({
-      sessionKey: `index:negotiation:${turn.negotiationId}`,
-      idempotencyKey: `index:turn:${turn.taskId}:${turn.turn.number}`,
-      message: turnPrompt({
-        negotiationId: turn.taskId,
-        turnNumber: turn.turn.number,
-        counterpartyAction: turn.turn.counterpartyAction,
-        counterpartyMessage: lastEntry?.message ?? null,
-        deadline: turn.turn.deadline,
-        context: turn.context,
-      }),
-      deliver: false,
-      model,
-    });
-    api.logger.info(`Subagent launched for negotiation ${turn.taskId}`);
-  } catch (err) {
-    // Remove from in-flight so it can be retried on the next poll
-    inflight.delete(inflightKey);
-    increaseBackoff(api);
-    throw err;
-  }
-
-  return 'handled';
 }
 
 /**
@@ -670,7 +603,6 @@ function readConfig(api: OpenClawPluginApi, key: string): string {
 export function _resetForTesting(): void {
   registered = false;
   backoffMultiplier = 1;
-  inflight.clear();
   lastOpportunityBatchHash = null;
   if (pollTimer) {
     clearTimeout(pollTimer);
@@ -680,4 +612,6 @@ export function _resetForTesting(): void {
     clearTimeout(digestTimer);
     digestTimer = null;
   }
+  negotiatorPoller._resetForTesting();
+  negotiatorScheduler._resetForTesting();
 }
