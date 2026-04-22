@@ -53,32 +53,52 @@ export interface SetupContext {
   configSet(path: string, value: unknown): Promise<void>;
 }
 
+/** Read a single dot-path value from the OpenClaw config snapshot. */
+function getExistingConfig(cfg: Record<string, unknown>, dotPath: string): string | undefined {
+  const parts = dotPath.split('.');
+  let obj: unknown = cfg;
+  for (const key of parts) {
+    if (typeof obj !== 'object' || obj === null) return undefined;
+    obj = (obj as Record<string, unknown>)[key];
+  }
+  return typeof obj === 'string' ? obj : undefined;
+}
+
 /**
  * Core setup logic — testable via injected `SetupContext`.
+ *
+ * Only prompts for values that are not already set; re-running the wizard
+ * fills in gaps without clobbering existing config.
  */
 export async function runSetup(ctx: SetupContext): Promise<void> {
+  const configPrefix = `plugins.entries.${PLUGIN_ID}.config`;
+
+  const existing = (key: string) => getExistingConfig(ctx.cfg, `${configPrefix}.${key}`);
+
   // --- Server URL ---
   const protocolUrl = await ctx.prompt('Server URL', {
-    default: DEFAULT_PROTOCOL_URL,
+    default: existing('protocolUrl') || DEFAULT_PROTOCOL_URL,
   });
 
   // --- Agent ID ---
-  const agentId = await ctx.prompt('Agent ID');
+  const agentId = await ctx.prompt('Agent ID', { default: existing('agentId') });
   if (!agentId) {
     throw new Error('Agent ID is required. Find it on the Index Network Agents page.');
   }
 
   // --- API Key ---
-  const apiKey = await ctx.prompt('API key', { secret: true });
-  if (!apiKey) {
+  const apiKey = existing('apiKey')
+    ? await ctx.prompt('API key (leave blank to keep existing)', { secret: true })
+    : await ctx.prompt('API key', { secret: true });
+  const resolvedApiKey = apiKey || existing('apiKey') || '';
+  if (!resolvedApiKey) {
     throw new Error('API key is required. Generate one on the Index Network Agents page.');
   }
 
   // --- Write core config ---
-  const configPrefix = `plugins.entries.${PLUGIN_ID}.config`;
   await ctx.configSet(`${configPrefix}.protocolUrl`, protocolUrl);
   await ctx.configSet(`${configPrefix}.agentId`, agentId);
-  await ctx.configSet(`${configPrefix}.apiKey`, apiKey);
+  await ctx.configSet(`${configPrefix}.apiKey`, resolvedApiKey);
 
   // --- Detect available delivery channels ---
   const channels = ctx.cfg.channels as Record<string, unknown> | undefined;
@@ -86,7 +106,7 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     .filter(([, val]) => val && typeof val === 'object')
     .map(([id]) => id);
 
-  if (configuredChannels.length > 0) {
+  if (configuredChannels.length > 0 && !existing('deliveryChannel')) {
     const choices = [
       ...configuredChannels.map((id) => ({
         label: CHANNEL_LABELS[id] || id,
@@ -105,6 +125,23 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
         await ctx.configSet(`${configPrefix}.deliveryChannel`, selectedChannel);
         await ctx.configSet(`${configPrefix}.deliveryTarget`, deliveryTarget);
       }
+    }
+  }
+
+  // --- Daily digest config ---
+  if (!existing('digestEnabled')) {
+    const digestEnabled = await ctx.select('Daily digest', [
+      { label: 'Enabled (default)', value: 'true' },
+      { label: 'Disabled', value: 'false' },
+    ]);
+    await ctx.configSet(`${configPrefix}.digestEnabled`, digestEnabled);
+
+    if (digestEnabled !== 'false') {
+      const digestTime = await ctx.prompt('Digest time (HH:MM, 24-hour local time)', { default: '08:00' });
+      await ctx.configSet(`${configPrefix}.digestTime`, digestTime);
+
+      const digestMaxCount = await ctx.prompt('Max opportunities per digest', { default: '10' });
+      await ctx.configSet(`${configPrefix}.digestMaxCount`, digestMaxCount);
     }
   }
 

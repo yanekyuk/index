@@ -581,6 +581,8 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
 
+  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
+
   const openclawSetup = `openclaw index-network setup`;
 
   return (
@@ -603,7 +605,8 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <CodeBlock code={openclawInstall} label="1. Install plugin" />
+            <CodeBlock code={openclawInstall} label="1. Install (fresh)" />
+            <CodeBlock code={openclawUpdate} label="1. Update (existing installation)" />
             <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
             <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
               <p className="text-xs text-gray-500 font-ibm-plex-mono">
