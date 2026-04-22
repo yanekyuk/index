@@ -79,6 +79,12 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     api.logger.debug('configSet not available — skipping MCP auto-registration.');
     return;
   }
+  // Never overwrite MCP config with an empty key — an empty apiKey means the
+  // plugin is not yet configured, not that the key should be blanked out.
+  if (!apiKey) {
+    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index-network setup`.');
+    return;
+  }
 
   const normalizedUrl = baseUrl.replace(/\/+$/, '');
   const expected = {
