@@ -591,7 +591,7 @@ function WizardPromptGrid({
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Value</span>
       </div>
       <div className="grid grid-cols-2">
-        <WizardRow prompt="Server URL" description="Index Network API endpoint" value={serverUrl} copyable />
+        <WizardRow prompt="URL" description="Index Network URL" value={serverUrl} copyable />
         <WizardRow prompt="Agent ID" description="Your personal agent's unique identifier" value={agentId} copyable />
         <WizardRow prompt="API Key" description="The API key you just generated" value={apiKey} copyable />
         <div className="col-span-2 px-3 py-2 border-b border-gray-200 bg-gray-100">
@@ -669,6 +669,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   const agentValue = agentId || "YOUR_AGENT_ID";
 
   const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
+  const baseUrl = window.location.origin;
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -720,7 +721,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
-            <WizardPromptGrid serverUrl={protocolUrl} agentId={agentValue} apiKey={keyValue} />
+            <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
           </div>
         </div>
       )}
