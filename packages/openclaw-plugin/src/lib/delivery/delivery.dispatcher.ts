@@ -12,14 +12,10 @@ export interface DeliveryRequest {
 }
 
 /**
- * Builds the OpenClaw session key for the user's configured delivery channel.
- * Returns `null` when `deliveryChannel` or `deliveryTarget` is not configured.
+ * Returns `true` when `deliveryChannel` and `deliveryTarget` are both configured.
  */
-export function buildDeliverySessionKey(api: OpenClawPluginApi): string | null {
-  const channel = readConfigString(api, 'deliveryChannel');
-  const target = readConfigString(api, 'deliveryTarget');
-  if (!channel || !target) return null;
-  return `agent:main:${channel}:direct:${target}`;
+export function isDeliveryConfigured(api: OpenClawPluginApi): boolean {
+  return !!readConfigString(api, 'deliveryChannel') && !!readConfigString(api, 'deliveryTarget');
 }
 
 /**

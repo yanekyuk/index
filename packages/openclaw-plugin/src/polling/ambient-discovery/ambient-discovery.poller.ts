@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { readModel } from '../../lib/openclaw/plugin-api.js';
-import { buildDeliverySessionKey, dispatchDelivery } from '../../lib/delivery/delivery.dispatcher.js';
+import { isDeliveryConfigured, dispatchDelivery } from '../../lib/delivery/delivery.dispatcher.js';
+import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { opportunityEvaluatorPrompt } from './opportunity-evaluator.prompt.js';
 
 /** Milliseconds to wait for the evaluator subagent to complete. */
@@ -73,7 +74,7 @@ export async function handle(
   }
 
   // Fail fast before running the evaluator if delivery is not configured.
-  if (!buildDeliverySessionKey(api)) {
+  if (!isDeliveryConfigured(api)) {
     api.logger.warn(
       'Index Network delivery routing not configured — skipping opportunity batch. ' +
         'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
@@ -160,15 +161,6 @@ export async function handle(
   );
 
   return true;
-}
-
-function hashOpportunityBatch(ids: string[]): string {
-  const str = [...ids].sort().join(',');
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(31, h) + str.charCodeAt(i) | 0;
-  }
-  return (h >>> 0).toString(36);
 }
 
 /** Reset module-level state. Exposed for tests only. */

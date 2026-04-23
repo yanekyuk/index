@@ -45,5 +45,7 @@ function contentTypeContextBlock(contentType: DeliveryContentType): string {
       return 'CONTENT TYPE: Delivery verification message — relay faithfully as-is.';
     case 'negotiation_accept':
       return 'CONTENT TYPE: Negotiation outcome notification — one short natural sentence.';
+    default:
+      return `CONTENT TYPE: ${contentType satisfies never}`;
   }
 }

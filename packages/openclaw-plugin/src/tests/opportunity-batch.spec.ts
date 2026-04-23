@@ -229,6 +229,25 @@ describe('handleOpportunityBatch', () => {
     expect(fake.subagentCalls[1].message).toContain('Evaluated: Alice is a great match.');
   });
 
+  test('returns false when waitForRun times out', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    fake.api.runtime.subagent.waitForRun = async () => { throw new Error('Evaluator timed out'); };
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(result).toBe(false);
+    expect(fake.subagentCalls).toHaveLength(1);
+    expect(fake.logger.warn).toHaveBeenCalled();
+    const warnArgs = fake.logger.warn.mock.calls[0] as string[];
+    expect(warnArgs[0]).toContain('timed out');
+  });
+
   test('returns false without dispatching delivery when evaluator produces no output', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
