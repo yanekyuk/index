@@ -218,6 +218,16 @@ describe('fetchPendingCandidates', () => {
     expect(results).toHaveLength(1);
     expect(results[0].opportunityId).toBe(opportunityId);
     expect(results[0].rendered.headline).toBeTruthy();
+    expect(results[0].counterpartUserId).toBeNull();
+  });
+
+  it('returns counterpartUserId when opportunity has two actors', async () => {
+    const otherUserId = await seedUser();
+    const opportunityId = await seedOpportunity([userId, otherUserId], 'pending');
+    const results = await svc.fetchPendingCandidates(agentId);
+    expect(results).toHaveLength(1);
+    expect(results[0].opportunityId).toBe(opportunityId);
+    expect(results[0].counterpartUserId).toBe(otherUserId);
   });
 
   it('excludes opportunity already committed in delivery ledger', async () => {

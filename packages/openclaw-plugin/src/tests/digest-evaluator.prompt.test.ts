@@ -12,6 +12,7 @@ describe('digestEvaluatorPrompt', () => {
       [
         {
           opportunityId: 'opp-123',
+          userId: 'user-123',
           headline: 'Test Headline',
           personalizedSummary: 'Test summary',
           suggestedAction: 'Take action',
@@ -30,6 +31,7 @@ describe('digestEvaluatorPrompt', () => {
       [
         {
           opportunityId: 'id-1',
+          userId: 'user-1',
           headline: 'H1',
           personalizedSummary: 'S1',
           suggestedAction: 'A1',
@@ -37,6 +39,7 @@ describe('digestEvaluatorPrompt', () => {
         },
         {
           opportunityId: 'id-2',
+          userId: 'user-2',
           headline: 'H2',
           personalizedSummary: 'S2',
           suggestedAction: 'A2',

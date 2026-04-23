@@ -76,7 +76,7 @@ describe('dispatchDelivery', () => {
     });
 
     const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('daily digest');
+    expect(call.message).toContain('Daily digest');
     expect(call.message).toContain('Three opportunities today.');
   });
 
@@ -90,8 +90,24 @@ describe('dispatchDelivery', () => {
     });
 
     const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('ambient');
+    expect(call.message).toContain('Real-time opportunity alert');
     expect(call.message).toContain('New match found.');
+  });
+
+  test('prompt includes frontendUrl in channel style block when provided', async () => {
+    const api = makeApi({ runId: 'run-frontend-url' });
+
+    await dispatchDelivery(api, {
+      contentType: 'ambient_discovery',
+      content: 'New match found.',
+      idempotencyKey: 'idem-frontend',
+      frontendUrl: 'https://dev.index.network',
+    });
+
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.message).toContain('https://dev.index.network');
+    expect(call.message).toContain('<a href="https://dev.index.network/u/{userId}">View Profile</a>');
+    expect(call.message).toContain('<a href="https://dev.index.network/u/{userId}/chat">Start Chat ›</a>');
   });
 
   test('prompt includes temporal awareness instructions', async () => {

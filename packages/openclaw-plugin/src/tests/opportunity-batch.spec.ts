@@ -69,6 +69,7 @@ const API_KEY = 'test-api-key';
 
 const SAMPLE_CANDIDATE = {
   opportunityId: 'opp-abc',
+  counterpartUserId: 'user-alice-123',
   rendered: {
     headline: 'Great match found',
     personalizedSummary: 'Alice is looking for a TypeScript engineer.',
@@ -99,7 +100,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -111,7 +112,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -127,7 +128,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(false);
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -143,7 +144,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fake.subagentCalls[0].deliver).toBe(false);
     expect(fake.subagentCalls[0].sessionKey).toBe(`index:ambient-discovery:${AGENT_ID}`);
@@ -158,13 +159,14 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     const message = fake.subagentCalls[0].message;
     expect(message).toContain(SAMPLE_CANDIDATE.opportunityId);
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.headline);
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.personalizedSummary);
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.suggestedAction);
+    expect(message).toContain('user-alice-123');
   });
 
   test('waitForRun is called with evaluator runId', async () => {
@@ -176,7 +178,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fake.waitForRunCalls).toHaveLength(1);
     expect(fake.waitForRunCalls[0].runId).toBe('fake-run-id-1');
@@ -192,7 +194,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fake.getSessionMessagesCalls).toHaveLength(1);
     expect(fake.getSessionMessagesCalls[0]).toBe(`index:ambient-discovery:${AGENT_ID}`);
@@ -207,7 +209,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(true);
     expect(fake.subagentCalls).toHaveLength(2);
@@ -224,7 +226,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(true, undefined, 'Evaluated: Alice is a great match.');
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fake.subagentCalls[1].message).toContain('Evaluated: Alice is a great match.');
   });
@@ -239,7 +241,7 @@ describe('handleOpportunityBatch', () => {
 
     const fake = buildFakeApi();
     fake.api.runtime.subagent.waitForRun = async () => { throw new Error('Evaluator timed out'); };
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(1);
@@ -258,7 +260,7 @@ describe('handleOpportunityBatch', () => {
 
     const fake = buildFakeApi();
     fake.api.runtime.subagent.getSessionMessages = async () => { throw new Error('Session not found'); };
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(1);
@@ -276,7 +278,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(true, undefined, ''); // empty evaluator output
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(1); // only evaluator, no delivery
@@ -293,7 +295,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake1 = buildFakeApi();
-    await handleOpportunityBatch(fake1.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake1.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     _resetForTesting();
 
@@ -305,7 +307,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake2 = buildFakeApi();
-    await handleOpportunityBatch(fake2.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake2.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fake1.subagentCalls[0].idempotencyKey).toBe(fake2.subagentCalls[0].idempotencyKey);
     expect(fake1.subagentCalls[1].idempotencyKey).toBe(fake2.subagentCalls[1].idempotencyKey);
@@ -320,7 +322,7 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi(true, 'anthropic/claude-sonnet-4-6');
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fake.subagentCalls[0].model).toBe('anthropic/claude-sonnet-4-6');
     expect(fake.subagentCalls[1].model).toBe('anthropic/claude-sonnet-4-6');
@@ -337,7 +339,7 @@ describe('handleOpportunityBatch', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0].url).toContain(`/agents/${AGENT_ID}/opportunities/pending`);
@@ -353,17 +355,32 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const first = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
-    const second = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const first = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
+    const second = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(first).toBe(true);
     expect(second).toBe(false);
     expect(fake.subagentCalls).toHaveLength(2); // only from first call
   });
 
+  test('phase 2: delivery message includes frontendUrl in prompt', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://dev.index.network' });
+
+    expect(fake.subagentCalls[1].message).toContain('https://dev.index.network');
+  });
+
   test('re-launches subagents when opportunity set changes', async () => {
     const SECOND_CANDIDATE = {
       opportunityId: 'opp-xyz',
+      counterpartUserId: 'user-bob-456',
       rendered: {
         headline: 'Another match',
         personalizedSummary: 'Bob is looking for a designer.',
@@ -385,8 +402,8 @@ describe('handleOpportunityBatch', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const first = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
-    const second = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const first = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
+    const second = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(first).toBe(true);
     expect(second).toBe(true);
