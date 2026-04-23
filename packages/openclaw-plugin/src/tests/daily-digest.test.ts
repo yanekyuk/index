@@ -245,6 +245,29 @@ describe('handleDailyDigest', () => {
     expect(mockApi.logger.warn).toHaveBeenCalled();
   });
 
+  it('returns false when getSessionMessages fails', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    mockApi.runtime.subagent.getSessionMessages = async () => { throw new Error('Session not found'); };
+
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
+
+    expect(result).toBe(false);
+    expect(subagentRunCalls).toHaveLength(1);
+    expect(mockApi.logger.warn).toHaveBeenCalled();
+  });
+
   it('returns false when evaluator subagent dispatch throws', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({

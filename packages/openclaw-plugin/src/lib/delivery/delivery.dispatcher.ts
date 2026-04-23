@@ -1,8 +1,11 @@
 import type { OpenClawPluginApi, SubagentRunResult } from '../openclaw/plugin-api.js';
 import { readModel } from '../openclaw/plugin-api.js';
-import { type DeliveryContentType, buildDispatcherPrompt } from './delivery.prompt.js';
+import { type DeliveryChannel, type DeliveryContentType, buildDispatcherPrompt } from './delivery.prompt.js';
 
-export type { DeliveryContentType };
+export type { DeliveryChannel, DeliveryContentType };
+
+/** Maximum time (ms) to wait for an evaluator subagent to complete before giving up. */
+export const EVALUATOR_TIMEOUT_MS = 120_000;
 
 export interface DeliveryRequest {
   contentType: DeliveryContentType;
@@ -33,7 +36,7 @@ export async function dispatchDelivery(
   api: OpenClawPluginApi,
   request: DeliveryRequest,
 ): Promise<SubagentRunResult | null> {
-  const channel = readConfigString(api, 'deliveryChannel');
+  const channel = readConfigString(api, 'deliveryChannel') as DeliveryChannel;
   const target = readConfigString(api, 'deliveryTarget');
 
   if (!channel || !target) {

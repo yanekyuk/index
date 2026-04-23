@@ -9,9 +9,9 @@ export interface OpportunityCandidate {
 }
 
 /**
- * Builds the task prompt for the combined evaluator+delivery subagent.
+ * Builds the task prompt for the evaluator subagent (Phase 1).
  * The subagent evaluates all candidates, calls confirm_opportunity_delivery
- * for the high-value ones, then produces a delivery message.
+ * for the high-value ones, then outputs plain content for the delivery dispatcher.
  *
  * @param candidates - All undelivered opportunities to evaluate.
  * @returns The task prompt string passed to `api.runtime.subagent.run`.

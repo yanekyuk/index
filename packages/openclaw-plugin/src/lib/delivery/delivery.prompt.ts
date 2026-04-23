@@ -4,8 +4,10 @@ export type DeliveryContentType =
   | 'test_message'
   | 'negotiation_accept';
 
+export type DeliveryChannel = 'telegram';
+
 export function buildDispatcherPrompt(
-  channel: string,
+  channel: DeliveryChannel,
   contentType: DeliveryContentType,
   content: string,
 ): string {
@@ -25,7 +27,7 @@ export function buildDispatcherPrompt(
   ].join('\n');
 }
 
-function channelStyleBlock(channel: string): string {
+function channelStyleBlock(channel: DeliveryChannel): string {
   if (channel === 'telegram') {
     return [
       'CHANNEL: Telegram',

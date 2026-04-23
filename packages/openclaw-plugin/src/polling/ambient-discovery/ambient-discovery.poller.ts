@@ -1,11 +1,8 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { readModel } from '../../lib/openclaw/plugin-api.js';
-import { isDeliveryConfigured, dispatchDelivery } from '../../lib/delivery/delivery.dispatcher.js';
+import { isDeliveryConfigured, dispatchDelivery, EVALUATOR_TIMEOUT_MS } from '../../lib/delivery/delivery.dispatcher.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { opportunityEvaluatorPrompt } from './opportunity-evaluator.prompt.js';
-
-/** Milliseconds to wait for the evaluator subagent to complete. */
-const EVALUATOR_TIMEOUT_MS = 120_000;
 
 /** Hash of the last opportunity batch dispatched. Used to skip unchanged batches. */
 let lastOpportunityBatchHash: string | null = null;
@@ -130,11 +127,19 @@ export async function handle(
   }
 
   // Capture evaluator output — the last assistant message in the session.
-  const { messages } = await api.runtime.subagent.getSessionMessages({
-    sessionKey: evaluatorSessionKey,
-    limit: 10,
-  });
-  const content = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+  let content: string;
+  try {
+    const { messages } = await api.runtime.subagent.getSessionMessages({
+      sessionKey: evaluatorSessionKey,
+      limit: 10,
+    });
+    content = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+  } catch (err) {
+    api.logger.warn(
+      `Opportunity evaluator session read failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
 
   if (!content) {
     api.logger.debug('Opportunity evaluator produced no output — skipping delivery.');
