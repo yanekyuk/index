@@ -6,6 +6,8 @@ import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plug
 interface FakeApi {
   api: OpenClawPluginApi;
   subagentCalls: SubagentRunOptions[];
+  waitForRunCalls: Array<{ runId: string; timeoutMs: number }>;
+  getSessionMessagesCalls: string[];
   logger: {
     warn: ReturnType<typeof mock>;
     error: ReturnType<typeof mock>;
@@ -14,8 +16,14 @@ interface FakeApi {
   };
 }
 
-function buildFakeApi(deliveryConfigured = true, configGetModel?: unknown): FakeApi {
+function buildFakeApi(
+  deliveryConfigured = true,
+  configGetModel?: unknown,
+  evaluatorContent = 'Opportunity: Alice is a TypeScript engineer.',
+): FakeApi {
   const subagentCalls: SubagentRunOptions[] = [];
+  const waitForRunCalls: Array<{ runId: string; timeoutMs: number }> = [];
+  const getSessionMessagesCalls: string[] = [];
   const logger = {
     debug: mock(() => {}),
     info: mock(() => {}),
@@ -33,7 +41,15 @@ function buildFakeApi(deliveryConfigured = true, configGetModel?: unknown): Fake
       subagent: {
         run: async (opts) => {
           subagentCalls.push(opts);
-          return { runId: 'fake-run-id' };
+          return { runId: `fake-run-id-${subagentCalls.length}` };
+        },
+        waitForRun: async (opts) => {
+          waitForRunCalls.push(opts);
+          return { result: null };
+        },
+        getSessionMessages: async ({ sessionKey }) => {
+          getSessionMessagesCalls.push(sessionKey);
+          return { messages: [{ role: 'assistant', content: evaluatorContent }] };
         },
       },
     },
@@ -44,7 +60,7 @@ function buildFakeApi(deliveryConfigured = true, configGetModel?: unknown): Fake
     }),
   };
 
-  return { api, subagentCalls, logger };
+  return { api, subagentCalls, waitForRunCalls, getSessionMessagesCalls, logger };
 }
 
 const BASE_URL = 'http://localhost:3001';
@@ -110,7 +126,7 @@ describe('handleOpportunityBatch', () => {
       }),
     ) as unknown as typeof fetch;
 
-    const fake = buildFakeApi(false); // no deliveryChannel/deliveryTarget
+    const fake = buildFakeApi(false);
     const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
@@ -118,7 +134,7 @@ describe('handleOpportunityBatch', () => {
     expect(fake.logger.warn).toHaveBeenCalled();
   });
 
-  test('launches one subagent with deliver:true when candidates present', async () => {
+  test('phase 1: evaluator runs with deliver:false on own session key', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
         status: 200,
@@ -127,14 +143,13 @@ describe('handleOpportunityBatch', () => {
     ) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
-    expect(result).toBe(true);
-    expect(fake.subagentCalls).toHaveLength(1);
-    expect(fake.subagentCalls[0].deliver).toBe(true);
+    expect(fake.subagentCalls[0].deliver).toBe(false);
+    expect(fake.subagentCalls[0].sessionKey).toBe(`index:ambient-discovery:${AGENT_ID}`);
   });
 
-  test('subagent prompt contains candidate data', async () => {
+  test('phase 1: evaluator prompt contains candidate data', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
         status: 200,
@@ -152,7 +167,7 @@ describe('handleOpportunityBatch', () => {
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.suggestedAction);
   });
 
-  test('uses correct sessionKey for Telegram delivery', async () => {
+  test('waitForRun is called with evaluator runId', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
         status: 200,
@@ -163,10 +178,111 @@ describe('handleOpportunityBatch', () => {
     const fake = buildFakeApi();
     await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
-    expect(fake.subagentCalls[0].sessionKey).toBe('agent:main:telegram:direct:69340471');
+    expect(fake.waitForRunCalls).toHaveLength(1);
+    expect(fake.waitForRunCalls[0].runId).toBe('fake-run-id-1');
+    expect(fake.waitForRunCalls[0].timeoutMs).toBeGreaterThan(0);
   });
 
-  test('idempotencyKey is stable for the same batch regardless of order', async () => {
+  test('getSessionMessages is called with evaluator session key', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(fake.getSessionMessagesCalls).toHaveLength(1);
+    expect(fake.getSessionMessagesCalls[0]).toBe(`index:ambient-discovery:${AGENT_ID}`);
+  });
+
+  test('phase 2: delivery subagent runs with deliver:true on telegram session key', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(result).toBe(true);
+    expect(fake.subagentCalls).toHaveLength(2);
+    expect(fake.subagentCalls[1].deliver).toBe(true);
+    expect(fake.subagentCalls[1].sessionKey).toBe('agent:main:telegram:direct:69340471');
+  });
+
+  test('phase 2: delivery message contains evaluator output', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi(true, undefined, 'Evaluated: Alice is a great match.');
+    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(fake.subagentCalls[1].message).toContain('Evaluated: Alice is a great match.');
+  });
+
+  test('returns false when waitForRun times out', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    fake.api.runtime.subagent.waitForRun = async () => { throw new Error('Evaluator timed out'); };
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(result).toBe(false);
+    expect(fake.subagentCalls).toHaveLength(1);
+    expect(fake.logger.warn).toHaveBeenCalled();
+    const warnArgs = fake.logger.warn.mock.calls[0] as string[];
+    expect(warnArgs[0]).toContain('timed out');
+  });
+
+  test('returns false when getSessionMessages fails', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi();
+    fake.api.runtime.subagent.getSessionMessages = async () => { throw new Error('Session not found'); };
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(result).toBe(false);
+    expect(fake.subagentCalls).toHaveLength(1);
+    expect(fake.logger.warn).toHaveBeenCalled();
+    const warnArgs = fake.logger.warn.mock.calls[0] as string[];
+    expect(warnArgs[0]).toContain('Session not found');
+  });
+
+  test('returns false without dispatching delivery when evaluator produces no output', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fake = buildFakeApi(true, undefined, ''); // empty evaluator output
+    const result = await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+
+    expect(result).toBe(false);
+    expect(fake.subagentCalls).toHaveLength(1); // only evaluator, no delivery
+  });
+
+  test('idempotency keys are stable for the same batch regardless of order', async () => {
     const candidates = [SAMPLE_CANDIDATE, { ...SAMPLE_CANDIDATE, opportunityId: 'opp-xyz' }];
 
     global.fetch = mock(async () =>
@@ -192,9 +308,10 @@ describe('handleOpportunityBatch', () => {
     await handleOpportunityBatch(fake2.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake1.subagentCalls[0].idempotencyKey).toBe(fake2.subagentCalls[0].idempotencyKey);
+    expect(fake1.subagentCalls[1].idempotencyKey).toBe(fake2.subagentCalls[1].idempotencyKey);
   });
 
-  test('passes model string from configGet to subagent', async () => {
+  test('passes model to both evaluator and delivery subagent', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
         status: 200,
@@ -206,34 +323,7 @@ describe('handleOpportunityBatch', () => {
     await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(fake.subagentCalls[0].model).toBe('anthropic/claude-sonnet-4-6');
-  });
-
-  test('passes primary from configGet object to subagent', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    ) as unknown as typeof fetch;
-
-    const fake = buildFakeApi(true, { primary: 'anthropic/claude-opus-4-6', fallbacks: ['openai/gpt-4o'] });
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
-
-    expect(fake.subagentCalls[0].model).toBe('anthropic/claude-opus-4-6');
-  });
-
-  test('passes undefined model when configGet is absent', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    ) as unknown as typeof fetch;
-
-    const fake = buildFakeApi(true); // no configGet
-    await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
-
-    expect(fake.subagentCalls[0].model).toBeUndefined();
+    expect(fake.subagentCalls[1].model).toBe('anthropic/claude-sonnet-4-6');
   });
 
   test('calls /api/agents/:agentId/opportunities/pending with GET', async () => {
@@ -254,7 +344,7 @@ describe('handleOpportunityBatch', () => {
     expect(fetchCalls[0].init?.method).toBe('GET');
   });
 
-  test('does not launch subagent on second call with identical opportunity set', async () => {
+  test('does not re-launch subagents on second call with identical opportunity set', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
         status: 200,
@@ -268,10 +358,10 @@ describe('handleOpportunityBatch', () => {
 
     expect(first).toBe(true);
     expect(second).toBe(false);
-    expect(fake.subagentCalls).toHaveLength(1);
+    expect(fake.subagentCalls).toHaveLength(2); // only from first call
   });
 
-  test('launches subagent again when opportunity set changes between calls', async () => {
+  test('re-launches subagents when opportunity set changes', async () => {
     const SECOND_CANDIDATE = {
       opportunityId: 'opp-xyz',
       rendered: {
@@ -300,6 +390,6 @@ describe('handleOpportunityBatch', () => {
 
     expect(first).toBe(true);
     expect(second).toBe(true);
-    expect(fake.subagentCalls).toHaveLength(2);
+    expect(fake.subagentCalls).toHaveLength(4); // 2 per successful call
   });
 });

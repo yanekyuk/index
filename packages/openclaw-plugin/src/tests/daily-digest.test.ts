@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
-import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
+import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plugin-api.js';
 
 describe('handleDailyDigest', () => {
   let mockApi: OpenClawPluginApi;
-  let subagentRunCalls: Array<{ message: string; idempotencyKey: string }>;
+  let subagentRunCalls: SubagentRunOptions[];
   let originalFetch: typeof global.fetch;
+
+  const EVALUATOR_CONTENT = 'Digest: opp-1 matches your goals. opp-2 is also relevant.';
 
   beforeEach(() => {
     subagentRunCalls = [];
@@ -22,9 +24,13 @@ describe('handleDailyDigest', () => {
       runtime: {
         subagent: {
           run: mock(async (opts) => {
-            subagentRunCalls.push({ message: opts.message, idempotencyKey: opts.idempotencyKey });
-            return { runId: 'test-run-id' };
+            subagentRunCalls.push(opts);
+            return { runId: `run-${subagentRunCalls.length}` };
           }),
+          waitForRun: mock(async () => ({ result: null })),
+          getSessionMessages: mock(async () => ({
+            messages: [{ role: 'assistant', content: EVALUATOR_CONTENT }],
+          })),
         },
       },
       logger: {
@@ -41,32 +47,57 @@ describe('handleDailyDigest', () => {
     global.fetch = originalFetch;
   });
 
-  it('dispatches digest with top N prompt when opportunities exist', async () => {
-    const mockResponse = {
-      opportunities: [
-        {
-          opportunityId: 'opp-1',
-          rendered: {
-            headline: 'Headline 1',
-            personalizedSummary: 'Summary 1',
-            suggestedAction: 'Action 1',
-            narratorRemark: '',
-          },
-        },
-        {
-          opportunityId: 'opp-2',
-          rendered: {
-            headline: 'Headline 2',
-            personalizedSummary: 'Summary 2',
-            suggestedAction: 'Action 2',
-            narratorRemark: '',
-          },
-        },
-      ],
-    };
-
+  it('phase 1: evaluator runs with deliver:false on daily-digest session key', async () => {
     global.fetch = mock(async () =>
-      new Response(JSON.stringify(mockResponse), { status: 200 }),
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 5,
+    });
+
+    expect(subagentRunCalls[0].deliver).toBe(false);
+    expect(subagentRunCalls[0].sessionKey).toMatch(/^index:daily-digest:agent-123:\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('phase 1: evaluator prompt contains top-N instruction and candidate data', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 5,
+    });
+
+    expect(subagentRunCalls[0].message).toContain('daily digest');
+    expect(subagentRunCalls[0].message).toContain('top 2'); // min(5, 2 available)
+    expect(subagentRunCalls[0].message).toContain('opp-1');
+    expect(subagentRunCalls[0].message).toContain('opp-2');
+  });
+
+  it('phase 2: delivery subagent runs with deliver:true on telegram session key', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
     ) as unknown as typeof fetch;
 
     const result = await handleDailyDigest(mockApi, {
@@ -77,13 +108,48 @@ describe('handleDailyDigest', () => {
     });
 
     expect(result).toBe(true);
-    expect(subagentRunCalls).toHaveLength(1);
-    expect(subagentRunCalls[0].message).toContain('daily digest');
-    expect(subagentRunCalls[0].message).toContain('top 2'); // min(5, 2 available)
-    expect(subagentRunCalls[0].message).toContain('opp-1');
-    expect(subagentRunCalls[0].message).toContain('opp-2');
-    expect(subagentRunCalls[0].idempotencyKey).toContain('daily-digest');
-    expect(subagentRunCalls[0].idempotencyKey).toMatch(/\d{4}-\d{2}-\d{2}/); // date included
+    expect(subagentRunCalls).toHaveLength(2);
+    expect(subagentRunCalls[1].deliver).toBe(true);
+    expect(subagentRunCalls[1].sessionKey).toBe('agent:main:telegram:direct:12345');
+  });
+
+  it('delivery idempotency key contains daily-digest and a date', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 5,
+    });
+
+    expect(subagentRunCalls[1].idempotencyKey).toContain('daily-digest');
+    expect(subagentRunCalls[1].idempotencyKey).toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it('phase 2: delivery message contains evaluator output', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 5,
+    });
+
+    expect(subagentRunCalls[1].message).toContain(EVALUATOR_CONTENT);
   });
 
   it('returns false when no opportunities pending', async () => {
@@ -103,24 +169,14 @@ describe('handleDailyDigest', () => {
   });
 
   it('returns false when delivery routing not configured', async () => {
-    mockApi.pluginConfig = {}; // No deliveryChannel/deliveryTarget
-
-    const mockResponse = {
-      opportunities: [
-        {
-          opportunityId: 'opp-1',
-          rendered: {
-            headline: 'H',
-            personalizedSummary: 'S',
-            suggestedAction: 'A',
-            narratorRemark: '',
-          },
-        },
-      ],
-    };
+    mockApi.pluginConfig = {};
 
     global.fetch = mock(async () =>
-      new Response(JSON.stringify(mockResponse), { status: 200 }),
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
     ) as unknown as typeof fetch;
 
     const result = await handleDailyDigest(mockApi, {
@@ -135,9 +191,7 @@ describe('handleDailyDigest', () => {
   });
 
   it('returns false on fetch network error', async () => {
-    global.fetch = mock(async () => {
-      throw new Error('Network error');
-    }) as unknown as typeof fetch;
+    global.fetch = mock(async () => { throw new Error('Network error'); }) as unknown as typeof fetch;
 
     const result = await handleDailyDigest(mockApi, {
       baseUrl: 'https://test.example.com',
@@ -168,28 +222,62 @@ describe('handleDailyDigest', () => {
     expect(mockApi.logger.warn).toHaveBeenCalled();
   });
 
-  it('returns false when subagent dispatch throws', async () => {
-    const mockResponse = {
-      opportunities: [
-        {
-          opportunityId: 'opp-1',
-          rendered: {
-            headline: 'H',
-            personalizedSummary: 'S',
-            suggestedAction: 'A',
-            narratorRemark: '',
-          },
-        },
-      ],
-    };
-
+  it('returns false when waitForRun times out', async () => {
     global.fetch = mock(async () =>
-      new Response(JSON.stringify(mockResponse), { status: 200 }),
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
     ) as unknown as typeof fetch;
 
-    mockApi.runtime.subagent.run = mock(async () => {
-      throw new Error('Subagent runtime error');
+    mockApi.runtime.subagent.waitForRun = async () => { throw new Error('Evaluator timed out'); };
+
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
     });
+
+    expect(result).toBe(false);
+    expect(subagentRunCalls).toHaveLength(1);
+    expect(mockApi.logger.warn).toHaveBeenCalled();
+  });
+
+  it('returns false when getSessionMessages fails', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    mockApi.runtime.subagent.getSessionMessages = async () => { throw new Error('Session not found'); };
+
+    const result = await handleDailyDigest(mockApi, {
+      baseUrl: 'https://test.example.com',
+      agentId: 'agent-123',
+      apiKey: 'api-key-123',
+      maxCount: 10,
+    });
+
+    expect(result).toBe(false);
+    expect(subagentRunCalls).toHaveLength(1);
+    expect(mockApi.logger.warn).toHaveBeenCalled();
+  });
+
+  it('returns false when evaluator subagent dispatch throws', async () => {
+    global.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        opportunities: [
+          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+        ],
+      }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    mockApi.runtime.subagent.run = mock(async () => { throw new Error('Subagent runtime error'); });
 
     const result = await handleDailyDigest(mockApi, {
       baseUrl: 'https://test.example.com',

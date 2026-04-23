@@ -42,7 +42,8 @@ export async function handle(
   };
 
   const dispatchResult = await dispatchDelivery(api, {
-    rendered: { headline: 'Test message', body: body.content },
+    contentType: 'test_message',
+    content: body.content,
     idempotencyKey: `index:delivery:test:${body.id}:${body.reservationToken}`,
   });
 

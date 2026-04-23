@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { readModel } from '../../lib/openclaw/plugin-api.js';
-import { buildDeliverySessionKey } from '../../lib/delivery/delivery.dispatcher.js';
+import { isDeliveryConfigured, dispatchDelivery, EVALUATOR_TIMEOUT_MS } from '../../lib/delivery/delivery.dispatcher.js';
+import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { digestEvaluatorPrompt } from './digest-evaluator.prompt.js';
 
 export interface DailyDigestConfig {
@@ -11,8 +12,15 @@ export interface DailyDigestConfig {
 }
 
 /**
- * Fetches all undelivered pending opportunities and delivers a daily digest
- * of the top N ranked by value.
+ * Handles one daily digest cycle using a two-phase pipeline:
+ *
+ * Phase 1 — Evaluator subagent (deliver: false, date-scoped session):
+ *   Ranks candidates by value, calls confirm_opportunity_delivery for top N,
+ *   outputs plain content. Session key includes date so each day starts fresh.
+ *
+ * Phase 2 — Delivery (via dispatchDelivery):
+ *   Captures evaluator output via waitForRun + getSessionMessages, then
+ *   dispatches it through the delivery dispatcher which applies channel styling.
  *
  * @returns `true` if a digest was dispatched, `false` otherwise.
  */
@@ -59,8 +67,8 @@ export async function handle(
     return false;
   }
 
-  const sessionKey = buildDeliverySessionKey(api);
-  if (!sessionKey) {
+  // Fail fast before running the evaluator if delivery is not configured.
+  if (!isDeliveryConfigured(api)) {
     api.logger.warn(
       'Daily digest: delivery routing not configured — skipping. ' +
         'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
@@ -68,15 +76,20 @@ export async function handle(
     return false;
   }
 
-  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
   const effectiveMax = Math.min(config.maxCount, body.opportunities.length);
+  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
   const dateStr = new Date().toISOString().slice(0, 10);
   const model = await readModel(api);
 
+  // Date-scoped session key — each day starts a fresh session with no carryover.
+  const evaluatorSessionKey = `index:daily-digest:${config.agentId}:${dateStr}`;
+
+  // Phase 1: run evaluator silently.
+  let runId: string;
   try {
-    await api.runtime.subagent.run({
-      sessionKey,
-      idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
+    const evalResult = await api.runtime.subagent.run({
+      sessionKey: evaluatorSessionKey,
+      idempotencyKey: `index:eval:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
       message: digestEvaluatorPrompt(
         body.opportunities.map((o) => ({
           opportunityId: o.opportunityId,
@@ -87,29 +100,62 @@ export async function handle(
         })),
         effectiveMax,
       ),
-      deliver: true,
+      deliver: false,
       model,
     });
+    runId = evalResult.runId;
   } catch (err) {
     api.logger.warn(
-      `Daily digest subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+      `Daily digest evaluator dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
   }
 
+  // Wait for the evaluator to finish.
+  try {
+    await api.runtime.subagent.waitForRun({ runId, timeoutMs: EVALUATOR_TIMEOUT_MS });
+  } catch (err) {
+    api.logger.warn(
+      `Daily digest evaluator timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  // Capture evaluator output — the last assistant message in the session.
+  let content: string;
+  try {
+    const { messages } = await api.runtime.subagent.getSessionMessages({
+      sessionKey: evaluatorSessionKey,
+      limit: 10,
+    });
+    content = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+  } catch (err) {
+    api.logger.warn(
+      `Daily digest session read failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  if (!content) {
+    api.logger.debug('Daily digest evaluator produced no output — skipping delivery.');
+    return false;
+  }
+
+  // Phase 2: dispatch to user via delivery dispatcher.
+  const dispatchResult = await dispatchDelivery(api, {
+    contentType: 'daily_digest',
+    content,
+    idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
+  });
+
+  if (dispatchResult === null) {
+    return false;
+  }
+
   api.logger.info(
-    `Daily digest dispatched: ${body.opportunities.length} candidate(s), max ${effectiveMax} to deliver`,
+    `Daily digest dispatched: ${body.opportunities.length} candidate(s), max ${effectiveMax} delivered`,
     { agentId: config.agentId },
   );
 
   return true;
-}
-
-function hashOpportunityBatch(ids: string[]): string {
-  const str = [...ids].sort().join(',');
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(31, h) + str.charCodeAt(i) | 0;
-  }
-  return (h >>> 0).toString(36);
 }

@@ -1,14 +1,53 @@
-export function deliveryPrompt(rendered: {
-  headline: string;
-  body: string;
-}): string {
+export type DeliveryContentType =
+  | 'ambient_discovery'
+  | 'daily_digest'
+  | 'test_message'
+  | 'negotiation_accept';
+
+export type DeliveryChannel = 'telegram';
+
+export function buildDispatcherPrompt(
+  channel: DeliveryChannel,
+  contentType: DeliveryContentType,
+  content: string,
+): string {
   return [
     'You are delivering a message to the user via their active OpenClaw gateway.',
-    'The content below was prepared by Index Network. Relay it faithfully — preserve substance, format for the gateway (concise, chat-friendly).',
-    'Do not summarize, rewrite, or add your own commentary. Do not ask the user for input.',
+    'Before delivering, scan your conversation history.',
+    'If the same or highly similar content was already sent recently, skip it.',
+    'Prioritize novelty — only deliver what adds new value to the user.',
     '',
-    `# ${rendered.headline}`,
+    channelStyleBlock(channel),
     '',
-    rendered.body,
+    contentTypeContextBlock(contentType),
+    '',
+    '===== CONTENT =====',
+    content,
+    '===== END CONTENT =====',
   ].join('\n');
+}
+
+function channelStyleBlock(channel: DeliveryChannel): string {
+  if (channel === 'telegram') {
+    return [
+      'CHANNEL: Telegram',
+      'Format: concise and chat-friendly, no markdown tables, use **bold** for headlines where appropriate.',
+    ].join('\n');
+  }
+  return `CHANNEL: ${channel}`;
+}
+
+function contentTypeContextBlock(contentType: DeliveryContentType): string {
+  switch (contentType) {
+    case 'ambient_discovery':
+      return 'CONTENT TYPE: Real-time ambient opportunity alert. Surface only signal-rich matches concisely.';
+    case 'daily_digest':
+      return 'CONTENT TYPE: Scheduled daily digest of ranked opportunities. Present as a structured summary.';
+    case 'test_message':
+      return 'CONTENT TYPE: Delivery verification message — relay faithfully as-is.';
+    case 'negotiation_accept':
+      return 'CONTENT TYPE: Negotiation outcome notification — one short natural sentence.';
+    default:
+      return `CONTENT TYPE: ${contentType satisfies never}`;
+  }
 }
