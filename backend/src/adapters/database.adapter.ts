@@ -92,6 +92,7 @@ interface ActiveIntentRow {
   payload: string;
   summary: string | null;
   createdAt: Date;
+  relevancyScore?: number | null;
 }
 type SourceType = 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
 
@@ -398,6 +399,7 @@ export class IntentDatabaseAdapter {
           payload: schema.intents.payload,
           summary: schema.intents.summary,
           createdAt: schema.intents.createdAt,
+          relevancyScore: schema.intentNetworks.relevancyScore,
         })
         .from(schema.intents)
         .innerJoin(schema.intentNetworks, eq(schema.intents.id, schema.intentNetworks.intentId))
@@ -408,7 +410,13 @@ export class IntentDatabaseAdapter {
             isNull(schema.intents.archivedAt)
           )
         );
-      return result;
+      return result.map((r) => ({
+        id: r.id,
+        payload: r.payload,
+        summary: r.summary,
+        createdAt: r.createdAt,
+        relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
+      }));
     } catch (error: unknown) {
       logger.error('IntentDatabaseAdapter.getIntentsInIndexForMember error', { error: error instanceof Error ? error.message : String(error) });
       return [];
@@ -652,6 +660,7 @@ export class IntentDatabaseAdapter {
         userId: schema.intents.userId,
         userName: schema.users.name,
         createdAt: schema.intents.createdAt,
+        relevancyScore: schema.intentNetworks.relevancyScore,
       })
       .from(schema.intents)
       .innerJoin(schema.intentNetworks, eq(schema.intents.id, schema.intentNetworks.intentId))
@@ -673,6 +682,7 @@ export class IntentDatabaseAdapter {
       userId: r.userId,
       userName: r.userName ?? 'Unknown',
       createdAt: r.createdAt,
+      relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
     }));
   }
 }
