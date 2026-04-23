@@ -69,6 +69,7 @@ const API_KEY = 'test-api-key';
 
 const SAMPLE_CANDIDATE = {
   opportunityId: 'opp-abc',
+  counterpartUserId: 'user-alice-123',
   rendered: {
     headline: 'Great match found',
     personalizedSummary: 'Alice is looking for a TypeScript engineer.',
@@ -165,6 +166,7 @@ describe('handleOpportunityBatch', () => {
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.headline);
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.personalizedSummary);
     expect(message).toContain(SAMPLE_CANDIDATE.rendered.suggestedAction);
+    expect(message).toContain('user-alice-123');
   });
 
   test('waitForRun is called with evaluator runId', async () => {
@@ -364,6 +366,7 @@ describe('handleOpportunityBatch', () => {
   test('re-launches subagents when opportunity set changes', async () => {
     const SECOND_CANDIDATE = {
       opportunityId: 'opp-xyz',
+      counterpartUserId: 'user-bob-456',
       rendered: {
         headline: 'Another match',
         personalizedSummary: 'Bob is looking for a designer.',

@@ -51,8 +51,8 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-          { opportunityId: 'opp-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-2', counterpartUserId: 'user-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -72,8 +72,8 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-          { opportunityId: 'opp-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-2', counterpartUserId: 'user-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -95,7 +95,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -117,7 +117,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -137,7 +137,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -174,7 +174,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -226,7 +226,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -249,7 +249,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
@@ -272,7 +272,7 @@ describe('handleDailyDigest', () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
-          { opportunityId: 'opp-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
         ],
       }), { status: 200 }),
     ) as unknown as typeof fetch;
