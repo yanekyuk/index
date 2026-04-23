@@ -45,7 +45,7 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
         .description('Manage Index Network plugin configuration');
       registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
     },
-    { commands: ['index-network'] },
+    { descriptors: [{ name: 'index-network', description: 'Manage Index Network plugin configuration' }] },
   );
 }
 
