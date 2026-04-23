@@ -31,19 +31,19 @@ export function buildDispatcherPrompt(
 function channelStyleBlock(channel: DeliveryChannel, frontendUrl?: string): string {
   if (channel === 'telegram') {
     const lines = [
-      'CHANNEL: Telegram (HTML parse mode)',
+      'CHANNEL: Telegram (Markdown — the gateway converts to HTML automatically)',
       'Format rules:',
-      '- Use <b>bold</b> for opportunity headlines.',
+      '- Use **bold** for opportunity headlines.',
       '- Keep messages concise and chat-friendly. No markdown tables.',
-      '- Use <a href="url">text</a> for hyperlinks — they render as tappable links in Telegram.',
-      '- Escape these HTML characters in text content: & → &amp; < → &lt; > → &gt;',
+      '- Use [text](url) for hyperlinks — they render as tappable links in Telegram.',
+      '- Do NOT use raw HTML tags — they will be escaped and shown literally.',
     ];
     if (frontendUrl) {
       lines.push(
         `- Base URL for links: ${frontendUrl}`,
         '- For each opportunity that includes a userId, add these links:',
-        `  • <a href="${frontendUrl}/u/{userId}">View Profile</a> — replace {userId} with the actual user ID`,
-        `  • <a href="${frontendUrl}/u/{userId}/chat">Start Chat ›</a> — replace {userId} with the actual user ID`,
+        `  • [View Profile](${frontendUrl}/u/{userId}) — replace {userId} with the actual user ID`,
+        `  • [Start Chat ›](${frontendUrl}/u/{userId}/chat) — replace {userId} with the actual user ID`,
         '- Place links on their own line after the opportunity summary.',
       );
     }
@@ -71,7 +71,7 @@ function contentTypeContextBlock(contentType: DeliveryContentType): string {
       return [
         'CONTENT TYPE: Delivery verification message.',
         'Format the content using all the channel formatting rules above (bold headlines,',
-        'HTML links, etc.) so the user can verify that rich formatting renders correctly.',
+        'markdown links, etc.) so the user can verify that rich formatting renders correctly.',
         'If the content mentions a user or profile, include sample profile/chat links.',
       ].join('\n');
     case 'negotiation_accept':
