@@ -9,28 +9,13 @@
 
 Tier 1 fixed issues that lived entirely in the tool handler layer (response shape, field naming, pagination). Tier 2 fixes issues that require changes one layer deeper: the graph read nodes and the DB query layer that feeds them.
 
-Four fixes are in scope. `summary` always null (Tier 2 candidate) is deferred — it requires investigation into the intent generation pipeline and is tracked separately.
+Three fixes are in scope. `summary` always null and `read_intents` missing `confidence`/`inferenceType` are deferred — `confidence` and `inferenceType` are not columns in the `intents` table (they are computed during reconciliation but never persisted), making them a schema-change concern outside Tier 2.
 
 ---
 
 ## Changes
 
-### 1. `read_intents` — add `confidence` and `inferenceType`
-
-**Problem:** The `getActiveIntents`, `getIntentsInIndexForMember`, and `getNetworkIntentsForMember` DB queries only select `id`, `payload`, `summary`, `createdAt`. The `confidence` and `inferenceType` columns exist in the `intents` table and are populated at creation time, but are never fetched. The intent graph maps only what the DB returns, so agents calling `read_intents` never see these fields.
-
-**Fix:**
-
-`backend/src/adapters/database.adapter.ts`:
-- Add `confidence` and `inferenceType` to the `ActiveIntentRow` interface
-- Add both columns to the `select({})` call in `getActiveIntents`, `getIntentsInIndexForMember`, and `getNetworkIntentsForMember`
-
-`packages/protocol/src/intent/intent.graph.ts`:
-- Add `confidence` and `inferenceType` to every `readResult.intents` map: global read (no index scope), index-scoped read (all members), and user-filtered read (specific member in index)
-
----
-
-### 2. `read_intent_indexes` — add `relevancyScore`
+### 1. `read_intent_indexes` — add `relevancyScore`
 
 **Problem:** The indexer graph builds `links` arrays in `intents_in_network` mode from `getNetworkIntentsForMember` and `getIntentsInIndexForMember`, but neither query joins `intent_networks.relevancy_score`. The score is stored and accessible (used by the opportunity discovery pipeline via `getIntentIndexScores`), but never surfaced to MCP callers. The tool description already says it returns "relevancy scores (0-1)" — the data just isn't wired through.
 
@@ -47,7 +32,7 @@ The `check_link` and `networks_for_intent` read modes are not changed — they d
 
 ---
 
-### 3. `read_networks` — rename `description` → `prompt` in graph output
+### 2. `read_networks` — rename `description` → `prompt` in graph output
 
 **Problem:** The network graph read node renames the DB column `prompt` to `description` when building all readResult objects. The DB schema, frontend types, and MCP tool input all use `prompt`. Agents calling `read_networks` get back `description`; everything else in the system uses `prompt`. This means `create_network({ prompt: "..." })` followed by `read_networks()` returns a different field name for the same data.
 
@@ -63,7 +48,7 @@ No frontend changes — frontend already expects `prompt`. No DB changes — DB 
 
 ---
 
-### 4. `grant_agent_permission` — upsert on conflict
+### 3. `grant_agent_permission` — upsert on conflict
 
 **Problem:** `AgentService.grantPermission` calls `this.db.grantPermission(...)` which performs a plain `INSERT` with no conflict handling. Calling it twice for the same `(agentId, userId, scope, scopeId)` combination creates duplicate permission rows. MCP agents calling `grant_agent_permission` repeatedly (e.g. to ensure a permission exists) accumulate rows silently.
 
@@ -82,7 +67,7 @@ No changes to `agent.service.ts` — the service passes the right fields already
 
 ```
 backend/src/adapters/database.adapter.ts
-packages/protocol/src/intent/intent.graph.ts
+backend/src/adapters/agent.database.adapter.ts
 packages/protocol/src/network/indexer/indexer.graph.ts
 packages/protocol/src/network/network.graph.ts
 packages/protocol/src/network/network.state.ts
@@ -105,4 +90,4 @@ No schema migrations. No frontend changes. No openclaw-plugin or claude-plugin c
 | Issue | Reason |
 |-------|--------|
 | `summary` always null | Requires intent generation pipeline investigation — deferred |
-| `read_intents` missing `speechActType` | Not confirmed as a populated column; audit needed before adding |
+| `read_intents` missing `confidence`/`inferenceType` | Not DB columns — computed during reconciliation but never persisted; requires schema migration |
