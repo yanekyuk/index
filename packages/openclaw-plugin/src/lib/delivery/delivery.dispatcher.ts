@@ -1,9 +1,12 @@
 import type { OpenClawPluginApi, SubagentRunResult } from '../openclaw/plugin-api.js';
 import { readModel } from '../openclaw/plugin-api.js';
-import { deliveryPrompt } from './delivery.prompt.js';
+import { type DeliveryContentType, buildDispatcherPrompt } from './delivery.prompt.js';
+
+export type { DeliveryContentType };
 
 export interface DeliveryRequest {
-  rendered: { headline: string; body: string };
+  contentType: DeliveryContentType;
+  content: string;
   /** Stable per-message key for OpenClaw idempotency. */
   idempotencyKey: string;
 }
@@ -20,22 +23,24 @@ export function buildDeliverySessionKey(api: OpenClawPluginApi): string | null {
 }
 
 /**
- * Dispatches a rendered card to the user's configured OpenClaw channel.
+ * Dispatches content to the user's configured OpenClaw channel.
  *
- * Returns `null` when delivery routing is not configured — the caller should
- * NOT proceed to confirm delivery in that case.
+ * Reads `deliveryChannel` and `deliveryTarget` from plugin config to build the
+ * session key and select the channel style. Returns `null` when routing is not
+ * configured — the caller should NOT confirm delivery in that case.
  *
  * @param api - OpenClaw plugin API.
- * @param request - Rendered card and idempotency key.
+ * @param request - Content type, content, and idempotency key.
  * @returns The subagent run result, or `null` if delivery routing is missing.
  */
 export async function dispatchDelivery(
   api: OpenClawPluginApi,
   request: DeliveryRequest,
 ): Promise<SubagentRunResult | null> {
-  const sessionKey = buildDeliverySessionKey(api);
+  const channel = readConfigString(api, 'deliveryChannel');
+  const target = readConfigString(api, 'deliveryTarget');
 
-  if (!sessionKey) {
+  if (!channel || !target) {
     api.logger.warn(
       'Index Network delivery routing not configured — skipping subagent dispatch. ' +
         'Set pluginConfig.deliveryChannel (e.g. "telegram") and pluginConfig.deliveryTarget ' +
@@ -44,12 +49,13 @@ export async function dispatchDelivery(
     return null;
   }
 
+  const sessionKey = `agent:main:${channel}:direct:${target}`;
   const model = await readModel(api);
 
   return api.runtime.subagent.run({
     sessionKey,
     idempotencyKey: request.idempotencyKey,
-    message: deliveryPrompt(request.rendered),
+    message: buildDispatcherPrompt(channel, request.contentType, request.content),
     deliver: true,
     model,
   });
