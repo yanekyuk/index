@@ -106,6 +106,10 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   await ctx.configSet(`${configPrefix}.agentId`, agentId);
   await ctx.configSet(`${configPrefix}.apiKey`, resolvedApiKey);
 
+  if (legacyProtocolUrl) {
+    await ctx.configSet(`${configPrefix}.protocolUrl`, undefined);
+  }
+
   // --- Detect available delivery channels ---
   const channels = ctx.cfg.channels as Record<string, unknown> | undefined;
   const configuredChannels = Object.entries(channels || {})

@@ -106,8 +106,8 @@ describe('dispatchDelivery', () => {
 
     const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
     expect(call.message).toContain('https://dev.index.network');
-    expect(call.message).toContain('View Profile');
-    expect(call.message).toContain('Start Chat');
+    expect(call.message).toContain('<a href="https://dev.index.network/u/{userId}">View Profile</a>');
+    expect(call.message).toContain('<a href="https://dev.index.network/u/{userId}/chat">Start Chat ›</a>');
   });
 
   test('prompt includes temporal awareness instructions', async () => {

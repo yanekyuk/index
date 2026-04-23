@@ -31,18 +31,19 @@ export function buildDispatcherPrompt(
 function channelStyleBlock(channel: DeliveryChannel, frontendUrl?: string): string {
   if (channel === 'telegram') {
     const lines = [
-      'CHANNEL: Telegram',
+      'CHANNEL: Telegram (HTML parse mode)',
       'Format rules:',
-      '- Use **bold** for opportunity headlines.',
+      '- Use <b>bold</b> for opportunity headlines.',
       '- Keep messages concise and chat-friendly. No markdown tables.',
-      '- Use [text](url) for hyperlinks — they render as tappable links in Telegram.',
+      '- Use <a href="url">text</a> for hyperlinks — they render as tappable links in Telegram.',
+      '- Escape these HTML characters in text content: & → &amp; < → &lt; > → &gt;',
     ];
     if (frontendUrl) {
       lines.push(
         `- Base URL for links: ${frontendUrl}`,
         '- For each opportunity that includes a userId, add these links:',
-        `  • [View Profile](${frontendUrl}/u/{userId}) — replace {userId} with the actual user ID`,
-        `  • [Start Chat ›](${frontendUrl}/u/{userId}/chat) — replace {userId} with the actual user ID`,
+        `  • <a href="${frontendUrl}/u/{userId}">View Profile</a> — replace {userId} with the actual user ID`,
+        `  • <a href="${frontendUrl}/u/{userId}/chat">Start Chat ›</a> — replace {userId} with the actual user ID`,
         '- Place links on their own line after the opportunity summary.',
       );
     }

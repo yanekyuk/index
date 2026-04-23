@@ -128,6 +128,11 @@ describe('setup wizard', () => {
       (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.url',
     );
     expect(urlWrite?.value).toBe('https://dev.index.network');
+
+    const protocolUrlClear = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl',
+    );
+    expect(protocolUrlClear?.value).toBeUndefined();
   });
 
   test('throws if Agent ID is empty', async () => {

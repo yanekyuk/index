@@ -3,6 +3,20 @@ export interface DerivedUrls {
   frontendUrl: string;
 }
 
+/**
+ * Derives both the protocol API base URL and the user-facing frontend URL
+ * from a single configuration value.
+ *
+ * For non-localhost URLs, port and path segments are intentionally dropped
+ * because production deployments use subdomain-based routing
+ * (`protocol.example.com`), not port or path variants.
+ *
+ * For localhost variants (127.0.0.1, [::1], localhost), the protocol URL
+ * is hardcoded to `http://localhost:3001` — the default backend dev port.
+ *
+ * @param input - A URL string (e.g. `https://index.network`, `http://localhost:5173`).
+ * @returns The derived `protocolUrl` and `frontendUrl`.
+ */
 export function deriveUrls(input: string): DerivedUrls {
   const cleaned = input.replace(/\/+$/, '');
 
