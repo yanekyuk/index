@@ -9,6 +9,7 @@ export interface NegotiatorConfig {
   baseUrl: string;
   agentId: string;
   apiKey: string;
+  frontendUrl: string;
 }
 
 /** Tracks in-flight turns so we don't re-launch subagents for already-claimed work. */

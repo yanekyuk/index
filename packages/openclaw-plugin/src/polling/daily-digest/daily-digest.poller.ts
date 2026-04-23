@@ -8,6 +8,7 @@ export interface DailyDigestConfig {
   baseUrl: string;
   agentId: string;
   apiKey: string;
+  frontendUrl: string;
   maxCount: number;
 }
 
@@ -53,6 +54,7 @@ export async function handle(
   const body = (await res.json()) as {
     opportunities: Array<{
       opportunityId: string;
+      counterpartUserId: string;
       rendered: {
         headline: string;
         personalizedSummary: string;
@@ -93,6 +95,7 @@ export async function handle(
       message: digestEvaluatorPrompt(
         body.opportunities.map((o) => ({
           opportunityId: o.opportunityId,
+          userId: o.counterpartUserId,
           headline: o.rendered.headline,
           personalizedSummary: o.rendered.personalizedSummary,
           suggestedAction: o.rendered.suggestedAction,

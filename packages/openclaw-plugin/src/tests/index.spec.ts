@@ -96,7 +96,7 @@ describe('register(api)', () => {
 
   test('auto-registers MCP server when not present', () => {
     const fake = buildFakeApi(
-      { agentId: 'agent-1', apiKey: 'key-1', protocolUrl: 'https://protocol.index.network' },
+      { agentId: 'agent-1', apiKey: 'key-1', url: 'https://index.network' },
       { mcpServers: {} },
     );
     register(fake.api);
@@ -112,7 +112,7 @@ describe('register(api)', () => {
 
   test('skips MCP registration when already correct', () => {
     const fake = buildFakeApi(
-      { agentId: 'agent-1', apiKey: 'key-1', protocolUrl: 'https://protocol.index.network' },
+      { agentId: 'agent-1', apiKey: 'key-1', url: 'https://index.network' },
       {
         mcpServers: {
           'index-network': {
@@ -130,7 +130,7 @@ describe('register(api)', () => {
 
   test('updates MCP server when apiKey changes', () => {
     const fake = buildFakeApi(
-      { agentId: 'agent-1', apiKey: 'new-key', protocolUrl: 'https://protocol.index.network' },
+      { agentId: 'agent-1', apiKey: 'new-key', url: 'https://index.network' },
       {
         mcpServers: {
           'index-network': {
@@ -147,7 +147,7 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).headers['x-api-key']).toBe('new-key');
   });
 
-  test('uses default protocolUrl https://protocol.index.network when not set', () => {
+  test('uses default url https://index.network when not set', () => {
     const fake = buildFakeApi(
       { agentId: 'agent-1', apiKey: 'key-1' },
       { mcpServers: {} },

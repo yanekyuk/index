@@ -5,6 +5,7 @@ export interface TestMessageConfig {
   baseUrl: string;
   agentId: string;
   apiKey: string;
+  frontendUrl: string;
 }
 
 /**
