@@ -14,11 +14,11 @@
         "type": "string",
         "description": "API key linked to your Index Network agent. Generated on the Agents page."
       },
-      "protocolUrl": {
+      "url": {
         "type": "string",
         "format": "uri",
-        "default": "https://protocol.index.network",
-        "description": "Base URL of the Index Network backend."
+        "default": "https://index.network",
+        "description": "Index Network URL. Protocol and frontend URLs are derived automatically."
       },
       "negotiationMode": {
         "type": "string",

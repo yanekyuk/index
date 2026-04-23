@@ -127,7 +127,7 @@ export function register(api: OpenClawPluginApi): void {
     match: 'exact',
     handler: async (_req, res) => {
       try {
-        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
+        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey });
         res.statusCode = 200;
         res.end('ok');
       } catch (err) {
@@ -151,7 +151,7 @@ export function register(api: OpenClawPluginApi): void {
       match: 'exact',
       handler: async (_req, res) => {
         try {
-          const result = await negotiatorPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
+          const result = await negotiatorPoller.handle(api, { baseUrl, agentId, apiKey });
           if (result === 'network_error') {
             negotiatorScheduler.increaseBackoff(api.logger);
           } else {
