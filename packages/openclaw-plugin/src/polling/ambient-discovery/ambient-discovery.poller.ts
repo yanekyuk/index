@@ -1,7 +1,10 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { readModel } from '../../lib/openclaw/plugin-api.js';
-import { buildDeliverySessionKey } from '../../lib/delivery/delivery.dispatcher.js';
+import { buildDeliverySessionKey, dispatchDelivery } from '../../lib/delivery/delivery.dispatcher.js';
 import { opportunityEvaluatorPrompt } from './opportunity-evaluator.prompt.js';
+
+/** Milliseconds to wait for the evaluator subagent to complete. */
+const EVALUATOR_TIMEOUT_MS = 120_000;
 
 /** Hash of the last opportunity batch dispatched. Used to skip unchanged batches. */
 let lastOpportunityBatchHash: string | null = null;
@@ -13,12 +16,19 @@ export interface AmbientDiscoveryConfig {
 }
 
 /**
- * Fetches all undelivered pending opportunities in one request, then launches
- * a single evaluator+delivery subagent that scores them and delivers one message.
+ * Handles one ambient discovery poll cycle using a two-phase pipeline:
+ *
+ * Phase 1 — Evaluator subagent (deliver: false, own session):
+ *   Evaluates candidates, calls confirm_opportunity_delivery for selected ones,
+ *   outputs plain content with no formatting instructions.
+ *
+ * Phase 2 — Delivery (via dispatchDelivery):
+ *   Captures evaluator output via waitForRun + getSessionMessages, then
+ *   dispatches it through the delivery dispatcher which applies channel styling.
  *
  * @param api - The OpenClaw plugin API instance.
  * @param config - Configuration for the ambient discovery poller.
- * @returns `true` if a subagent was launched, `false` if no candidates or no routing.
+ * @returns `true` if delivery was dispatched, `false` otherwise.
  */
 export async function handle(
   api: OpenClawPluginApi,
@@ -62,8 +72,8 @@ export async function handle(
     return false;
   }
 
-  const sessionKey = buildDeliverySessionKey(api);
-  if (!sessionKey) {
+  // Fail fast before running the evaluator if delivery is not configured.
+  if (!buildDeliverySessionKey(api)) {
     api.logger.warn(
       'Index Network delivery routing not configured — skipping opportunity batch. ' +
         'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
@@ -80,11 +90,14 @@ export async function handle(
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const model = await readModel(api);
+  const evaluatorSessionKey = `index:ambient-discovery:${config.agentId}`;
 
+  // Phase 1: run evaluator silently in its own session.
+  let runId: string;
   try {
-    await api.runtime.subagent.run({
-      sessionKey,
-      idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
+    const evalResult = await api.runtime.subagent.run({
+      sessionKey: evaluatorSessionKey,
+      idempotencyKey: `index:eval:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
       message: opportunityEvaluatorPrompt(
         body.opportunities.map((o) => ({
           opportunityId: o.opportunityId,
@@ -94,19 +107,55 @@ export async function handle(
           narratorRemark: o.rendered.narratorRemark,
         })),
       ),
-      deliver: true,
+      deliver: false,
       model,
     });
-    lastOpportunityBatchHash = batchHash;
+    runId = evalResult.runId;
   } catch (err) {
     api.logger.warn(
-      `Opportunity batch subagent dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+      `Opportunity evaluator dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
   }
 
+  // Wait for the evaluator to finish.
+  try {
+    await api.runtime.subagent.waitForRun({ runId, timeoutMs: EVALUATOR_TIMEOUT_MS });
+  } catch (err) {
+    api.logger.warn(
+      `Opportunity evaluator timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  // Capture evaluator output — the last assistant message in the session.
+  const { messages } = await api.runtime.subagent.getSessionMessages({
+    sessionKey: evaluatorSessionKey,
+    limit: 10,
+  });
+  const content = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+
+  if (!content) {
+    api.logger.debug('Opportunity evaluator produced no output — skipping delivery.');
+    lastOpportunityBatchHash = batchHash;
+    return false;
+  }
+
+  // Phase 2: dispatch to user via delivery dispatcher.
+  const dispatchResult = await dispatchDelivery(api, {
+    contentType: 'ambient_discovery',
+    content,
+    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
+  });
+
+  if (dispatchResult === null) {
+    return false;
+  }
+
+  lastOpportunityBatchHash = batchHash;
+
   api.logger.info(
-    `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) for evaluation`,
+    `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) evaluated`,
     { agentId: config.agentId },
   );
 
