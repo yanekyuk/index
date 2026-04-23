@@ -68,7 +68,12 @@ function contentTypeContextBlock(contentType: DeliveryContentType): string {
         'and profile/chat links. Add a brief intro line (e.g. "Here are today\'s top opportunities:").',
       ].join('\n');
     case 'test_message':
-      return 'CONTENT TYPE: Delivery verification message — relay faithfully as-is.';
+      return [
+        'CONTENT TYPE: Delivery verification message.',
+        'Format the content using all the channel formatting rules above (bold headlines,',
+        'HTML links, etc.) so the user can verify that rich formatting renders correctly.',
+        'If the content mentions a user or profile, include sample profile/chat links.',
+      ].join('\n');
     case 'negotiation_accept':
       return 'CONTENT TYPE: Negotiation outcome notification — one short natural sentence.';
     default:

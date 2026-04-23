@@ -134,7 +134,7 @@ export function register(api: OpenClawPluginApi): void {
     match: 'exact',
     handler: async (_req, res) => {
       try {
-        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey });
+        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
         res.statusCode = 200;
         res.end('ok');
       } catch (err) {
