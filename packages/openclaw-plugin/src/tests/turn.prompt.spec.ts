@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { turnPrompt } from '../prompts/turn.prompt.js';
+import { turnPrompt } from '../polling/negotiator/negotiation-turn.prompt.js';
 
 describe('turnPrompt', () => {
   test('produces stable output for a fixed payload', () => {

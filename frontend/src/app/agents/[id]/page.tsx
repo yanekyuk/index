@@ -494,67 +494,174 @@ function NegotiationInsightsTab({ userId }: { userId: string }) {
   );
 }
 
-function CodeBlock({ code, label }: { code: string; label: string }) {
+function ClickableCodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1500);
     } catch { /* silent */ }
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</p>
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label="Copy code block"
+      className="relative w-full text-left group bg-gray-50 border border-gray-200 rounded-sm p-3 hover:bg-green-50 hover:border-green-300 transition-colors"
+    >
+      <span className="block text-xs text-gray-700 font-mono whitespace-pre-wrap break-all pr-16">{code}</span>
+      <span className="absolute top-2 right-2 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+        {copied ? '✓ Copied' : '⧉ Copy'}
+      </span>
+    </button>
+  );
+}
+
+function WizardRow({
+  prompt,
+  description,
+  value,
+  copyable,
+}: {
+  prompt: string;
+  description: string;
+  value: string;
+  copyable?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* silent */ }
+  }
+
+  return (
+    <>
+      <div className="flex flex-col justify-center p-3 border-b border-r border-gray-200 bg-gray-50">
+        <span className="text-xs font-medium text-gray-700">{prompt}</span>
+        <span className="text-xs text-gray-400 mt-0.5">{description}</span>
+      </div>
+      {copyable ? (
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
+          aria-label={`Copy ${prompt} value`}
+          className="relative group flex items-start p-3 border-b border-gray-200 bg-gray-50 hover:bg-green-50 hover:border-green-300 transition-colors text-left font-mono text-xs text-gray-700 whitespace-pre-wrap break-all"
         >
-          {copied ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
-          {copied ? "Copied" : "Copy"}
+          <span className="pr-16">{value}</span>
+          <span className="absolute top-2 right-2 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+            {copied ? '✓ Copied' : '⧉ Copy'}
+          </span>
         </button>
+      ) : (
+        <div className="flex items-center p-3 border-b border-gray-200 text-xs text-gray-500 italic">
+          {value}
+        </div>
+      )}
+    </>
+  );
+}
+
+function WizardPromptGrid({
+  serverUrl,
+  agentId,
+  apiKey,
+}: {
+  serverUrl: string;
+  agentId: string;
+  apiKey: string;
+}) {
+  return (
+    <div className="border border-gray-200 rounded-sm overflow-hidden">
+      <div className="grid grid-cols-2 border-b border-gray-200 bg-gray-100 px-3 py-2">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Prompt</span>
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Value</span>
       </div>
-      <pre className="bg-gray-50 border border-gray-200 rounded-sm p-3 text-xs text-gray-700 overflow-x-auto font-mono select-text whitespace-pre-wrap break-all">
-        {code}
-      </pre>
+      <div className="grid grid-cols-2">
+        <WizardRow prompt="Server URL" description="Index Network API endpoint" value={serverUrl} copyable />
+        <WizardRow prompt="Agent ID" description="Your personal agent's unique identifier" value={agentId} copyable />
+        <WizardRow prompt="API Key" description="The API key you just generated" value={apiKey} copyable />
+        <div className="col-span-2 px-3 py-2 border-b border-gray-200 bg-gray-100">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Optional</span>
+        </div>
+        <WizardRow
+          prompt="Delivery channel"
+          description="Platform to receive notifications (Telegram, Discord, Slack, etc.)"
+          value="select or skip"
+        />
+        <WizardRow
+          prompt="Delivery target"
+          description="Your user ID or handle on the chosen platform"
+          value="your ID"
+        />
+        <WizardRow
+          prompt="Daily digest"
+          description="Receive a daily summary of opportunities"
+          value="enable / disable"
+        />
+        <WizardRow
+          prompt="Digest time"
+          description="Time to send the daily digest (24-hour format)"
+          value="08:00 (default)"
+        />
+        <WizardRow
+          prompt="Max per digest"
+          description="Maximum number of opportunities included per digest"
+          value="10 (default)"
+        />
+      </div>
     </div>
   );
 }
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+function OpenClawSetup({
+  install,
+  update,
+  setup,
+}: {
+  install: string;
+  update: string;
+  setup: string;
+}) {
   return (
-    <button
-      type="button"
-      onClick={async (e) => {
-        e.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        } catch {
-          // Clipboard unavailable (e.g. non-secure context)
-        }
-      }}
-      className="shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
-      title="Copy"
-      aria-label="Copy value"
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
+    <div className="space-y-3">
+      <div className="flex gap-3 items-start">
+        <div className="flex flex-col items-center pt-1 shrink-0">
+          <div className="w-2 h-2 rounded-full bg-gray-300" />
+          <div className="w-px h-4 bg-gray-200 my-1" />
+          <div className="w-2 h-2 rounded-full bg-gray-300" />
+        </div>
+        <div className="flex-1 space-y-2">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Install (first time)</p>
+            <ClickableCodeBlock code={install} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Update (if already installed)</p>
+            <ClickableCodeBlock code={update} />
+          </div>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500 mb-1">Run setup wizard</p>
+        <ClickableCodeBlock code={setup} />
+      </div>
+    </div>
   );
 }
 
 function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const keyPlaceholder = apiKey || "YOUR_API_KEY";
-  const agentPlaceholder = agentId || "YOUR_AGENT_ID";
+  const keyValue = apiKey || "YOUR_API_KEY";
+  const agentValue = agentId || "YOUR_AGENT_ID";
 
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "http://localhost:3001";
+  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -564,7 +671,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           type: "http",
           url: mcpUrl,
           headers: {
-            "x-api-key": keyPlaceholder,
+            "x-api-key": keyValue,
           },
         },
       },
@@ -577,10 +684,10 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   - name: index-network
     url: ${mcpUrl}
     headers:
-      x-api-key: ${keyPlaceholder}`;
+      x-api-key: ${keyValue}`;
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
-
+  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
   const openclawSetup = `openclaw index-network setup`;
 
   return (
@@ -594,37 +701,19 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
         Setup Instructions
       </button>
       {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-gray-100">
-          <div className="pt-3">
-            <CodeBlock code={claudeConfig} label="Claude Code / OpenCode" />
+        <div className="px-4 pb-4 space-y-6 border-t border-gray-100 pt-4">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Claude Code / OpenCode</p>
+            <ClickableCodeBlock code={claudeConfig} />
           </div>
           <div>
-            <CodeBlock code={hermesConfig} label="Hermes Agent" />
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hermes Agent</p>
+            <ClickableCodeBlock code={hermesConfig} />
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <CodeBlock code={openclawInstall} label="1. Install plugin" />
-            <CodeBlock code={openclawSetup} label="2. Run setup wizard" />
-            <div className="bg-gray-50 border border-gray-200 rounded-sm p-3 space-y-2">
-              <p className="text-xs text-gray-500 font-ibm-plex-mono">
-                The setup wizard will prompt for these values:
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Server URL</span>
-                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{protocolUrl}</code>
-                <CopyButton text={protocolUrl} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">Agent ID</span>
-                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{agentPlaceholder}</code>
-                <CopyButton text={agentPlaceholder} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 font-ibm-plex-mono w-20 shrink-0">API Key</span>
-                <code className="text-xs bg-gray-100 border border-gray-200 rounded px-2 py-1 font-mono text-gray-700 flex-1 select-all">{keyPlaceholder}</code>
-                <CopyButton text={keyPlaceholder} />
-              </div>
-            </div>
+            <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
+            <WizardPromptGrid serverUrl={protocolUrl} agentId={agentValue} apiKey={keyValue} />
           </div>
         </div>
       )}
@@ -660,7 +749,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
   }, [agentsService, agent.id, error]);
 
   useEffect(() => {
-    fetchKeys();
+    (async () => { await fetchKeys(); })();
   }, [fetchKeys]);
 
   const handleCreate = async (e: React.FormEvent) => {

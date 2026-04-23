@@ -90,6 +90,38 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// RESULT POST-PROCESSING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Strips internal `_`-prefixed keys from `data` and promotes `isError`
+ * from the inner `success: false` signal to the MCP envelope level.
+ * Fail-open: if JSON parsing throws, returns the original text with isError: false.
+ */
+export function sanitizeMcpResult(text: string): { text: string; isError: boolean } {
+  try {
+    const parsed = JSON.parse(text);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.data &&
+      typeof parsed.data === 'object' &&
+      !Array.isArray(parsed.data)
+    ) {
+      for (const key of Object.keys(parsed.data)) {
+        if (key.startsWith('_') || key === 'debugSteps') {
+          delete parsed.data[key];
+        }
+      }
+    }
+    const isError = parsed?.success === false;
+    return { text: JSON.stringify(parsed), isError };
+  } catch {
+    return { text, isError: false };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MCP SERVER FACTORY
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -131,7 +163,7 @@ NEVER use "search" in any form. Use "looking up" for indexed data, "find" / "loo
 - Opportunity — discovered connection between users. Roles, status, reasoning.
 
 # Output rules
-- NEVER expose IDs, UUIDs, field names, or tool names.
+- NEVER expose internal IDs, UUIDs, field names, or tool names — EXCEPT when an ID is actionable for the user (e.g. a \`conversationId\` they need to open a chat). Surface such IDs verbatim when the tool returns them.
 - NEVER use internal vocabulary — say "signal" not "intent", "community" not "index".
 - NEVER dump raw JSON. Synthesize in natural language.
 - Surface top 1–3 relevant points unless asked for the full list.
@@ -144,6 +176,16 @@ Each tool's description contains its own usage rules (when to call, when NOT to 
 
 # Authentication
 Pass your API key in the \`x-api-key\` request header (not \`Authorization: Bearer\`).
+
+# Opportunity lifecycle
+Opportunities move through: draft → pending → accepted (or rejected).
+
+- **draft** (you created it, not yet sent): offer to send it; confirm before calling update_opportunity with pending.
+- **pending, you sent it**: waiting for the other side — nothing to do.
+- **pending, you received it**: the other person is waiting for your response. Surface it to the user and ask if they want to start a chat. Only call update_opportunity with accepted after explicit user confirmation.
+- **accepted**: both sides are connected — a direct conversation exists. Surface the conversationId to the user if available.
+
+Never accept a received opportunity without explicit user approval in the current conversation.
 `.trim();
 
 export function createMcpServer(
@@ -245,8 +287,10 @@ export function createMcpServer(
           // Execute the tool handler
           const result = await requestTool.handler({ context, query: validatedArgs });
 
+          const { text: sanitizedText, isError: toolIsError } = sanitizeMcpResult(result);
           return {
-            content: [{ type: 'text' as const, text: result }],
+            content: [{ type: 'text' as const, text: sanitizedText }],
+            ...(toolIsError ? { isError: true } : {}),
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { acceptedPrompt } from '../prompts/accepted.prompt.js';
+import { acceptedPrompt } from '../polling/negotiator/negotiation-accepted.prompt.js';
 
 describe('acceptedPrompt', () => {
   test('produces stable output for an accepted outcome', () => {

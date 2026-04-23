@@ -52,6 +52,7 @@ function makeServiceWithDb(opp: Opportunity, overrides: DbStubOverrides = {}) {
     acceptSiblingOpportunities: mock(async () => [] as string[]),
     upsertContactMembership: mock(async () => {}),
     getOrCreateDM: mock(async () => ({ id: CONV_ID })),
+    unhideConversation: mock(async () => {}),
     ...overrides,
   } as unknown as OpportunityControllerDatabase;
 
@@ -76,6 +77,9 @@ describe('OpportunityService.startChat', () => {
     expect(db.upsertContactMembership).toHaveBeenCalledTimes(2);
     expect(db.upsertContactMembership).toHaveBeenCalledWith(VIEWER_ID, PEER_ID, { restore: true });
     expect(db.upsertContactMembership).toHaveBeenCalledWith(PEER_ID, VIEWER_ID, { restore: false });
+
+    // Unhide conversation so it appears in sidebar even if previously hidden
+    expect(db.unhideConversation).toHaveBeenCalledWith(VIEWER_ID, CONV_ID);
   });
 
   it('flips draft → accepted for the orchestrator path', async () => {

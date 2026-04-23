@@ -469,6 +469,17 @@ export class OpportunityService {
       return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
     }
 
+    // Clear hiddenAt so the conversation appears in the sidebar even if the
+    // user previously hid it. This must happen before returning — the frontend
+    // immediately calls refreshConversations() and expects to see the DM.
+    await this.db.unhideConversation(userId, conversation.id).catch((err) => {
+      logger.error('[OpportunityService.startChat] unhideConversation failed (non-blocking)', {
+        conversationId: conversation.id,
+        userId,
+        error: err,
+      });
+    });
+
     // Only flip status once we know the chat destination exists.
     const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted');
     if (!updated) {

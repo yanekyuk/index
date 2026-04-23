@@ -23,11 +23,13 @@ import {
 import { EmbedderAdapter } from "./adapters/embedder.adapter";
 import { ScraperAdapter } from "./adapters/scraper.adapter";
 import { intentQueue } from "./queues/intent.queue";
+import { opportunityQueue } from "./queues/opportunity.queue";
 import { chatSessionService } from "./services/chat.service";
 import { agentService } from "./services/agent.service";
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { contactService } from "./services/contact.service";
 import { IntegrationService } from "./services/integration.service";
+import { OpportunityDeliveryService } from "./services/opportunity-delivery.service";
 import { enrichUserProfile } from "./lib/parallel/parallel";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
 import type { ProtocolDeps } from '@indexnetwork/protocol';
@@ -43,6 +45,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
+  const opportunityDeliveryService = new OpportunityDeliveryService();
 
   return {
     database: chatDatabaseAdapter,
@@ -74,6 +77,12 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     grantDefaultSystemPermissions: (userId: string) =>
       agentService.grantDefaultSystemPermissions(userId),
     agentDispatcher,
+    deliveryLedger: {
+      confirmOpportunityDelivery: ({ opportunityId, userId, agentId }) =>
+        opportunityDeliveryService.commitDelivery(opportunityId, userId, agentId),
+    },
     negotiationTimeoutQueue,
+    queueNegotiateExisting: (opportunityId, userId) =>
+      opportunityQueue.addNegotiateJob({ opportunityId, userId }),
   };
 }

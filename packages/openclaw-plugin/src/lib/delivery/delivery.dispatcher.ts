@@ -1,5 +1,6 @@
-import type { OpenClawPluginApi, SubagentRunResult } from './plugin-api.js';
-import { deliveryPrompt } from './prompts/delivery.prompt.js';
+import type { OpenClawPluginApi, SubagentRunResult } from '../openclaw/plugin-api.js';
+import { readModel } from '../openclaw/plugin-api.js';
+import { deliveryPrompt } from './delivery.prompt.js';
 
 export interface DeliveryRequest {
   rendered: { headline: string; body: string };
@@ -8,12 +9,18 @@ export interface DeliveryRequest {
 }
 
 /**
+ * Builds the OpenClaw session key for the user's configured delivery channel.
+ * Returns `null` when `deliveryChannel` or `deliveryTarget` is not configured.
+ */
+export function buildDeliverySessionKey(api: OpenClawPluginApi): string | null {
+  const channel = readConfigString(api, 'deliveryChannel');
+  const target = readConfigString(api, 'deliveryTarget');
+  if (!channel || !target) return null;
+  return `agent:main:${channel}:direct:${target}`;
+}
+
+/**
  * Dispatches a rendered card to the user's configured OpenClaw channel.
- *
- * Reads `pluginConfig.deliveryChannel` and `pluginConfig.deliveryTarget`
- * to build a session key in OpenClaw's routing format
- * (`agent:main:<channel>:direct:<target>`), so the subagent's `deliver: true`
- * announce reaches the user via that channel.
  *
  * Returns `null` when delivery routing is not configured — the caller should
  * NOT proceed to confirm delivery in that case.
@@ -26,10 +33,9 @@ export async function dispatchDelivery(
   api: OpenClawPluginApi,
   request: DeliveryRequest,
 ): Promise<SubagentRunResult | null> {
-  const channel = readConfigString(api, 'deliveryChannel');
-  const target = readConfigString(api, 'deliveryTarget');
+  const sessionKey = buildDeliverySessionKey(api);
 
-  if (!channel || !target) {
+  if (!sessionKey) {
     api.logger.warn(
       'Index Network delivery routing not configured — skipping subagent dispatch. ' +
         'Set pluginConfig.deliveryChannel (e.g. "telegram") and pluginConfig.deliveryTarget ' +
@@ -38,11 +44,14 @@ export async function dispatchDelivery(
     return null;
   }
 
+  const model = await readModel(api);
+
   return api.runtime.subagent.run({
-    sessionKey: `agent:main:${channel}:direct:${target}`,
+    sessionKey,
     idempotencyKey: request.idempotencyKey,
     message: deliveryPrompt(request.rendered),
     deliver: true,
+    model,
   });
 }
 

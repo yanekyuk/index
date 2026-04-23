@@ -38,6 +38,8 @@ export interface OpportunityActor {
   userId: Id<'users'>;
   intent?: Id<'intents'>;
   role: string;
+  /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
+  approved?: boolean;
 }
 
 /** Individual signal contributing to an opportunity score. */
@@ -1107,6 +1109,17 @@ export interface Database {
   ): Promise<Opportunity | null>;
 
   /**
+   * Update the `approved` field on an opportunity's introducer actor.
+   * Fetches the opportunity, patches the matching actor in JS, and writes
+   * the updated actors JSONB back. Returns the updated opportunity or null.
+   */
+  updateOpportunityActorApproval(
+    id: string,
+    introducerUserId: string,
+    approved: boolean,
+  ): Promise<Opportunity | null>;
+
+  /**
    * Create one opportunity and expire others in a single transaction.
    * Atomic: insert then update status to 'expired' for each id in expireIds.
    * Used when enriching replaces overlapping opportunities so subscribers see consistent state.
@@ -1235,6 +1248,13 @@ export interface Database {
    * accepting an opportunity.
    */
   getOrCreateDM(userA: string, userB: string): Promise<{ id: string }>;
+
+  /**
+   * Clears hiddenAt for a user on a conversation, making it visible in their
+   * conversation list again. Called by startChat when reusing an existing DM
+   * that the user had previously hidden.
+   */
+  unhideConversation(userId: string, conversationId: string): Promise<void>;
 
   /** Hard-delete a contact membership from the owner's personal index. */
   hardDeleteContactMembership(ownerId: string, contactUserId: string): Promise<void>;
@@ -1660,6 +1680,8 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getAcceptedOpportunitiesBetweenActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
+  | 'updateOpportunityActorApproval'
+  | 'getOrCreateDM'
   // HyDE graph (used by OpportunityGraph)
   | 'getHydeDocument'
   | 'getHydeDocumentsForSource'
@@ -1727,9 +1749,11 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunity'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
+  | 'updateOpportunityActorApproval'
   | 'isNetworkMember'
   | 'isIndexOwner'
   | 'getUser'
+  | 'getOrCreateDM'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
 >;
@@ -1916,6 +1940,7 @@ export type OpportunityControllerDatabase = Pick<
   // (rather than ConversationControllerDatabase) because the transition is
   // owned by OpportunityService — services cannot import other services.
   | 'getOrCreateDM'
+  | 'unhideConversation'
 >;
 
 /**

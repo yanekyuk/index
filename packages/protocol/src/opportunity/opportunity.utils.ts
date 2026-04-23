@@ -63,8 +63,18 @@ export function validateOpportunityActors(actors: Array<{ userId?: string; role:
 }
 
 /**
- * Role-based visibility (Latent Opportunity Lifecycle).
- * A user can see an opportunity iff they are an actor and the rule below allows it.
+ * Read-level ACL: whether a user is an actor on the opportunity and may fetch
+ * its details. Intentionally broader than `isActionableForViewer` — a user can
+ * read an opportunity they are not currently expected to act on (e.g. an agent
+ * viewing an accepted opportunity).
+ *
+ * The feed graph and debug controller chain both predicates: an opportunity only
+ * reaches the home feed if it passes `canUserSeeOpportunity` first, then
+ * `isActionableForViewer`. For `agent with introducer at pending`,
+ * `canUserSeeOpportunity` returns false (read gate blocks it), so the opportunity
+ * never surfaces even though `isActionableForViewer` Rule 4 would return true in
+ * isolation. This is by design — the agent is not granted read access through the
+ * home path until the introducer path completes (negotiation → accepted).
  *
  * Compact Visibility Rule (from lifecycle doc):
  * - Introducer or peer: always see.
@@ -95,37 +105,53 @@ export function canUserSeeOpportunity(
 }
 
 /**
- * Whether an opportunity should appear on the Home feed for the viewer (actionable = has a pending action).
- * Encodes the role-visibility matrix from the Latent Opportunity Lifecycle.
+ * Whether an opportunity should appear on the viewer's home feed (actionable =
+ * has a pending action for this user).
+ *
+ * Rules (see `docs/Latent Opportunity Lifecycle.md` — Role-Visibility Matrix):
+ *
+ *   (1) `latent`, no introducer                   → all actors actionable
+ *   (2) `latent`, introducer `approved !== true`  → introducer only
+ *   (3) `latent`, introducer `approved === true`  → all non-introducer actors
+ *   (4) `pending` (any introducer config)         → all non-introducer actors
+ *   (5) `accepted`/`rejected`/`expired`/`stalled`/`draft`/`negotiating`
+ *                                                 → never actionable
+ *
+ * The introducer approval signal is stored on the `introducer`-roled actor's
+ * `approved: boolean` field within the opportunity's `actors` JSONB. It flips
+ * from `false` to `true` when the introducer approves; status stays `latent`
+ * across the flip while a background negotiation runs.
  */
 export function isActionableForViewer(
-  actors: Array<{ userId: string; role: string }>,
+  actors: Array<{ userId: string; role: string; approved?: boolean }>,
   status: string,
   viewerId: string
 ): boolean {
   const viewerActors = actors.filter((a) => a.userId === viewerId);
   if (viewerActors.length === 0) return false;
 
-  const hasIntroducer = actors.some((a) => a.role === 'introducer');
+  const introducer = actors.find((a) => a.role === 'introducer');
+  const hasIntroducer = !!introducer;
+  const introducerApproved = introducer?.approved === true;
 
   return viewerActors.some(({ role }) => {
-    switch (role) {
-      case 'introducer':
-        return status === 'latent';
-      case 'patient':
-      case 'party':
-        return hasIntroducer
-          ? status === 'pending'
-          : status === 'latent';
-      case 'agent':
-        return hasIntroducer
-          ? status === 'accepted'
-          : status === 'pending';
-      case 'peer':
-        return status === 'latent' || status === 'pending';
-      default:
-        return false;
+    if (role === 'introducer') {
+      // Rule 2: introducer sees own latent opp only while not yet approved.
+      return status === 'latent' && !introducerApproved;
     }
+
+    // Non-introducer actors: patient / party / agent / peer.
+    if (status === 'latent') {
+      // Rule 1: no introducer → visible.
+      // Rule 3: introducer approved → visible.
+      return !hasIntroducer || introducerApproved;
+    }
+    if (status === 'pending') {
+      // Rule 4: visible to all non-introducer actors.
+      return true;
+    }
+    // Rule 5: never actionable at terminal or internal statuses.
+    return false;
   });
 }
 

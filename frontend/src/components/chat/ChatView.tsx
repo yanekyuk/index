@@ -40,6 +40,19 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   const [messageText, setMessageText] = useState(autoSend ? '' : (initialMessage ?? ''));
   const hasAutoSentRef = useRef(false);
   const hasFiredFirstMessageRef = useRef(false);
+
+  // Reset conversation state when userId changes (component reused by React Router)
+  const prevUserIdRef = useRef(userId);
+  useEffect(() => {
+    if (prevUserIdRef.current !== userId) {
+      prevUserIdRef.current = userId;
+      setConversationId(null);
+      setMessagesLoading(true);
+      setContextLoading(true);
+      hasAutoSentRef.current = false;
+      hasFiredFirstMessageRef.current = false;
+    }
+  }, [userId]);
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [contextLoading, setContextLoading] = useState(true);
   const [sending, setSending] = useState(false);

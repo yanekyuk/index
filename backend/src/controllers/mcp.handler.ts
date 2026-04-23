@@ -54,6 +54,7 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
     database, embedder, compiledHydeGraph,
     undefined, undefined, negotiationGraph,
     deps.agentDispatcher,
+    deps.queueNegotiateExisting,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -242,6 +243,7 @@ function getOrCreateMcpServer(): McpServer {
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     chatSession: deps.chatSession,
+    deliveryLedger: deps.deliveryLedger,
     graphs,
   };
 

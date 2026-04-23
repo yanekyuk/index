@@ -179,7 +179,7 @@ export class DebugController {
 
     // Check if all opportunities are filtered from home (using role-aware helpers)
     const actionableCount = opportunityRows.filter((o) => {
-      const actors = o.actors as Array<{ userId: string; role: string }>;
+      const actors = o.actors as Array<{ userId: string; role: string; approved?: boolean }>;
       return (
         canUserSeeOpportunity(actors, o.status, user.id) &&
         isActionableForViewer(actors, o.status, user.id)
@@ -350,7 +350,7 @@ export class DebugController {
     let cardsReturned = 0;
 
     for (const opp of opportunityRows) {
-      const actors = opp.actors as Array<{ userId: string; role: string }>;
+      const actors = opp.actors as Array<{ userId: string; role: string; approved?: boolean }>;
 
       if (!canUserSeeOpportunity(actors, opp.status, user.id)) {
         notVisible++;

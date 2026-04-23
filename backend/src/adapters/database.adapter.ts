@@ -806,6 +806,11 @@ export class ChatDatabaseAdapter {
   /** @deprecated Use conversationDatabaseAdapter.getChatSessionMetadata */
   async getSessionMetadata(sessionId: string): Promise<{ id: string; sessionId: string; metadata: unknown; createdAt: Date; updatedAt: Date } | undefined> { return _convDb().getChatSessionMetadata(sessionId); }
 
+  // Negotiation context methods — required by HomeGraphDatabase
+  async getNegotiationTaskForOpportunity(opportunityId: string) { return _convDb().getNegotiationTaskForOpportunity(opportunityId); }
+  async getMessagesForConversation(conversationId: string) { return _convDb().getMessagesForConversation(conversationId); }
+  async getArtifactsForTask(taskId: string) { return _convDb().getArtifactsForTask(taskId); }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Chat Graph Methods (Profiles, Intents, Indexes)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2614,6 +2619,13 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
+  async updateOpportunityActorApproval(
+    id: string,
+    introducerUserId: string,
+    approved: boolean,
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
+  }
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
@@ -3310,6 +3322,17 @@ export class ChatDatabaseAdapter {
     return conversationAdapter.getOrCreateDM(userA, userB);
   }
 
+  /**
+   * Clears hiddenAt for a user on a conversation, making it visible again.
+   * Thin delegator to {@link ConversationDatabaseAdapter.unhideConversation}
+   * so OpportunityService can call it after reusing an existing DM that the
+   * user had previously hidden.
+   */
+  async unhideConversation(userId: string, conversationId: string): Promise<void> {
+    const conversationAdapter = new ConversationDatabaseAdapter();
+    return conversationAdapter.unhideConversation(userId, conversationId);
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3728,6 +3751,32 @@ export class OpportunityDatabaseAdapter {
       .where(eq(opportunities.id, id))
       .returning();
     return row ? toOpportunityRow(row) : null;
+  }
+
+  async updateOpportunityActorApproval(
+    id: string,
+    introducerUserId: string,
+    approved: boolean,
+  ): Promise<OpportunityRow | null> {
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ actors: opportunities.actors })
+        .from(opportunities)
+        .where(eq(opportunities.id, id))
+        .for('update');
+      if (!locked) return null;
+      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
+        actor.role === 'introducer' && actor.userId === introducerUserId
+          ? { ...actor, approved }
+          : actor,
+      );
+      const [row] = await tx
+        .update(opportunities)
+        .set({ actors: updatedActors, updatedAt: new Date() })
+        .where(eq(opportunities.id, id))
+        .returning();
+      return row ? toOpportunityRow(row) : null;
+    });
   }
 
   async createOpportunityAndExpireIds(

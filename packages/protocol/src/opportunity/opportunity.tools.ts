@@ -9,9 +9,19 @@ import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportu
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
-import type { Opportunity } from "../shared/interfaces/database.interface.js";
+import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
+
+/**
+ * Statuses for which `update_opportunity` must refuse mutations.
+ * - `accepted` / `rejected` / `expired`: terminal outcomes.
+ */
+const UPDATE_OPPORTUNITY_BLOCKED_STATUSES = new Set<OpportunityStatus>([
+  "accepted",
+  "rejected",
+  "expired",
+]);
 
 /** Maximum number of opportunity cards to show per chat response. */
 const CHAT_DISPLAY_LIMIT = 3;
@@ -1043,7 +1053,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "**Status transitions:**\n" +
       "- `pending`: Sends a draft opportunity to the other party. They'll be notified and can accept or reject. " +
       "This is the primary action after create_opportunities returns a draft.\n" +
-      "- `accepted`: Accept a received opportunity — signals interest in connecting. Both parties can now communicate.\n" +
+      "- `accepted`: Accept a received opportunity — opens a direct conversation between both parties. Returns a conversationId to surface to the user.\n" +
       "- `rejected`: Decline a received opportunity.\n" +
       "- `expired`: Mark as expired (typically done by the system after timeout).\n\n" +
       "**When to use:** After create_opportunities or list_opportunities returns opportunity cards. " +
@@ -1066,14 +1076,30 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Valid opportunityId required.");
       }
 
+      // Always fetch the opportunity — needed for actor guard and state machine
+      const opportunity = await systemDb.getOpportunity(opportunityId);
+      if (!opportunity) {
+        return error("Opportunity not found.");
+      }
+
+      // Actor guard: caller must be a party to the opportunity
+      const isActor = opportunity.actors?.some((a) => a.userId === context.userId);
+      if (!isActor) {
+        return error("Opportunity not found.");
+      }
+
+      // Terminal-state and in-flight-negotiation guard.
+      // Not a full state-machine: the Zod enum already constrains the target status,
+      // and source statuses like `draft` / `latent` remain permitted.
+      if (UPDATE_OPPORTUNITY_BLOCKED_STATUSES.has(opportunity.status)) {
+        return error(`This opportunity is already ${opportunity.status} and cannot be updated.`);
+      }
+
       // Strict scope enforcement: when chat is index-scoped, verify opportunity is in that index
       if (context.networkId) {
-        const opportunity = await systemDb.getOpportunity(opportunityId);
-        if (!opportunity) {
-          return error("Opportunity not found.");
-        }
-        const opportunityIndexId = opportunity.context?.networkId
-          ?? opportunity.actors?.find((a) => a.networkId === context.networkId)?.networkId;
+        const opportunityIndexId =
+          opportunity.context?.networkId ??
+          opportunity.actors?.find((a) => a.networkId === context.networkId)?.networkId;
         if (!opportunityIndexId || opportunityIndexId !== context.networkId) {
           return error("Opportunity not found.");
         }
@@ -1098,19 +1124,54 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             opportunityId: result.mutationResult.opportunityId,
             status: query.status,
             message: result.mutationResult.message,
-            ...(result.mutationResult.notified && {
-              notified: result.mutationResult.notified,
+            ...(result.mutationResult.notified && { notified: result.mutationResult.notified }),
+            ...(result.mutationResult.conversationId && {
+              conversationId: result.mutationResult.conversationId,
             }),
             _graphTimings: [{ name: 'opportunity', durationMs: _updateGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
-        return error(
-          result.mutationResult.error || "Failed to update opportunity.",
-        );
+        return error(result.mutationResult.error || "Failed to update opportunity.");
       }
       return error("Failed to update opportunity.");
     },
   });
 
-  return [createOpportunities, listOpportunities, updateOpportunity] as const;
+  const confirmOpportunityDelivery = defineTool({
+    name: "confirm_opportunity_delivery",
+    description:
+      "Marks an opportunity as delivered to the user via the OpenClaw channel. " +
+      "Call this for each opportunity you decide to surface, BEFORE including it in your delivery message. " +
+      "Idempotent — safe to call even if the opportunity was already confirmed.",
+    querySchema: z.object({
+      opportunityId: z
+        .string()
+        .describe("The UUID of the opportunity to mark as delivered."),
+    }),
+    handler: async ({ context, query }) => {
+      if (!context.isMcp || !context.agentId) {
+        return error(
+          "confirm_opportunity_delivery is only available to authenticated agent MCP contexts.",
+        );
+      }
+      if (!deps.deliveryLedger) {
+        return error("Delivery ledger not available in this context.");
+      }
+      if (!UUID_REGEX.test(query.opportunityId)) {
+        return error("Invalid opportunity ID format.");
+      }
+      try {
+        const result = await deps.deliveryLedger.confirmOpportunityDelivery({
+          opportunityId: query.opportunityId,
+          userId: context.userId,
+          agentId: context.agentId,
+        });
+        return success({ status: result });
+      } catch (err) {
+        return error(err instanceof Error ? err.message : String(err));
+      }
+    },
+  });
+
+  return [createOpportunities, listOpportunities, updateOpportunity, confirmOpportunityDelivery] as const;
 }
