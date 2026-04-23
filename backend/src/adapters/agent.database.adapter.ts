@@ -323,7 +323,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         })
         .onConflictDoUpdate({
           target: [schema.agentPermissions.agentId, schema.agentPermissions.userId],
-          targetWhere: sql`scope = 'global'`,
+          targetWhere: sql`${schema.agentPermissions.scope} = 'global'`,
           set: { actions: input.actions },
         })
         .returning();
@@ -342,7 +342,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       .values({
         agentId: input.agentId,
         userId: input.userId,
-        scope: input.scope ?? 'global',
+        scope: input.scope!,
         scopeId: input.scopeId ?? null,
         actions: input.actions,
       })
@@ -358,13 +358,16 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
           and(
             eq(schema.agentPermissions.agentId, input.agentId),
             eq(schema.agentPermissions.userId, input.userId),
-            eq(schema.agentPermissions.scope, input.scope ?? 'global'),
+            eq(schema.agentPermissions.scope, input.scope!),
             input.scopeId
               ? eq(schema.agentPermissions.scopeId, input.scopeId)
               : isNull(schema.agentPermissions.scopeId),
           ),
         )
         .limit(1);
+      if (!existing[0]) {
+        throw new Error(`Permission row not found after conflict: agentId=${input.agentId} userId=${input.userId} scope=${input.scope}`);
+      }
       return this.toPermissionRow(existing[0]);
     }
 
