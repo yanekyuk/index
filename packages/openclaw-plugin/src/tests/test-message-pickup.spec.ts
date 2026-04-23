@@ -67,7 +67,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -98,7 +98,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(true);
 
@@ -124,7 +124,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -148,7 +148,7 @@ describe('handleTestMessagePickup', () => {
 
     const fake = buildFakeApi();
     // Should not throw
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
     expect(result).toBe(true);
     expect(fake.subagentCalls).toHaveLength(1);

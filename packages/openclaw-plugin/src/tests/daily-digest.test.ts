@@ -106,6 +106,7 @@ describe('handleDailyDigest', () => {
       baseUrl: 'https://test.example.com',
       agentId: 'agent-123',
       apiKey: 'api-key-123',
+      frontendUrl: 'https://test.index.network',
       maxCount: 5,
     });
 
