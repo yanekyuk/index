@@ -53,7 +53,7 @@ export interface PickupPendingResult {
 
 export interface PendingCandidate {
   opportunityId: string;
-  counterpartUserId: string;
+  counterpartUserId: string | null;
   rendered: RenderedCard;
 }
 
@@ -349,7 +349,7 @@ export class OpportunityDeliveryService {
         const counterpart = actors.find((a) => a.userId !== userId);
         return {
           opportunityId: row.id,
-          counterpartUserId: counterpart?.userId ?? '',
+          counterpartUserId: counterpart?.userId ?? null,
           rendered: await this.renderOpportunityCard(row.id, userId),
         };
       }),

@@ -114,7 +114,14 @@ export function register(api: OpenClawPluginApi): void {
     return;
   }
 
-  const configUrl = readConfig(api, 'url') || readConfig(api, 'protocolUrl') || 'https://index.network';
+  const urlFromConfig = readConfig(api, 'url');
+  const legacyProtocolUrl = readConfig(api, 'protocolUrl');
+  if (!urlFromConfig && legacyProtocolUrl) {
+    api.logger.warn(
+      'Plugin config uses deprecated "protocolUrl". Run `openclaw index-network setup` to migrate to the new "url" field.',
+    );
+  }
+  const configUrl = urlFromConfig || legacyProtocolUrl || 'https://index.network';
   const { protocolUrl: baseUrl, frontendUrl } = deriveUrls(configUrl);
   ensureMcpServer(api, baseUrl, apiKey);
   const gatewayPort = api.config?.gateway?.port ?? 18789;

@@ -56,4 +56,16 @@ describe('deriveUrls', () => {
     expect(result.protocolUrl).toBe('https://protocol.dev.index.network');
     expect(result.frontendUrl).toBe('https://dev.index.network');
   });
+
+  test('127.0.0.1 is treated as localhost', () => {
+    const result = deriveUrls('http://127.0.0.1:5173');
+    expect(result.protocolUrl).toBe('http://localhost:3001');
+    expect(result.frontendUrl).toBe('http://127.0.0.1:5173');
+  });
+
+  test('IPv6 ::1 is treated as localhost', () => {
+    const result = deriveUrls('http://[::1]:5173');
+    expect(result.protocolUrl).toBe('http://localhost:3001');
+    expect(result.frontendUrl).toBe('http://[::1]:5173');
+  });
 });

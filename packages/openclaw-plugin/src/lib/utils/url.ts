@@ -15,7 +15,7 @@ export function deriveUrls(input: string): DerivedUrls {
 
   const hostname = parsed.hostname;
 
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]') {
     const protocolUrl = `${parsed.protocol}//localhost:3001`;
     return { protocolUrl, frontendUrl: cleaned };
   }
@@ -26,6 +26,8 @@ export function deriveUrls(input: string): DerivedUrls {
     return { protocolUrl: cleaned, frontendUrl };
   }
 
+  // Port and path are intentionally dropped — production deployments use
+  // subdomain-based routing (protocol.example.com), not port/path variants.
   const protocolUrl = `${parsed.protocol}//protocol.${hostname}`;
   return { protocolUrl, frontendUrl: cleaned };
 }

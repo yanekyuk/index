@@ -165,4 +165,20 @@ describe('register(api)', () => {
     const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
     expect(warnMsg).toContain('openclaw index-network setup');
   });
+
+  test('falls back to protocolUrl and warns about migration', () => {
+    const fake = buildFakeApi(
+      { agentId: 'agent-1', apiKey: 'key-1', protocolUrl: 'https://protocol.index.network' },
+      { mcpServers: {} },
+    );
+    register(fake.api);
+
+    const warnCalls = fake.logger.warn.mock.calls as string[][];
+    const migrationWarn = warnCalls.find((args) => args[0].includes('deprecated'));
+    expect(migrationWarn).toBeTruthy();
+    expect(migrationWarn![0]).toContain('openclaw index-network setup');
+
+    expect(fake.configSetCalls.length).toBe(1);
+    expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
+  });
 });

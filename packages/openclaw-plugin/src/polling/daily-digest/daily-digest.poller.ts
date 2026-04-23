@@ -54,7 +54,7 @@ export async function handle(
   const body = (await res.json()) as {
     opportunities: Array<{
       opportunityId: string;
-      counterpartUserId: string;
+      counterpartUserId: string | null;
       rendered: {
         headline: string;
         personalizedSummary: string;
@@ -93,14 +93,16 @@ export async function handle(
       sessionKey: evaluatorSessionKey,
       idempotencyKey: `index:eval:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
       message: digestEvaluatorPrompt(
-        body.opportunities.map((o) => ({
-          opportunityId: o.opportunityId,
-          userId: o.counterpartUserId,
-          headline: o.rendered.headline,
-          personalizedSummary: o.rendered.personalizedSummary,
-          suggestedAction: o.rendered.suggestedAction,
-          narratorRemark: o.rendered.narratorRemark,
-        })),
+        body.opportunities
+          .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
+          .map((o) => ({
+            opportunityId: o.opportunityId,
+            userId: o.counterpartUserId,
+            headline: o.rendered.headline,
+            personalizedSummary: o.rendered.personalizedSummary,
+            suggestedAction: o.rendered.suggestedAction,
+            narratorRemark: o.rendered.narratorRemark,
+          })),
         effectiveMax,
       ),
       deliver: false,
