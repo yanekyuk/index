@@ -27,8 +27,25 @@ export interface SubagentRunResult {
   runId: string;
 }
 
+export interface WaitForRunOptions {
+  runId: string;
+  timeoutMs: number;
+}
+
+export interface GetSessionMessagesOptions {
+  sessionKey: string;
+  limit?: number;
+}
+
+export interface SessionMessage {
+  role: string;
+  content: string;
+}
+
 export interface SubagentRuntime {
   run(options: SubagentRunOptions): Promise<SubagentRunResult>;
+  waitForRun(options: WaitForRunOptions): Promise<{ result: unknown }>;
+  getSessionMessages(options: GetSessionMessagesOptions): Promise<{ messages: SessionMessage[] }>;
 }
 
 export interface PluginRuntime {
