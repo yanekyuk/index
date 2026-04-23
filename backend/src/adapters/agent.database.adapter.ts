@@ -308,6 +308,35 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
   }
 
   async grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow> {
+    const isGlobal = (input.scope ?? 'global') === 'global';
+
+    if (isGlobal) {
+      // Atomic upsert on the partial unique index (agent_id, user_id) WHERE scope='global'
+      const [row] = await db
+        .insert(schema.agentPermissions)
+        .values({
+          agentId: input.agentId,
+          userId: input.userId,
+          scope: 'global',
+          scopeId: null,
+          actions: input.actions,
+        })
+        .onConflictDoUpdate({
+          target: [schema.agentPermissions.agentId, schema.agentPermissions.userId],
+          targetWhere: sql`scope = 'global'`,
+          set: { actions: input.actions },
+        })
+        .returning();
+
+      logger.info('Granted agent permission', {
+        agentId: input.agentId,
+        permissionId: row.id,
+        userId: input.userId,
+      });
+      return this.toPermissionRow(row);
+    }
+
+    // Non-global scopes: insert, ignore on conflict (no unique index to upsert on)
     const [row] = await db
       .insert(schema.agentPermissions)
       .values({
@@ -317,7 +346,27 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         scopeId: input.scopeId ?? null,
         actions: input.actions,
       })
+      .onConflictDoNothing()
       .returning();
+
+    if (!row) {
+      // Row already exists — fetch and return existing
+      const existing = await db
+        .select()
+        .from(schema.agentPermissions)
+        .where(
+          and(
+            eq(schema.agentPermissions.agentId, input.agentId),
+            eq(schema.agentPermissions.userId, input.userId),
+            eq(schema.agentPermissions.scope, input.scope ?? 'global'),
+            input.scopeId
+              ? eq(schema.agentPermissions.scopeId, input.scopeId)
+              : isNull(schema.agentPermissions.scopeId),
+          ),
+        )
+        .limit(1);
+      return this.toPermissionRow(existing[0]);
+    }
 
     logger.info('Granted agent permission', {
       agentId: input.agentId,
