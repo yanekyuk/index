@@ -149,6 +149,7 @@ export async function handle(
     contentType: 'daily_digest',
     content,
     idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
+    frontendUrl: config.frontendUrl,
   });
 
   if (dispatchResult === null) {
