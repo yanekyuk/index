@@ -14,9 +14,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline/promises';
 
+import { deriveUrls } from '../lib/utils/url.js';
+
 const PLUGIN_ID = 'indexnetwork-openclaw-plugin';
 const CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json');
-const DEFAULT_PROTOCOL_URL = 'https://protocol.index.network';
+const DEFAULT_URL = 'https://index.network';
 
 /** Human-readable labels for known channel IDs. */
 const CHANNEL_LABELS: Record<string, string> = {
@@ -75,10 +77,14 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 
   const existing = (key: string) => getExistingConfig(ctx.cfg, `${configPrefix}.${key}`);
 
-  // --- Server URL ---
-  const protocolUrl = await ctx.prompt('Server URL', {
-    default: existing('protocolUrl') || DEFAULT_PROTOCOL_URL,
-  });
+  // --- URL (with legacy protocolUrl migration) ---
+  const legacyProtocolUrl = existing('protocolUrl');
+  let defaultUrl = existing('url') || DEFAULT_URL;
+  if (!existing('url') && legacyProtocolUrl) {
+    defaultUrl = deriveUrls(legacyProtocolUrl).frontendUrl;
+  }
+  const url = await ctx.prompt('Index Network URL', { default: defaultUrl });
+  const { protocolUrl } = deriveUrls(url);
 
   // --- Agent ID ---
   const agentId = await ctx.prompt('Agent ID', { default: existing('agentId') });
@@ -96,7 +102,7 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   }
 
   // --- Write core config ---
-  await ctx.configSet(`${configPrefix}.protocolUrl`, protocolUrl);
+  await ctx.configSet(`${configPrefix}.url`, url);
   await ctx.configSet(`${configPrefix}.agentId`, agentId);
   await ctx.configSet(`${configPrefix}.apiKey`, resolvedApiKey);
 
@@ -153,9 +159,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   }
 
   // --- Register MCP server ---
-  const normalizedUrl = protocolUrl.replace(/\/+$/, '');
+  const normalizedProtocolUrl = protocolUrl.replace(/\/+$/, '');
   const mcpDef = {
-    url: `${normalizedUrl}/mcp`,
+    url: `${normalizedProtocolUrl}/mcp`,
     transport: 'streamable-http',
     headers: { 'x-api-key': resolvedApiKey },
   };
