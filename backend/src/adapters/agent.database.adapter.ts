@@ -307,11 +307,17 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       .where(eq(schema.agentTransports.id, transportId));
   }
 
+  /**
+   * Grant a permission to an agent for a user. Global-scope permissions are upserted
+   * (actions updated on conflict via partial unique index). Non-global scopes have no
+   * unique constraint — repeated calls create additional rows.
+   * @param input - permission details including agentId, userId, scope, and actions
+   * @returns the created or updated permission row
+   */
   async grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow> {
     const isGlobal = (input.scope ?? 'global') === 'global';
 
     if (isGlobal) {
-      // Atomic upsert on the partial unique index (agent_id, user_id) WHERE scope='global'
       const [row] = await db
         .insert(schema.agentPermissions)
         .values({
@@ -336,7 +342,6 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return this.toPermissionRow(row);
     }
 
-    // Non-global scopes: insert, ignore on conflict (no unique index to upsert on)
     const [row] = await db
       .insert(schema.agentPermissions)
       .values({
@@ -346,30 +351,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         scopeId: input.scopeId ?? null,
         actions: input.actions,
       })
-      .onConflictDoNothing()
       .returning();
-
-    if (!row) {
-      // Row already exists — fetch and return existing
-      const existing = await db
-        .select()
-        .from(schema.agentPermissions)
-        .where(
-          and(
-            eq(schema.agentPermissions.agentId, input.agentId),
-            eq(schema.agentPermissions.userId, input.userId),
-            eq(schema.agentPermissions.scope, input.scope!),
-            input.scopeId
-              ? eq(schema.agentPermissions.scopeId, input.scopeId)
-              : isNull(schema.agentPermissions.scopeId),
-          ),
-        )
-        .limit(1);
-      if (!existing[0]) {
-        throw new Error(`Permission row not found after conflict: agentId=${input.agentId} userId=${input.userId} scope=${input.scope}`);
-      }
-      return this.toPermissionRow(existing[0]);
-    }
 
     logger.info('Granted agent permission', {
       agentId: input.agentId,

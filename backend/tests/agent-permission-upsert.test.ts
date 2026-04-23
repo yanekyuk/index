@@ -29,15 +29,19 @@ describe("AgentDatabaseAdapter.grantPermission — upsert behavior", () => {
   test("second call with same (agentId, userId, global scope) does not create duplicate row", async () => {
     const input = { agentId: TEST_AGENT_ID, userId: TEST_USER_ID, scope: "global" as const, scopeId: null, actions: ["read:intents"] };
 
-    // grantPermission may fail if the test DB is missing migrations (e.g. uniq_agent_permissions_global
-    // index from migration 0057 not yet applied). In that case we skip the assertion gracefully.
-    const firstGrantResult = await adapter.grantPermission(input).catch(() => null);
-    if (!firstGrantResult) return; // DB not ready — skip
+    const firstGrantResult = await adapter.grantPermission(input).catch((e: Error) => {
+      console.warn(`Skipping test — DB not ready: ${e.message}`);
+      return null;
+    });
+    if (!firstGrantResult) return;
 
     await adapter.grantPermission({ ...input, actions: ["read:intents", "write:intents"] });
 
-    const agent = await adapter.getAgentWithRelations(TEST_AGENT_ID).catch(() => null);
-    if (!agent) return; // agent doesn't exist in test DB — skip assertion
+    const agent = await adapter.getAgentWithRelations(TEST_AGENT_ID).catch((e: Error) => {
+      console.warn(`Skipping assertion — agent not in test DB: ${e.message}`);
+      return null;
+    });
+    if (!agent) return;
 
     const globalPerms = agent.permissions.filter(
       (p) => p.scope === "global" && p.userId === TEST_USER_ID
