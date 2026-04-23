@@ -7,6 +7,9 @@ import { opportunityEvaluatorPrompt } from './opportunity-evaluator.prompt.js';
 /** Hash of the last opportunity batch dispatched. Used to skip unchanged batches. */
 let lastOpportunityBatchHash: string | null = null;
 
+/** Startup nonce — prevents idempotency collisions across gateway restarts. */
+const startupNonce = Date.now().toString(36);
+
 export interface AmbientDiscoveryConfig {
   baseUrl: string;
   agentId: string;
@@ -84,7 +87,7 @@ export async function handle(
   const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
 
   if (batchHash === lastOpportunityBatchHash) {
-    api.logger.debug('Opportunity batch unchanged since last poll — skipping subagent.');
+    api.logger.info('Opportunity batch unchanged since last poll — skipping subagent.');
     return false;
   }
 
@@ -93,11 +96,12 @@ export async function handle(
   const evaluatorSessionKey = `index:ambient-discovery:${config.agentId}`;
 
   // Phase 1: run evaluator silently in its own session.
+  api.logger.info(`Ambient eval: sessionKey=${evaluatorSessionKey} batchHash=${batchHash} nonce=${startupNonce}`);
   let runId: string;
   try {
     const evalResult = await api.runtime.subagent.run({
       sessionKey: evaluatorSessionKey,
-      idempotencyKey: `index:eval:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
+      idempotencyKey: `index:eval:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
       message: opportunityEvaluatorPrompt(
         body.opportunities
           .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
@@ -114,6 +118,7 @@ export async function handle(
       model,
     });
     runId = evalResult.runId;
+    api.logger.info(`Ambient eval dispatched: runId=${runId}`);
   } catch (err) {
     api.logger.warn(
       `Opportunity evaluator dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -123,7 +128,9 @@ export async function handle(
 
   // Wait for the evaluator to finish.
   try {
+    api.logger.info(`Ambient eval waiting: runId=${runId}`);
     await api.runtime.subagent.waitForRun({ runId, timeoutMs: EVALUATOR_TIMEOUT_MS });
+    api.logger.info(`Ambient eval completed: runId=${runId}`);
   } catch (err) {
     api.logger.warn(
       `Opportunity evaluator timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -138,7 +145,9 @@ export async function handle(
       sessionKey: evaluatorSessionKey,
       limit: 10,
     });
-    content = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+    const rawContent = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+    content = extractTextContent(rawContent);
+    api.logger.info(`Ambient eval session: ${messages.length} msgs, content length=${content.length}`);
   } catch (err) {
     api.logger.warn(
       `Opportunity evaluator session read failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -156,7 +165,7 @@ export async function handle(
   const dispatchResult = await dispatchDelivery(api, {
     contentType: 'ambient_discovery',
     content,
-    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
+    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
     frontendUrl: config.frontendUrl,
   });
 
@@ -172,6 +181,33 @@ export async function handle(
   );
 
   return true;
+}
+
+/**
+ * Extracts plain text from a session message content field.
+ * OpenClaw may return structured content blocks (`[{type:"text", text:"..."}]`)
+ * or a plain string. This normalises both to a trimmed string.
+ */
+function extractTextContent(raw: unknown): string {
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((b: { type?: string }) => b?.type === 'text')
+      .map((b: { text?: string }) => b?.text ?? '')
+      .join('\n')
+      .trim();
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return extractTextContent(parsed);
+    } catch {
+      // Not JSON — treat as plain text.
+    }
+    return trimmed;
+  }
+  return '';
 }
 
 /** Reset module-level state. Exposed for tests only. */

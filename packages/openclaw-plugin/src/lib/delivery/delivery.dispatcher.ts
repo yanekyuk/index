@@ -52,13 +52,18 @@ export async function dispatchDelivery(
   const sessionKey = `agent:main:${channel}:direct:${target}`;
   const model = await readModel(api);
 
-  return api.runtime.subagent.run({
+  api.logger.info(`Delivery dispatch: sessionKey=${sessionKey} model=${model ?? 'default'} idempotencyKey=${request.idempotencyKey} contentType=${request.contentType}`);
+
+  const result = await api.runtime.subagent.run({
     sessionKey,
     idempotencyKey: request.idempotencyKey,
     message: buildDispatcherPrompt(channel, request.contentType, request.content, request.frontendUrl),
     deliver: true,
     model,
   });
+
+  api.logger.info(`Delivery dispatch result: runId=${result.runId}`);
+  return result;
 }
 
 function readConfigString(api: OpenClawPluginApi, key: string): string {

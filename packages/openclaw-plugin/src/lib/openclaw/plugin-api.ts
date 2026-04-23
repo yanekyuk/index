@@ -39,7 +39,7 @@ export interface GetSessionMessagesOptions {
 
 export interface SessionMessage {
   role: string;
-  content: string;
+  content: unknown;
 }
 
 export interface SubagentRuntime {

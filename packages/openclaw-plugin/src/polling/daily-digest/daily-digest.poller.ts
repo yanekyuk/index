@@ -4,6 +4,9 @@ import { isDeliveryConfigured, dispatchDelivery, EVALUATOR_TIMEOUT_MS } from '..
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { digestEvaluatorPrompt } from './digest-evaluator.prompt.js';
 
+/** Startup nonce — prevents idempotency collisions across gateway restarts. */
+const startupNonce = Date.now().toString(36);
+
 export interface DailyDigestConfig {
   baseUrl: string;
   agentId: string;
@@ -87,11 +90,12 @@ export async function handle(
   const evaluatorSessionKey = `index:daily-digest:${config.agentId}:${dateStr}`;
 
   // Phase 1: run evaluator silently.
+  api.logger.info(`Daily digest eval: sessionKey=${evaluatorSessionKey} batchHash=${batchHash} nonce=${startupNonce}`);
   let runId: string;
   try {
     const evalResult = await api.runtime.subagent.run({
       sessionKey: evaluatorSessionKey,
-      idempotencyKey: `index:eval:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
+      idempotencyKey: `index:eval:daily-digest:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
       message: digestEvaluatorPrompt(
         body.opportunities
           .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
@@ -109,6 +113,7 @@ export async function handle(
       model,
     });
     runId = evalResult.runId;
+    api.logger.info(`Daily digest eval dispatched: runId=${runId}`);
   } catch (err) {
     api.logger.warn(
       `Daily digest evaluator dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -118,7 +123,9 @@ export async function handle(
 
   // Wait for the evaluator to finish.
   try {
+    api.logger.info(`Daily digest eval waiting: runId=${runId}`);
     await api.runtime.subagent.waitForRun({ runId, timeoutMs: EVALUATOR_TIMEOUT_MS });
+    api.logger.info(`Daily digest eval completed: runId=${runId}`);
   } catch (err) {
     api.logger.warn(
       `Daily digest evaluator timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -133,7 +140,9 @@ export async function handle(
       sessionKey: evaluatorSessionKey,
       limit: 10,
     });
-    content = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+    const rawContent = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
+    content = extractTextContent(rawContent);
+    api.logger.info(`Daily digest eval session: ${messages.length} msgs, content length=${content.length}`);
   } catch (err) {
     api.logger.warn(
       `Daily digest session read failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -150,7 +159,7 @@ export async function handle(
   const dispatchResult = await dispatchDelivery(api, {
     contentType: 'daily_digest',
     content,
-    idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
+    idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
     frontendUrl: config.frontendUrl,
   });
 
@@ -164,4 +173,31 @@ export async function handle(
   );
 
   return true;
+}
+
+/**
+ * Extracts plain text from a session message content field.
+ * OpenClaw may return structured content blocks (`[{type:"text", text:"..."}]`)
+ * or a plain string. This normalises both to a trimmed string.
+ */
+function extractTextContent(raw: unknown): string {
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((b: { type?: string }) => b?.type === 'text')
+      .map((b: { text?: string }) => b?.text ?? '')
+      .join('\n')
+      .trim();
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return extractTextContent(parsed);
+    } catch {
+      // Not JSON — treat as plain text.
+    }
+    return trimmed;
+  }
+  return '';
 }
