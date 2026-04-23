@@ -5,7 +5,7 @@
  *
  *   openclaw index-network setup
  *
- * Collects protocolUrl, agentId, apiKey, and optional delivery routing,
+ * Collects url, agentId, apiKey, and optional delivery routing,
  * then writes plugin config and registers the MCP server.
  */
 
