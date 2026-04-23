@@ -11,7 +11,7 @@ export interface OpportunityCandidate {
 /**
  * Builds the task prompt for the combined evaluator+delivery subagent.
  * The subagent evaluates all candidates, calls confirm_opportunity_delivery
- * for the high-value ones, then produces one Telegram-friendly delivery message.
+ * for the high-value ones, then produces a delivery message.
  *
  * @param candidates - All undelivered opportunities to evaluate.
  * @returns The task prompt string passed to `api.runtime.subagent.run`.
