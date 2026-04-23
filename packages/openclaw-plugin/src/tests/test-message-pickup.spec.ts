@@ -33,6 +33,8 @@ function buildFakeApi(): FakeApi {
           subagentCalls.push(opts);
           return { runId: 'fake-run-id' };
         },
+        waitForRun: async () => ({ result: null }),
+        getSessionMessages: async () => ({ messages: [] }),
       },
     },
     logger,
