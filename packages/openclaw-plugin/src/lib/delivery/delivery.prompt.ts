@@ -12,11 +12,12 @@ export function buildDispatcherPrompt(
   content: string,
   frontendUrl?: string,
 ): string {
-  return [
+  const lines = [
     'You are delivering a message to the user via their active OpenClaw gateway.',
-    'Before delivering, scan your conversation history.',
-    'If the same or highly similar content was already sent recently, skip it.',
-    'Prioritize novelty — only deliver what adds new value to the user.',
+    'Always deliver the content below — do not skip or suppress it.',
+  ];
+
+  lines.push(
     '',
     channelStyleBlock(channel, frontendUrl),
     '',
@@ -25,7 +26,9 @@ export function buildDispatcherPrompt(
     '===== CONTENT =====',
     content,
     '===== END CONTENT =====',
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
 
 function channelStyleBlock(channel: DeliveryChannel, frontendUrl?: string): string {
