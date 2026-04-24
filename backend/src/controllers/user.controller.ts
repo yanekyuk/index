@@ -220,11 +220,15 @@ export class UserController {
       ? (resultParam as 'has_opportunity' | 'no_opportunity' | 'in_progress')
       : undefined;
 
+    const sinceParam = url.searchParams.get('since');
+    const since = sinceParam ? new Date(sinceParam) : undefined;
+    const validSince = since && !isNaN(since.getTime()) ? since : undefined;
+
     const isSelf = viewer.id === params.userId;
     const mutualWithUserId = isSelf ? undefined : viewer.id;
 
     try {
-      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit, offset, mutualWithUserId, result });
+      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit, offset, mutualWithUserId, result, since: validSince });
 
       const taskIds = rows.map((r) => r.id);
       const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
