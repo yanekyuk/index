@@ -27,7 +27,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.9.5";
+const VERSION = "0.10.0";
 
 const HELP_TEXT = `
 Index CLI v${VERSION}
@@ -100,6 +100,7 @@ Options:
   --archived          Include archived signals (intent list)
   --status <status>   Filter opportunities by status
   --limit <n>         Limit number of results
+  --since <date>      Filter by time (ISO date or duration like 1h, 2d, 1w)
   --json              Output raw JSON instead of formatted text
   --name <name>       Name for contact add
   --gmail             Import source flag for contact import

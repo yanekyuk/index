@@ -66,7 +66,7 @@ export async function handleNegotiation(
  * Parse a human-friendly duration (e.g. "1h", "2d", "1w") or ISO date string
  * into an ISO date string for the API.
  */
-function resolveSince(input: string): string {
+export function resolveSince(input: string): string {
   const match = input.match(/^(\d+)([smhdw])$/);
   if (match) {
     const n = parseInt(match[1], 10);
@@ -173,8 +173,11 @@ function negotiationTable(negotiations: Negotiation[]): void {
         })
       : "-";
 
+    const outcomeStr = outcomeLabel(n.outcome);
+    const roleStr = roleLabel(n.outcome?.role);
+
     process.stdout.write(
-      `  ${CYAN}${shortId}${RESET}  ${name.padEnd(nameW)}  ${outcomeLabel(n.outcome)}${" ".repeat(Math.max(0, outcomeW - (n.outcome?.hasOpportunity ? 11 : 8)))}  ${roleLabel(n.outcome?.role)}${" ".repeat(Math.max(0, roleW - (n.outcome?.role?.length ?? 1)))}  ${turns.padEnd(turnsW)}  ${GRAY}${date}${RESET}\n`,
+      `  ${CYAN}${shortId}${RESET}  ${name.padEnd(nameW)}  ${outcomeStr}${output.padTo(outcomeW, output.stripAnsi(outcomeStr))}  ${roleStr}${output.padTo(roleW, output.stripAnsi(roleStr))}  ${turns.padEnd(turnsW)}  ${GRAY}${date}${RESET}\n`,
     );
   }
 }
