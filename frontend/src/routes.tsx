@@ -128,6 +128,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/u/[id]/chat/page"),
       },
       {
+        path: "/opportunities/:id/accept",
+        lazy: () => import("@/app/opportunities/[id]/accept/page"),
+      },
+      {
         path: "/onboarding",
         lazy: () => import("@/app/onboarding/page"),
       },
