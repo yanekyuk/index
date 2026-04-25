@@ -221,8 +221,13 @@ export class UserController {
       : undefined;
 
     const sinceParam = url.searchParams.get('since');
-    const since = sinceParam ? new Date(sinceParam) : undefined;
-    const validSince = since && !isNaN(since.getTime()) ? since : undefined;
+    if (sinceParam) {
+      const parsed = new Date(sinceParam);
+      if (isNaN(parsed.getTime())) {
+        return Response.json({ error: `Invalid since parameter: "${sinceParam}". Use an ISO 8601 date string.` }, { status: 400 });
+      }
+    }
+    const validSince = sinceParam ? new Date(sinceParam) : undefined;
 
     const isSelf = viewer.id === params.userId;
     const mutualWithUserId = isSelf ? undefined : viewer.id;

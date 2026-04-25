@@ -220,7 +220,7 @@ export interface NegotiationTurn {
   speaker: NegotiationSpeaker;
   action: string;
   reasoning: string;
-  suggestedRoles?: { ownUser?: string; otherUser?: string };
+  suggestedRoles: { ownUser?: string; otherUser?: string } | null;
   createdAt: string;
 }
 
@@ -236,7 +236,7 @@ export interface NegotiationOutcome {
 export interface Negotiation {
   id: string;
   counterparty: NegotiationSpeaker;
-  outcome?: NegotiationOutcome;
+  outcome: NegotiationOutcome | null;
   turns: NegotiationTurn[];
   createdAt: string;
 }
