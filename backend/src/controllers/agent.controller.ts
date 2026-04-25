@@ -11,10 +11,9 @@ import {
   ConflictError,
   UnauthorizedError,
 } from '../services/negotiation-polling.service';
-import { OpportunityDeliveryService } from '../services/opportunity-delivery.service';
+import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 
 const agentTestMessageService = new AgentTestMessageService();
-const opportunityDeliveryService = new OpportunityDeliveryService();
 
 const logger = log.controller.from('agent');
 
