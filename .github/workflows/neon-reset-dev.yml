@@ -28,3 +28,4 @@ jobs:
           branch: dev
           parent: true
           api_key: ${{ secrets.NEON_API_KEY }}
+          cs_database: protocol_prod
