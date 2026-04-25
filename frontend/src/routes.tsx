@@ -132,6 +132,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/opportunities/[id]/accept/page"),
       },
       {
+        path: "/opportunities/:id/skip",
+        lazy: () => import("@/app/opportunities/[id]/skip/page"),
+      },
+      {
         path: "/onboarding",
         lazy: () => import("@/app/onboarding/page"),
       },
