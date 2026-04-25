@@ -10,6 +10,7 @@ export function buildDispatcherPrompt(
   channel: DeliveryChannel,
   contentType: DeliveryContentType,
   content: string,
+  previewShieldUrl?: string,
 ): string {
   const lines = [
     'You are delivering a message to the user via their active OpenClaw gateway.',
@@ -17,6 +18,16 @@ export function buildDispatcherPrompt(
     'IMPORTANT: Do NOT call any tools — not to look up profiles, confirm deliveries, or read data.',
     'Everything you need is in the CONTENT block below. Format it and output it as text.',
   ];
+
+  if (channel === 'telegram' && previewShieldUrl) {
+    lines.push(
+      '',
+      `LINK PREVIEW SHIELD: Your output MUST begin with exactly this text (copy verbatim):`,
+      `[​](${previewShieldUrl})`,
+      'This invisible link captures Telegram\'s link preview so that action URLs below are not previewed.',
+      'Place it on its own line before the intro text. Do not omit or modify it.',
+    );
+  }
 
   lines.push(
     '',

@@ -175,6 +175,7 @@ export async function handle(
     contentType: 'ambient_discovery',
     content,
     idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${runId}`,
+    previewShieldUrl: config.frontendUrl,
   });
 
   if (dispatchResult === null) {

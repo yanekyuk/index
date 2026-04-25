@@ -12,6 +12,8 @@ export interface DeliveryRequest {
   content: string;
   /** Stable per-message key for OpenClaw idempotency. */
   idempotencyKey: string;
+  /** URL used as an invisible first link to capture Telegram's link preview. */
+  previewShieldUrl?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ export async function dispatchDelivery(
   const result = await api.runtime.subagent.run({
     sessionKey,
     idempotencyKey: request.idempotencyKey,
-    message: buildDispatcherPrompt(channel, request.contentType, request.content),
+    message: buildDispatcherPrompt(channel, request.contentType, request.content, request.previewShieldUrl),
     deliver: true,
     model,
   });

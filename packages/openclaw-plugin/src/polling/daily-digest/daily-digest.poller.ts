@@ -170,6 +170,7 @@ export async function handle(
     contentType: 'daily_digest',
     content,
     idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${runId}`,
+    previewShieldUrl: config.frontendUrl,
   });
 
   if (dispatchResult === null) {
