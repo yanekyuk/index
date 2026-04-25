@@ -92,15 +92,35 @@ describe('OpportunityService.startChat', () => {
     expect(db.updateOpportunityStatus).toHaveBeenCalledWith(OPP_ID, 'accepted');
   });
 
-  it('rejects with 400 when opportunity is not pending or draft', async () => {
+  it('returns conversation idempotently when opportunity is already accepted', async () => {
     const opp = makeOpportunity({ status: 'accepted' });
-    const { service } = makeServiceWithDb(opp);
+    const { service, db } = makeServiceWithDb(opp);
 
     const result = await service.startChat(OPP_ID, VIEWER_ID);
 
-    expect('error' in result).toBe(true);
-    if (!('error' in result)) return;
-    expect(result.status).toBe(400);
+    expect('error' in result).toBe(false);
+    if ('error' in result) return;
+    expect(result.conversationId).toBe(CONV_ID);
+    expect(result.counterpartUserId).toBe(PEER_ID);
+    expect(db.getOrCreateDM).toHaveBeenCalledWith(VIEWER_ID, PEER_ID);
+    expect(db.unhideConversation).toHaveBeenCalledWith(VIEWER_ID, CONV_ID);
+    // No status change or side effects — those ran on the original accept
+    expect(db.updateOpportunityStatus).not.toHaveBeenCalled();
+    expect(db.acceptSiblingOpportunities).not.toHaveBeenCalled();
+    expect(db.upsertContactMembership).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 400 when opportunity is rejected or expired', async () => {
+    for (const status of ['rejected', 'expired'] as const) {
+      const opp = makeOpportunity({ status });
+      const { service } = makeServiceWithDb(opp);
+
+      const result = await service.startChat(OPP_ID, VIEWER_ID);
+
+      expect('error' in result).toBe(true);
+      if (!('error' in result)) return;
+      expect(result.status).toBe(400);
+    }
   });
 
   it('rejects with 403 when caller is not an actor', async () => {
