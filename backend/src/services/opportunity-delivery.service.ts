@@ -19,9 +19,12 @@ import {
   OpportunityPresenter,
   canUserSeeOpportunity,
   gatherPresenterContext,
+  getOrCreateHomeCardBatch,
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
+import type { Cache } from '../adapters/cache.adapter';
+import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -67,12 +70,15 @@ export interface PendingCandidate {
  */
 export class OpportunityDeliveryService {
   private readonly presenterDb: PresenterDatabase;
+  private readonly cache: Cache | null;
 
   constructor(
     private readonly presenter: OpportunityPresenter = new OpportunityPresenter(),
     presenterDb?: PresenterDatabase,
+    cache?: Cache,
   ) {
     this.presenterDb = presenterDb ?? (chatDatabaseAdapter as unknown as PresenterDatabase);
+    this.cache = cache ?? null;
   }
 
   /**
@@ -390,6 +396,43 @@ export class OpportunityDeliveryService {
 
     if (!opp) throw new Error('opportunity_not_found');
 
+    // Use cache-aside utility if cache is available; fall through on cache failure.
+    if (this.cache) {
+      try {
+        const oppWithContext = {
+          id: opp.id,
+          status: opp.status,
+          actors: opp.actors as Array<{ userId: string; role: string }>,
+          interpretation: opp.interpretation,
+          detection: opp.detection,
+        };
+
+        const cards = await getOrCreateHomeCardBatch(
+          this.cache,
+          this.presenter,
+          this.presenterDb,
+          [oppWithContext],
+          userId,
+        );
+
+        const card = cards.get(opp.id);
+        if (card) {
+          return {
+            headline: card.headline,
+            personalizedSummary: card.personalizedSummary,
+            suggestedAction: card.suggestedAction,
+            narratorRemark: card.narratorRemark,
+          };
+        }
+      } catch (err) {
+        log.warn('Cache-aside render failed, falling back to direct presenter', {
+          opportunityId: opp.id,
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    // Fallback to direct presenter call (no cache)
     try {
       const presenterInput = await gatherPresenterContext(
         this.presenterDb,
@@ -418,3 +461,10 @@ export class OpportunityDeliveryService {
     }
   }
 }
+
+/** Shared singleton wired with the Redis cache adapter. */
+export const opportunityDeliveryService = new OpportunityDeliveryService(
+  undefined,
+  undefined,
+  new RedisCacheAdapter(),
+);
