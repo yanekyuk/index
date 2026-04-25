@@ -390,32 +390,39 @@ export class OpportunityDeliveryService {
 
     if (!opp) throw new Error('opportunity_not_found');
 
-    // Use cache-aside utility if cache is available
+    // Use cache-aside utility if cache is available; fall through on cache failure.
     if (this.cache) {
-      const oppWithContext = {
-        id: opp.id,
-        status: opp.status,
-        actors: opp.actors as Array<{ userId: string; role: string }>,
-        interpretation: opp.interpretation,
-        detection: opp.detection,
-      };
-
-      const cards = await getOrCreateHomeCardBatch(
-        this.cache,
-        this.presenter,
-        this.presenterDb,
-        [oppWithContext],
-        userId,
-      );
-
-      const card = cards.get(opp.id);
-      if (card) {
-        return {
-          headline: card.headline,
-          personalizedSummary: card.personalizedSummary,
-          suggestedAction: card.suggestedAction,
-          narratorRemark: card.narratorRemark,
+      try {
+        const oppWithContext = {
+          id: opp.id,
+          status: opp.status,
+          actors: opp.actors as Array<{ userId: string; role: string }>,
+          interpretation: opp.interpretation,
+          detection: opp.detection,
         };
+
+        const cards = await getOrCreateHomeCardBatch(
+          this.cache,
+          this.presenter,
+          this.presenterDb,
+          [oppWithContext],
+          userId,
+        );
+
+        const card = cards.get(opp.id);
+        if (card) {
+          return {
+            headline: card.headline,
+            personalizedSummary: card.personalizedSummary,
+            suggestedAction: card.suggestedAction,
+            narratorRemark: card.narratorRemark,
+          };
+        }
+      } catch (err) {
+        log.warn('Cache-aside render failed, falling back to direct presenter', {
+          opportunityId: opp.id,
+          error: (err as Error).message,
+        });
       }
     }
 
