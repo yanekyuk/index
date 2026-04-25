@@ -436,6 +436,33 @@ export class OpportunityService {
     if (!opp) {
       return { error: 'Opportunity not found', status: 404 };
     }
+    if (opp.status === 'accepted') {
+      const isActor = opp.actors.some((a) => a.userId === userId);
+      if (!isActor) {
+        return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+      }
+      const counterpart =
+        opp.actors.find((a) => a.role !== 'introducer' && a.userId !== userId)
+        ?? opp.actors.find((a) => a.userId !== userId);
+      if (!counterpart) {
+        return { error: 'Opportunity has no counterpart to chat with', status: 400 };
+      }
+      let conversation: { id: string };
+      try {
+        conversation = await this.db.getOrCreateDM(userId, counterpart.userId);
+      } catch (err) {
+        logger.error('[OpportunityService.startChat] getOrCreateDM failed for accepted opp', {
+          opportunityId, userId, counterpartUserId: counterpart.userId, error: err,
+        });
+        return { error: 'Failed to resolve conversation for this opportunity', status: 500 };
+      }
+      await this.db.unhideConversation(userId, conversation.id).catch((err) => {
+        logger.error('[OpportunityService.startChat] unhideConversation failed (non-blocking)', {
+          conversationId: conversation.id, userId, error: err,
+        });
+      });
+      return { conversationId: conversation.id, counterpartUserId: counterpart.userId, opportunity: opp };
+    }
     if (opp.status !== 'pending' && opp.status !== 'draft') {
       return {
         error: `Cannot start chat on opportunity in status '${opp.status}'; must be pending or draft.`,

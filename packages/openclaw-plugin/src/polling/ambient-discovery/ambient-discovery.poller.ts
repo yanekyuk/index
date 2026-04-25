@@ -112,6 +112,9 @@ export async function handle(
             personalizedSummary: o.rendered.personalizedSummary,
             suggestedAction: o.rendered.suggestedAction,
             narratorRemark: o.rendered.narratorRemark,
+            profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
+            acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
+            skipUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/skip`,
           })),
       ),
       deliver: false,
@@ -166,7 +169,6 @@ export async function handle(
     contentType: 'ambient_discovery',
     content,
     idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
-    frontendUrl: config.frontendUrl,
   });
 
   if (dispatchResult === null) {

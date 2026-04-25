@@ -12,7 +12,6 @@ export interface DeliveryRequest {
   content: string;
   /** Stable per-message key for OpenClaw idempotency. */
   idempotencyKey: string;
-  frontendUrl?: string;
 }
 
 /**
@@ -57,7 +56,7 @@ export async function dispatchDelivery(
   const result = await api.runtime.subagent.run({
     sessionKey,
     idempotencyKey: request.idempotencyKey,
-    message: buildDispatcherPrompt(channel, request.contentType, request.content, request.frontendUrl),
+    message: buildDispatcherPrompt(channel, request.contentType, request.content),
     deliver: true,
     model,
   });

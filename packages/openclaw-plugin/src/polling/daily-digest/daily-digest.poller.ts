@@ -106,6 +106,9 @@ export async function handle(
             personalizedSummary: o.rendered.personalizedSummary,
             suggestedAction: o.rendered.suggestedAction,
             narratorRemark: o.rendered.narratorRemark,
+            profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
+            acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
+            skipUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/skip`,
           })),
         effectiveMax,
       ),
@@ -160,7 +163,6 @@ export async function handle(
     contentType: 'daily_digest',
     content,
     idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
-    frontendUrl: config.frontendUrl,
   });
 
   if (dispatchResult === null) {

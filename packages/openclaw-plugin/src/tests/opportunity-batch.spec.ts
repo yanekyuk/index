@@ -363,7 +363,7 @@ describe('handleOpportunityBatch', () => {
     expect(fake.subagentCalls).toHaveLength(2); // only from first call
   });
 
-  test('phase 2: delivery message includes frontendUrl in prompt', async () => {
+  test('phase 1: evaluator prompt includes pre-computed URLs from frontendUrl', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({ opportunities: [SAMPLE_CANDIDATE] }), {
         status: 200,
@@ -374,7 +374,10 @@ describe('handleOpportunityBatch', () => {
     const fake = buildFakeApi();
     await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://dev.index.network' });
 
-    expect(fake.subagentCalls[1].message).toContain('https://dev.index.network');
+    const evaluatorPrompt = fake.subagentCalls[0].message;
+    expect(evaluatorPrompt).toContain(`https://dev.index.network/u/${SAMPLE_CANDIDATE.counterpartUserId}`);
+    expect(evaluatorPrompt).toContain(`https://dev.index.network/opportunities/${SAMPLE_CANDIDATE.opportunityId}/accept`);
+    expect(evaluatorPrompt).toContain(`https://dev.index.network/opportunities/${SAMPLE_CANDIDATE.opportunityId}/skip`);
   });
 
   test('re-launches subagents when opportunity set changes', async () => {
