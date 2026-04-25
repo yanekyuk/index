@@ -5,7 +5,6 @@ export interface TestMessageConfig {
   baseUrl: string;
   agentId: string;
   apiKey: string;
-  frontendUrl: string;
 }
 
 /**
@@ -46,7 +45,6 @@ export async function handle(
     contentType: 'test_message',
     content: body.content,
     idempotencyKey: `index:delivery:test:${body.id}:${body.reservationToken}`,
-    frontendUrl: config.frontendUrl,
   });
 
   if (dispatchResult === null) {

@@ -94,20 +94,18 @@ describe('dispatchDelivery', () => {
     expect(call.message).toContain('New match found.');
   });
 
-  test('prompt includes frontendUrl in channel style block when provided', async () => {
-    const api = makeApi({ runId: 'run-frontend-url' });
+  test('prompt includes instruction to preserve markdown links from content', async () => {
+    const api = makeApi({ runId: 'run-preserve-links' });
 
     await dispatchDelivery(api, {
       contentType: 'ambient_discovery',
-      content: 'New match found.',
-      idempotencyKey: 'idem-frontend',
-      frontendUrl: 'https://dev.index.network',
+      content: 'New match found. [View Profile](https://dev.index.network/u/abc123)',
+      idempotencyKey: 'idem-preserve',
     });
 
     const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('https://dev.index.network');
-    expect(call.message).toContain('[View Profile](https://dev.index.network/u/{userId})');
-    expect(call.message).toContain('[Start Chat ›](https://dev.index.network/u/{userId}/chat)');
+    expect(call.message).toContain('Preserve all markdown links from the content as-is');
+    expect(call.message).toContain('[View Profile](https://dev.index.network/u/abc123)');
   });
 
   test('prompt includes temporal awareness instructions', async () => {
