@@ -90,7 +90,14 @@ export class OpportunityService {
       const factory = new OpportunityGraphFactory(
         this.db as unknown as OpportunityGraphDatabase,
         embedder,
-        compiledHydeGraph
+        compiledHydeGraph,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        this.cache,
+        this.presenter,
       );
       this.graph = factory.createGraph();
     }

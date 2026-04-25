@@ -38,6 +38,13 @@ export type TraceEmitter = (
           userId: string;
           name?: string;
         };
+        /** Presenter output when cache-aside ran before emit (same contract as home cards). */
+        mainText?: string;
+        headline?: string;
+        narratorRemark?: string;
+        mutualIntentsLabel?: string;
+        primaryActionLabel?: string;
+        secondaryActionLabel?: string;
       },
 ) => void;
 

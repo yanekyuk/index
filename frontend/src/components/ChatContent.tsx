@@ -48,6 +48,7 @@ import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
+import { filterStreamingDraftsForDisplay } from "@/lib/streaming-drafts-dedupe";
 import type { HomeViewSection } from "@/services/opportunities";
 import { DynamicIcon, type IconName } from "lucide-react/dynamic";
 
@@ -201,6 +202,17 @@ function dedupeSegments(segments: MessageSegment[]): MessageSegment[] {
     }
     return true;
   });
+}
+
+/** Same pipeline as `AssistantMessageContent` — used to avoid double-rendering opportunity cards. */
+function collectOpportunityIdsFromMessageContent(content: string): Set<string> {
+  const displayed = normalizeBlockquotes(mentionsToMarkdownLinks(content));
+  const segments = dedupeSegments(parseAllBlocks(displayed));
+  const ids = new Set<string>();
+  for (const seg of segments) {
+    if (seg.type === "opportunity") ids.add(seg.data.opportunityId);
+  }
+  return ids;
 }
 
 function AssistantMessageContent({
@@ -1616,7 +1628,15 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
           <div className="space-y-4">
-            {messages.map((msg) => (
+            {messages.map((msg) => {
+              const streamingDraftsToShow =
+                msg.role === "assistant" && msg.streamingDrafts && msg.streamingDrafts.length > 0
+                  ? filterStreamingDraftsForDisplay(
+                      msg.streamingDrafts,
+                      collectOpportunityIdsFromMessageContent(msg.content),
+                    )
+                  : [];
+              return (
               <div key={msg.id}>
                 <div
                   className={cn(
@@ -1737,42 +1757,46 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                    OpportunityCard used on the home feed for visual
                    consistency; button wires to the atomic Start Chat
                    endpoint for single-round-trip accept + navigate. */}
-                {msg.role === "assistant" &&
-                  msg.streamingDrafts &&
-                  msg.streamingDrafts.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {msg.streamingDrafts.map((draft) => {
-                        const cardStatus =
-                          opportunityStatusMap[draft.opportunityId] ??
-                          draft.opportunity.status ??
-                          "draft";
-                        const cardData: OpportunityCardData = {
-                          opportunityId: draft.opportunityId,
-                          userId: draft.counterparty.userId,
-                          name: draft.counterparty.name ?? "New connection",
-                          mainText:
-                            draft.opportunity.interpretation?.reasoning ??
-                            "Accepted draft opportunity",
-                          primaryActionLabel: "Start Chat",
-                          secondaryActionLabel: "Skip",
-                          status: cardStatus,
-                        };
-                        return (
-                          <OpportunityCard
-                            key={draft.opportunityId}
-                            card={cardData}
-                            currentStatus={cardStatus}
-                            onPrimaryAction={(oppId, userId) =>
-                              handleStreamingDraftStartChat(oppId, userId)
-                            }
-                            isLoading={opportunityActionLoading[draft.opportunityId]}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
+                {msg.role === "assistant" && streamingDraftsToShow.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {streamingDraftsToShow.map((draft) => {
+                      const cardStatus =
+                        opportunityStatusMap[draft.opportunityId] ??
+                        draft.opportunity.status ??
+                        "draft";
+                      const cardData: OpportunityCardData = {
+                        opportunityId: draft.opportunityId,
+                        userId: draft.counterparty.userId,
+                        name: draft.counterparty.name ?? "New connection",
+                        mainText:
+                          draft.mainText ??
+                          draft.opportunity.interpretation?.reasoning ??
+                          "Accepted draft opportunity",
+                        headline: draft.headline,
+                        primaryActionLabel:
+                          draft.primaryActionLabel ?? "Start Chat",
+                        secondaryActionLabel:
+                          draft.secondaryActionLabel ?? "Skip",
+                        mutualIntentsLabel: draft.mutualIntentsLabel,
+                        status: cardStatus,
+                      };
+                      return (
+                        <OpportunityCard
+                          key={draft.opportunityId}
+                          card={cardData}
+                          currentStatus={cardStatus}
+                          onPrimaryAction={(oppId, userId) =>
+                            handleStreamingDraftStartChat(oppId, userId)
+                          }
+                          isLoading={opportunityActionLoading[draft.opportunityId]}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            ))}
+            );
+            })}
             <div ref={scrollRef} />
           </div>
         </ContentContainer>

@@ -4,10 +4,10 @@ import { requestContext } from "../shared/observability/request-context.js";
 
 import type { DefineTool, ToolDeps } from "../shared/agent/tool.helpers.js";
 import { success, error, UUID_REGEX } from "../shared/agent/tool.helpers.js";
-import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { runDiscoverFromQuery, continueDiscovery } from "./opportunity.discover.js";
 import { OpportunityPresenter } from "./opportunity.presenter.js";
+import { getOrCreateHomeCardItemBatch } from "./opportunity.card-cache.js";
 import type { EvaluatorEntity } from "./opportunity.evaluator.js";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
@@ -36,112 +36,6 @@ const CODE_FENCE = String.fromCharCode(96, 96, 96);
  */
 function sanitizeJsonForCodeFence(json: string): string {
   return json.replace(/`/g, "\\u0060");
-}
-
-/**
- * Build minimal opportunity card data for chat without calling the LLM presenter.
- * Uses only required fields from the opportunity record and counterpart name/avatar
- * so list_opportunities and discovery return quickly.
- *
- * Note: narratorChip.text is generated via regex heuristics (narratorRemarkFromReasoning)
- * rather than the OpportunityPresenter LLM. If narrator quality becomes an issue again,
- * consider making this function async and delegating to OpportunityPresenter.presentHomeCard()
- * which already produces a high-quality narratorRemark via LLM (used by the home graph
- * and discovery pipeline). The trade-off is 5-20s latency per card.
- *
- * Exported for use in tests (opportunity.tools.spec.ts).
- */
-export function buildMinimalOpportunityCard(
-  opp: Opportunity,
-  viewerId: string,
-  counterpartUserId: string,
-  counterpartName: string,
-  counterpartAvatar: string | null,
-  introducerName?: string | null,
-  introducerAvatar?: string | null,
-  viewerName?: string,
-  secondPartyName?: string,
-  secondPartyAvatar?: string | null,
-  secondPartyUserId?: string,
-  isCounterpartGhost?: boolean,
-): {
-  opportunityId: string;
-  userId: string;
-  name: string;
-  avatar: string | null;
-  mainText: string;
-  cta: string;
-  headline: string;
-  primaryActionLabel: string;
-  secondaryActionLabel: string;
-  mutualIntentsLabel: string;
-  narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
-  viewerRole: string;
-  score: number | undefined;
-  status: string;
-  isGhost: boolean;
-  secondParty?: { name: string; avatar?: string | null; userId?: string };
-} {
-  const viewerActor = opp.actors.find((a) => a.userId === viewerId);
-  const viewerRole = viewerActor?.role ?? "party";
-  const introducerActor = opp.actors.find(
-    (a) => a.role === "introducer" && a.userId !== viewerId,
-  );
-  const viewerIsIntroducer = opp.actors.some(
-    (a) => a.role === "introducer" && a.userId === viewerId,
-  );
-  const reasoning = opp.interpretation?.reasoning ?? "";
-  const mainText = viewerCentricCardSummary(
-    reasoning,
-    counterpartName,
-    MINIMAL_MAIN_TEXT_MAX_CHARS,
-    viewerName,
-    introducerName ?? undefined,
-  );
-  const score =
-    typeof opp.interpretation?.confidence === "number"
-      ? opp.interpretation.confidence
-      : undefined;
-  const narratorName = viewerIsIntroducer
-    ? "You"
-    : introducerName?.trim() || (introducerActor ? "Someone" : "Index");
-  const primaryActionLabel = getPrimaryActionLabel(viewerRole);
-  return {
-    opportunityId: opp.id,
-    userId: counterpartUserId,
-    name: counterpartName,
-    avatar: counterpartAvatar,
-    mainText,
-    cta: "Start a conversation to connect.",
-    headline: viewerIsIntroducer && secondPartyName
-      ? `${counterpartName} → ${secondPartyName}`
-      : `Connection with ${counterpartName}`,
-    primaryActionLabel,
-    secondaryActionLabel: SECONDARY_ACTION_LABEL,
-    mutualIntentsLabel: "Suggested connection",
-    narratorChip: {
-      name: narratorName,
-      text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
-      ...(viewerIsIntroducer
-        ? { userId: viewerId, avatar: null }
-        : introducerActor
-          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
-          : {}),
-    },
-    viewerRole,
-    score,
-    status: opp.status ?? "latent",
-    isGhost: isCounterpartGhost ?? false,
-    ...(viewerIsIntroducer && secondPartyName
-      ? {
-          secondParty: {
-            name: secondPartyName,
-            ...(secondPartyAvatar != null ? { avatar: secondPartyAvatar } : {}),
-            ...(secondPartyUserId ? { userId: secondPartyUserId } : {}),
-          },
-        }
-      : {}),
-  };
 }
 
 /**
@@ -206,6 +100,7 @@ function buildOpportunityPresentation(
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, userDb, systemDb, graphs, embedder, cache } = deps;
+  const homeCardPresenter = new OpportunityPresenter();
 
   const createOpportunities = defineTool({
     name: "create_opportunities",
@@ -348,7 +243,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           discoveryId: query.continueFrom,
           expectedIndexId: context.networkId,
           limit: 20,
-          presenter: new OpportunityPresenter(),
+          presenter: homeCardPresenter,
           useHomeCardFormat: true,
           ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         });
@@ -508,7 +403,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           typeof created.interpretation?.confidence === "number"
             ? created.interpretation.confidence
             : parseFloat(String(created.confidence ?? 0)) || 0;
-        const introducerUser = await userDb.getUser();
         const firstPartyId = introducedPartyUserIds[0];
         const firstEntity = query.entities?.find((e) => e.userId === firstPartyId);
         const counterpartUser = firstPartyId
@@ -517,7 +411,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const counterpartName =
           firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
 
-        // Second party — used in the headline and arrow layout for the introducer view ("A → B")
         const secondPartyId = introducedPartyUserIds[1];
         const secondEntity = query.entities?.find((e) => e.userId === secondPartyId);
         const secondPartyName = (secondEntity?.profile as { name?: string } | undefined)?.name;
@@ -527,58 +420,51 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
         const isCounterpartGhost = counterpartUser?.isGhost ?? false;
-        const primaryActionLabel = getPrimaryActionLabel(viewerRole);
-        const narratorChip = viewerIsParty
-          ? {
-              name: "Index",
-              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
-            }
-          : {
-              name: "You",
-              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
-              userId: context.userId,
-            };
 
-        const headline =
+        const { cards: introHomeCards } = await getOrCreateHomeCardItemBatch({
+          presenter: homeCardPresenter,
+          database,
+          cache,
+          opportunities: [created],
+          viewerUserId: context.userId,
+        });
+        const hc = introHomeCards[0]!;
+        const fallbackHeadline =
           !viewerIsParty && secondPartyName
             ? `${counterpartName} → ${secondPartyName}`
             : `Connection with ${counterpartName}`;
 
         const cardData = {
-          opportunityId: created.id,
-          userId: firstPartyId,
-          name: counterpartName,
-          avatar:
-            counterpartUser?.avatar ??
-            (firstEntity?.profile as { avatar?: string | null } | undefined)
-              ?.avatar ??
-            null,
-          mainText: viewerCentricCardSummary(
-            reasoning,
-            counterpartName,
-            MINIMAL_MAIN_TEXT_MAX_CHARS,
-            undefined, // viewerName not available in this context; introducer name passed separately
-            introducerUser?.name ?? undefined,
-          ),
-          cta: "Start a conversation to connect.",
-          headline,
-          primaryActionLabel,
-          secondaryActionLabel: SECONDARY_ACTION_LABEL,
-          mutualIntentsLabel: "Suggested connection",
-          narratorChip,
-          viewerRole,
-          isGhost: isCounterpartGhost,
+          opportunityId: hc.opportunityId,
+          userId: hc.userId,
+          name: hc.name,
+          avatar: hc.avatar,
+          mainText: hc.mainText,
+          cta: hc.cta,
+          headline: hc.headline ?? fallbackHeadline,
+          primaryActionLabel: hc.primaryActionLabel,
+          secondaryActionLabel: hc.secondaryActionLabel,
+          mutualIntentsLabel: hc.mutualIntentsLabel,
+          narratorChip:
+            hc.narratorChip ??
+            (viewerIsParty
+              ? { name: "Index", text: "Suggested connection." }
+              : { name: "You", text: "Suggested connection.", userId: context.userId }),
+          viewerRole: hc.viewerRole ?? viewerRole,
+          isGhost: hc.isGhost ?? isCounterpartGhost,
           score: confidence,
           status: created.status ?? "draft",
-          ...(!viewerIsParty && secondPartyName
-            ? {
-                secondParty: {
-                  name: secondPartyName,
-                  avatar: secondPartyUser?.avatar ?? secondPartyAvatar,
-                  ...(secondPartyId ? { userId: secondPartyId } : {}),
-                },
-              }
-            : {}),
+          ...(hc.secondParty
+            ? { secondParty: hc.secondParty }
+            : !viewerIsParty && secondPartyName
+              ? {
+                  secondParty: {
+                    name: secondPartyName,
+                    avatar: secondPartyUser?.avatar ?? secondPartyAvatar,
+                    ...(secondPartyId ? { userId: secondPartyId } : {}),
+                  },
+                }
+              : {}),
         };
         return success({
           found: true,
@@ -679,7 +565,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query: searchQuery,
         indexScope,
         limit: 20,
-        presenter: new OpportunityPresenter(),
+        presenter: homeCardPresenter,
         useHomeCardFormat: true,
         triggerIntentId,
         targetUserId: query.targetUserId?.trim() || undefined,
@@ -870,7 +756,6 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid network ID format.");
       }
 
-      // Get opportunities; use minimal card data (no LLM presenter) for fast chat response
       const opportunities = await database.getOpportunitiesForUser(
         context.userId,
         {
@@ -889,117 +774,74 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
-      // Batch-fetch profiles and users for all counterpart and introducer userIds to avoid N+1
-      const counterpartUserIds = new Set<string>();
-      const introducerUserIds = new Set<string>();
-      for (const opp of opportunities) {
-        const counterpartActor = opp.actors.find(
-          (a) => a.userId !== context.userId && a.role !== "introducer",
-        );
-        if (counterpartActor?.userId) counterpartUserIds.add(counterpartActor.userId);
-        const introducerActor = opp.actors.find(
-          (a) => a.role === "introducer" && a.userId !== context.userId,
-        );
-        if (introducerActor?.userId) introducerUserIds.add(introducerActor.userId);
-      }
-      const allUserIds = [
-        ...new Set([...counterpartUserIds, ...introducerUserIds]),
-      ];
-      const [viewerUser, profileResults, userResults] = await Promise.all([
-        database.getUser(context.userId),
-        Promise.all(allUserIds.map((id) => database.getProfile(id))),
-        Promise.all(allUserIds.map((id) => database.getUser(id))),
-      ]);
-      const viewerName = viewerUser?.name ?? undefined;
-      const profileMap = new Map<string, Awaited<ReturnType<typeof database.getProfile>>>();
-      const userMap = new Map<string, Awaited<ReturnType<typeof database.getUser>>>();
-      allUserIds.forEach((userId, i) => {
-        const profile = profileResults[i] ?? null;
-        const user = userResults[i] ?? null;
-        if (profile) profileMap.set(userId, profile);
-        if (user) userMap.set(userId, user);
-      });
-
-      const cardDataList: Array<ReturnType<typeof buildMinimalOpportunityCard>> = [];
       const seenOpportunityIds = new Set<string>();
-      const skippedIds: string[] = [];
-
+      const oppsForCards: Opportunity[] = [];
       for (const opp of opportunities) {
         if (seenOpportunityIds.has(opp.id)) continue;
         seenOpportunityIds.add(opp.id);
-        try {
-          const counterpartActor = opp.actors.find(
-            (a) => a.userId !== context.userId && a.role !== "introducer",
-          );
-          const counterpartUserId = counterpartActor?.userId;
-          if (!counterpartUserId) continue;
+        const counterpartActor = opp.actors.find(
+          (a) => a.userId !== context.userId && a.role !== "introducer",
+        );
+        if (!counterpartActor?.userId) continue;
+        oppsForCards.push(opp);
+      }
 
-          const viewerIsIntroducerHere = opp.actors.some(
-            (a) => a.role === "introducer" && a.userId === context.userId,
-          );
-          const secondPartyActorForHeadline = viewerIsIntroducerHere
-            ? opp.actors.find(
-                (a) =>
-                  a.userId !== context.userId &&
-                  a.userId !== counterpartUserId &&
-                  a.role !== "introducer",
-              )
-            : undefined;
-          const secondPartyNameForHeadline = secondPartyActorForHeadline
-            ? (profileMap.get(secondPartyActorForHeadline.userId)?.identity?.name ??
-              userMap.get(secondPartyActorForHeadline.userId)?.name ??
-              undefined)
-            : undefined;
+      let cardDataList: Array<{
+        opportunityId: string;
+        userId: string;
+        name: string;
+        avatar: string | null;
+        mainText: string;
+        cta: string;
+        headline?: string;
+        primaryActionLabel: string;
+        secondaryActionLabel: string;
+        mutualIntentsLabel: string;
+        narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
+        viewerRole?: string;
+        score: number | undefined;
+        status: string;
+        isGhost: boolean;
+        secondParty?: { name: string; avatar?: string | null; userId?: string };
+      }> = [];
+      const skippedIds: string[] = [];
 
-          const introducerActor = opp.actors.find(
-            (a) => a.role === "introducer" && a.userId !== context.userId,
-          );
-          const createdByName = opp.detection.createdByName;
-
-          const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
-          const counterpartUser = userMap.get(counterpartUserId) ?? null;
-          const introducerProfile =
-            introducerActor && !createdByName
-              ? profileMap.get(introducerActor.userId) ?? null
-              : null;
-
-          const counterpartName =
-            counterpartProfile?.identity?.name ??
-            counterpartUser?.name ??
-            "Someone";
-          const introducerName =
-            createdByName ??
-            (introducerActor ? introducerProfile?.identity?.name ?? null : null);
-          const introducerUser = introducerActor
-            ? userMap.get(introducerActor.userId) ?? null
-            : null;
-
-          const secondPartyUser = secondPartyActorForHeadline
-            ? userMap.get(secondPartyActorForHeadline.userId) ?? null
-            : null;
-          const cardData = buildMinimalOpportunityCard(
-            opp,
-            context.userId,
-            counterpartUserId,
-            counterpartName,
-            counterpartUser?.avatar ?? null,
-            introducerName,
-            introducerUser?.avatar ?? null,
-            viewerName,
-            secondPartyNameForHeadline,
-            secondPartyUser?.avatar ?? null,
-            secondPartyActorForHeadline?.userId,
-          );
-
-          cardDataList.push(cardData);
-        } catch (err) {
-          logger.warn("Skipping opportunity that failed to build minimal card", {
-            opportunityId: opp.id,
-            err,
-          });
-          skippedIds.push(opp.id);
-          continue;
-        }
+      try {
+        const { cards } = await getOrCreateHomeCardItemBatch({
+          presenter: homeCardPresenter,
+          database,
+          cache,
+          opportunities: oppsForCards,
+          viewerUserId: context.userId,
+        });
+        cardDataList = cards.map((hc, i) => {
+          const opp = oppsForCards[i]!;
+          const score =
+            typeof opp.interpretation?.confidence === "number"
+              ? opp.interpretation.confidence
+              : undefined;
+          return {
+            opportunityId: hc.opportunityId,
+            userId: hc.userId,
+            name: hc.name,
+            avatar: hc.avatar,
+            mainText: hc.mainText,
+            cta: hc.cta,
+            headline: hc.headline,
+            primaryActionLabel: hc.primaryActionLabel,
+            secondaryActionLabel: hc.secondaryActionLabel,
+            mutualIntentsLabel: hc.mutualIntentsLabel,
+            narratorChip: hc.narratorChip,
+            viewerRole: hc.viewerRole,
+            isGhost: hc.isGhost ?? false,
+            score,
+            status: opp.status ?? "latent",
+            ...(hc.secondParty ? { secondParty: hc.secondParty } : {}),
+          };
+        });
+      } catch (err) {
+        logger.warn("list_opportunities: home card batch failed", { err });
+        skippedIds.push(...oppsForCards.map((o) => o.id));
       }
 
       const listDebugSteps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }> = [];

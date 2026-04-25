@@ -76,11 +76,12 @@ export async function persistOpportunities(params: PersistOpportunitiesParams): 
         const c = await database.createOpportunity(toCreate);
         created.push(c);
         if (enrichment.enriched && enrichment.expiredIds.length > 0) {
-          for (const id of enrichment.expiredIds) {
+          const sortedExpire = [...new Set(enrichment.expiredIds)].sort((a, b) => a.localeCompare(b));
+          for (const id of sortedExpire) {
             await database.updateOpportunityStatus(id, 'expired');
           }
           if (database.getOpportunity) {
-            for (const id of enrichment.expiredIds) {
+            for (const id of sortedExpire) {
               const opp = await database.getOpportunity(id);
               if (opp) expired.push(opp);
             }

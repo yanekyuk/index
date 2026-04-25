@@ -88,6 +88,12 @@ export type AgentStreamEvent =
         userId: string;
         name?: string;
       };
+      mainText?: string;
+      headline?: string;
+      narratorRemark?: string;
+      mutualIntentsLabel?: string;
+      primaryActionLabel?: string;
+      secondaryActionLabel?: string;
     }
   | {
       type: "negotiation_session_start";

@@ -20,6 +20,10 @@ const logger = protocolLogger('OpportunityEnricher');
 
 const DEFAULT_SIMILARITY_THRESHOLD = 0.7;
 const MIN_REASONING_LENGTH_FOR_EMBEDDING = 10;
+/** Defensive cap: overlap query is ordered by recency; beyond this we do not consider rows for merge. */
+const MAX_OVERLAP_CANDIDATES = 120;
+/** Do not fold more than this many prior opportunities into one row (avoids pathological actor unions and expire storms). */
+const MAX_RELATED_TO_MERGE = 32;
 
 /**
  * Statuses excluded from the merge-candidate pool by default.
@@ -228,7 +232,15 @@ export async function enrichOrCreate(
   }
 
   const excludeStatuses = options?.excludeStatuses ?? DEFAULT_ENRICHER_EXCLUDE_STATUSES;
-  const overlapping = await database.findOverlappingOpportunities(actorUserIds, { excludeStatuses });
+  let overlapping = await database.findOverlappingOpportunities(actorUserIds, { excludeStatuses });
+  if (overlapping.length > MAX_OVERLAP_CANDIDATES) {
+    logger.warn('[Enricher] Overlap candidate list truncated', {
+      actorCount: actorUserIds.length,
+      had: overlapping.length,
+      kept: MAX_OVERLAP_CANDIDATES,
+    });
+    overlapping = overlapping.slice(0, MAX_OVERLAP_CANDIDATES);
+  }
   if (overlapping.length === 0) {
     return { enriched: false, data: newData };
   }
@@ -290,8 +302,23 @@ export async function enrichOrCreate(
     return { enriched: false, data: newData };
   }
 
-  const mergedActors = mergeActors(newData, related);
-  const mergedInterpretation = mergeInterpretation(newData, related);
+  // Expire every overlapping row we are superseding, but only union actors/signals
+  // from the most recent N — otherwise a long-lived pair can accumulate hundreds of
+  // duplicate rows and produce an unusable merged actor list.
+  let mergePayloadSources = related;
+  if (mergePayloadSources.length > MAX_RELATED_TO_MERGE) {
+    const byRecency = [...mergePayloadSources].sort(
+      (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+    );
+    mergePayloadSources = byRecency.slice(0, MAX_RELATED_TO_MERGE);
+    logger.warn('[Enricher] Merge payload capped; all related rows will still be expired', {
+      relatedCount: related.length,
+      mergePayloadCount: mergePayloadSources.length,
+    });
+  }
+
+  const mergedActors = mergeActors(newData, mergePayloadSources);
+  const mergedInterpretation = mergeInterpretation(newData, mergePayloadSources);
   const enrichedFrom = related.map((o) => o.id);
   const mergedConfidence =
     typeof mergedInterpretation.confidence === 'number'
@@ -310,10 +337,16 @@ export async function enrichOrCreate(
     confidence: mergedConfidence,
   };
 
-  const resolvedStatus = resolveEnrichedStatus(related.map((o) => o.status), newData.status);
+  const resolvedStatus = resolveEnrichedStatus(
+    related.map((o) => o.status),
+    newData.status,
+  );
 
   logger.verbose('[Enricher] Enriched opportunity', {
-    enrichedFrom,
+    relatedCount: related.length,
+    mergePayloadCount: mergePayloadSources.length,
+    expiredCount: enrichedFrom.length,
+    enrichedFromSample: enrichedFrom.slice(0, 5),
     actorCount: mergedActors.length,
   });
 

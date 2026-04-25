@@ -3808,15 +3808,17 @@ export class OpportunityDatabaseAdapter {
         .returning();
       if (!inserted) throw new Error('OpportunityDatabaseAdapter.createOpportunityAndExpireIds: no row returned');
       const created = toOpportunityRow(inserted);
-      const expired: OpportunityRow[] = [];
       const now = new Date();
-      for (const id of expireIds) {
-        const [row] = await tx
+      // Dedupe + single UPDATE ... WHERE id IN (...) instead of N sequential updates (fewer round-trips, stable ordering).
+      const sortedUniqueExpire = [...new Set(expireIds)].sort((a, b) => a.localeCompare(b));
+      let expired: OpportunityRow[] = [];
+      if (sortedUniqueExpire.length > 0) {
+        const rows = await tx
           .update(opportunities)
           .set({ status: 'expired', updatedAt: now })
-          .where(eq(opportunities.id, id))
+          .where(inArray(opportunities.id, sortedUniqueExpire))
           .returning();
-        if (row) expired.push(toOpportunityRow(row));
+        expired = rows.map(toOpportunityRow);
       }
       return { created, expired };
     });
@@ -3943,7 +3945,9 @@ export class OpportunityDatabaseAdapter {
       .select()
       .from(opportunities)
       .where(statusCondition ? and(statusCondition, overlapCondition) : overlapCondition)
-      .orderBy(desc(opportunities.updatedAt));
+      .orderBy(desc(opportunities.updatedAt))
+      // Align with protocol enricher cap — avoids reading thousands of same-pair rows.
+      .limit(120);
     return rows.map(toOpportunityRow);
   }
 

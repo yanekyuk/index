@@ -200,7 +200,11 @@ logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 // Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
 Bun.serve({
   port: PORT,
-  idleTimeout: 60, // 60 seconds to prevent request timeout errors
+  // Bun closes the socket when no bytes are read/written for this many seconds.
+  // Chat SSE goes quiet during long tool runs (e.g. create_opportunities / opportunity
+  // graph + enrich); 60s was aborting streams ~68s in with "connection was closed".
+  // 255 is Bun's maximum idleTimeout (seconds).
+  idleTimeout: 255,
   async fetch(req) {
     const url = new URL(req.url);
     const method = req.method;

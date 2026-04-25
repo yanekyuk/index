@@ -41,6 +41,13 @@ export interface StreamingDraft {
     userId: string;
     name?: string;
   };
+  /** Presenter main line when the backend ran cache-aside before emit. */
+  mainText?: string;
+  headline?: string;
+  narratorRemark?: string;
+  mutualIntentsLabel?: string;
+  primaryActionLabel?: string;
+  secondaryActionLabel?: string;
   receivedAt: number;
 }
 
@@ -638,6 +645,18 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       opportunity: event.opportunity,
                       counterparty: event.counterparty,
                       receivedAt: Date.now(),
+                      ...(event.mainText != null ? { mainText: event.mainText } : {}),
+                      ...(event.headline != null ? { headline: event.headline } : {}),
+                      ...(event.narratorRemark != null ? { narratorRemark: event.narratorRemark } : {}),
+                      ...(event.mutualIntentsLabel != null
+                        ? { mutualIntentsLabel: event.mutualIntentsLabel }
+                        : {}),
+                      ...(event.primaryActionLabel != null
+                        ? { primaryActionLabel: event.primaryActionLabel }
+                        : {}),
+                      ...(event.secondaryActionLabel != null
+                        ? { secondaryActionLabel: event.secondaryActionLabel }
+                        : {}),
                     };
                     streamingDraftsBuffer.push(draft);
                     setMessages((prev) =>

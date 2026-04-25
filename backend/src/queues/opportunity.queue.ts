@@ -283,6 +283,8 @@ export class OpportunityQueue {
         this.deps?.negotiationGraph,
         this.deps?.agentDispatcher,
         async (opportunityId: string, userId: string) => this.addNegotiateJob({ opportunityId, userId }),
+        undefined,
+        undefined,
       ).createGraph();
       const result = await opportunityGraph.invoke(invokeOpts);
 
@@ -341,6 +343,8 @@ export class OpportunityQueue {
       this.deps?.negotiationGraph,
       this.deps?.agentDispatcher,
       async (oid: string, uid: string) => this.addNegotiateJob({ opportunityId: oid, userId: uid }),
+      undefined,
+      undefined,
     ).createGraph();
 
     try {

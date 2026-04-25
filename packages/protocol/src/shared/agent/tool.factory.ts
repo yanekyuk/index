@@ -4,6 +4,7 @@ import type { HydeGraphDatabase } from "../interfaces/database.interface.js";
 import { IntentGraphFactory } from "../../intent/intent.graph.js";
 import { ProfileGraphFactory } from "../../profile/profile.graph.js";
 import { OpportunityGraphFactory } from "../../opportunity/opportunity.graph.js";
+import { OpportunityPresenter } from "../../opportunity/opportunity.presenter.js";
 import { HydeGraphFactory } from "../hyde/hyde.graph.js";
 import { HydeGenerator } from "../hyde/hyde.generator.js";
 import { LensInferrer } from "../hyde/lens.inferrer.js";
@@ -122,15 +123,18 @@ export async function createChatTools(
         deps.negotiationTimeoutQueue,
       ).createGraph()
     : undefined;
+  const opportunityHomeCardPresenter = new OpportunityPresenter();
   const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,
     compiledHydeGraph,
-    undefined, // evaluator (default)
-    undefined, // queueNotification
+    undefined,
+    undefined,
     negotiationGraph,
     deps.agentDispatcher,
     deps.queueNegotiateExisting,
+    deps.cache,
+    opportunityHomeCardPresenter,
   ).createGraph();
   const networkGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();

@@ -1,9 +1,7 @@
 /**
  * Unit tests for opportunity discover: runDiscoverFromQuery with mocked opportunity graph.
  */
-/** Config */
-import { config } from "dotenv";
-config({ path: '.env.test' });
+import "./opportunity.discover.spec.setup.js";
 
 import { describe, test, expect } from "bun:test";
 import { runDiscoverFromQuery } from "../opportunity.discover.js";
@@ -13,6 +11,7 @@ describe("opportunity.discover", () => {
   const mockDatabase: ChatGraphCompositeDatabase = {
     getProfile: async () => null,
     getUser: async () => null,
+    getOpportunity: async () => null,
   } as unknown as ChatGraphCompositeDatabase;
 
   describe("runDiscoverFromQuery", () => {
@@ -45,7 +44,7 @@ describe("opportunity.discover", () => {
       });
       expect(result.found).toBe(false);
       expect(result.count).toBe(0);
-      expect(result.message).toContain("index");
+      expect(result.message?.toLowerCase()).toContain("network");
     });
 
     test("returns found: false when graph returns no opportunities", async () => {
@@ -115,6 +114,51 @@ describe("opportunity.discover", () => {
         matchReason: "Strong match for mentorship.",
         score: 0.85,
       });
+    });
+
+    test("rehydrates from DB so enrich sees post-negotiation status when graph returns stale negotiating", async () => {
+      const candidateId = "candidate-post-neg";
+      const staleOpp = {
+        id: "opp-rehydrate",
+        status: "negotiating" as const,
+        actors: [
+          { networkId: "idx-1", userId: "u1", role: "patient" },
+          { networkId: "idx-1", userId: candidateId, role: "agent" },
+        ],
+        interpretation: { reasoning: "Mutual fit.", confidence: 0.9 },
+        detection: { source: "opportunity_graph", createdBy: "agent", timestamp: new Date().toISOString() },
+      };
+      const mockGraph = {
+        invoke: async () => ({ opportunities: [staleOpp] }),
+      };
+      const dbWithRehydrate = {
+        ...mockDatabase,
+        getOpportunity: async (id: string) =>
+          id === "opp-rehydrate" ? ({ ...staleOpp, status: "draft" as const } as any) : null,
+        getProfile: async (userId: string) =>
+          userId === candidateId
+            ? { identity: { name: "Pat Candidate", bio: "Builder." }, attributes: {}, narrative: {} }
+            : null,
+        getUser: async (userId: string) =>
+          userId === candidateId
+            ? { name: "Pat Candidate", avatar: null, onboarding: { completedAt: new Date() } }
+            : userId === "u1"
+              ? { name: "User One", avatar: null, onboarding: { completedAt: new Date() } }
+              : null,
+      } as unknown as ChatGraphCompositeDatabase;
+
+      const result = await runDiscoverFromQuery({
+        opportunityGraph: mockGraph as any,
+        database: dbWithRehydrate,
+        userId: "u1",
+        query: "find collaborators",
+        indexScope: ["idx1"],
+        minimalForChat: true,
+      });
+
+      expect(result.found).toBe(true);
+      expect(result.opportunities).toHaveLength(1);
+      expect(result.opportunities![0].status).toBe("draft");
     });
 
     test("on graph throw, returns found: false with generic message", async () => {
@@ -634,6 +678,7 @@ import type { ChatGraphCompositeDatabase } from "../../shared/interfaces/databas
 const mockDatabase: ChatGraphCompositeDatabase = {
   getProfile: async () => null,
   getUser: async () => null,
+  getOpportunity: async () => null,
 } as unknown as ChatGraphCompositeDatabase;
 
 describe("introducer discovery cards - secondParty (Bug 1)", () => {

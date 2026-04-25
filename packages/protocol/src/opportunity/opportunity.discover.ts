@@ -10,10 +10,12 @@
  */
 
 import type { Opportunity, ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
-import type { Cache } from "../shared/interfaces/cache.interface.js";
+import type { Cache, OpportunityCache } from "../shared/interfaces/cache.interface.js";
+import { getOrCreateHomeCardItemBatch } from "./opportunity.card-cache.js";
+import type { HomeCardItem } from "./feed/feed.state.js";
 import type { OpportunityGraphOptions, CandidateMatch } from "./opportunity.state.js";
+import type { OpportunityPresenter } from "./opportunity.presenter.js";
 import {
-  OpportunityPresenter,
   gatherPresenterContext,
   type OpportunityPresentationResult,
   type HomeCardPresentationResult,
@@ -21,10 +23,13 @@ import {
   type HomeCardPresenterInput,
 } from "./opportunity.presenter.js";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
-import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
+import { viewerCentricCardSummary } from "./opportunity.presentation.js";
 import { protocolLogger, withCallLogging } from "../shared/observability/protocol.logger.js";
 
 const logger = protocolLogger("OpportunityDiscover");
+
+/** Static narrator line for the no-LLM minimal path (avoids raw evaluator meta-language). */
+const MINIMAL_NARRATOR_STUB = "A potential connection worth exploring.";
 
 /** Compiled opportunity graph (from OpportunityGraphFactory.createGraph()). */
 export type CompiledOpportunityGraph = ReturnType<
@@ -171,6 +176,23 @@ export interface DiscoverResult {
   };
 }
 
+/**
+ * Reload persisted rows from the database before presentation.
+ * Graph invoke leaves `opportunities` frozen at persist time while negotiate updates DB only.
+ */
+async function rehydrateOpportunitiesFromDatabase(
+  opportunities: Opportunity[],
+  database: ChatGraphCompositeDatabase,
+): Promise<Opportunity[]> {
+  return Promise.all(
+    opportunities.map(async (o) => {
+      if (!o.id) return o;
+      const fresh = await database.getOpportunity(o.id);
+      return fresh ?? o;
+    }),
+  );
+}
+
 /** Input for the shared enrichment helper. */
 interface EnrichOpportunitiesInput {
   opportunities: Opportunity[];
@@ -180,6 +202,8 @@ interface EnrichOpportunitiesInput {
   minimalForChat?: boolean;
   presenter?: OpportunityPresenter;
   useHomeCardFormat?: boolean;
+  /** When set with presenter + useHomeCardFormat, card copy uses Redis cache-aside (same keys as home). */
+  cache?: OpportunityCache;
   debugSteps: DiscoverDebugStep[];
   /** IDs of pre-existing opportunities merged into the list; these preserve their real status. */
   existingOpportunityIds?: Set<string>;
@@ -206,6 +230,7 @@ async function enrichOpportunities(
     minimalForChat,
     presenter,
     useHomeCardFormat,
+    cache,
     debugSteps,
     existingOpportunityIds,
     targetUserId,
@@ -315,8 +340,48 @@ async function enrichOpportunities(
   let presenterContexts:
     | (Awaited<ReturnType<typeof gatherPresenterContext>> | MinimalPresenterContext)[]
     | undefined;
+  let materializedHomeCards: HomeCardItem[] | undefined;
 
-  if (minimalForChat && baseEnriched.length > 0) {
+  if (presenter && cache && useHomeCardFormat && baseEnriched.length > 0) {
+    try {
+      const opportunitiesOnly = baseEnriched.map((b) => b.opportunity);
+      const { cards } = await getOrCreateHomeCardItemBatch({
+        presenter,
+        database,
+        cache,
+        opportunities: opportunitiesOnly,
+        viewerUserId: userId,
+        noCache: false,
+      });
+      materializedHomeCards = cards;
+      homeCardPresentations = cards.map((card) => ({
+        headline:
+          card.headline ??
+          (card.name?.trim() ? `Connection with ${card.name}` : "Suggested connection"),
+        personalizedSummary: card.mainText,
+        suggestedAction: card.cta,
+        narratorRemark: card.narratorChip?.text ?? "",
+        mutualIntentsLabel: card.mutualIntentsLabel,
+        primaryActionLabel: card.primaryActionLabel,
+        secondaryActionLabel: card.secondaryActionLabel,
+      }));
+      presenterContexts = baseEnriched.map((item) => ({
+        introducerName: item.opportunity.detection?.createdByName ?? undefined,
+      })) as MinimalPresenterContext[];
+    } catch (error) {
+      logger.warn(
+        "Cached home-card enrichment failed during opportunity discovery; falling back without home cards",
+        {
+          userId,
+          opportunitiesCount: baseEnriched.length,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      materializedHomeCards = undefined;
+      homeCardPresentations = undefined;
+      presenterContexts = undefined;
+    }
+  } else if (minimalForChat && baseEnriched.length > 0) {
     // Minimal path: no LLM, viewer-centric card text (introduce counterpart to viewer)
     const counterpartName = (n: {
       profile?: { identity?: { name?: string } } | null;
@@ -356,7 +421,7 @@ async function enrichOpportunities(
             introducerName,
           ),
         suggestedAction: "Start a conversation to connect.",
-        narratorRemark: narratorRemarkFromReasoning(reasoning, name, viewerName),
+        narratorRemark: MINIMAL_NARRATOR_STUB,
         primaryActionLabel: getPrimaryActionLabel(viewerIsIntroducer ? "introducer" : "party"),
         secondaryActionLabel: SECONDARY_ACTION_LABEL,
         mutualIntentsLabel: "Suggested connection",
@@ -425,10 +490,13 @@ async function enrichOpportunities(
     (item, idx) => {
       const homeCard = homeCardPresentations?.[idx];
       const ctx = presenterContexts?.[idx];
+      const materialized = materializedHomeCards?.[idx];
 
       // Build narrator chip for home card format
       let narratorChip: FormattedDiscoveryCandidate["narratorChip"];
-      if (homeCard) {
+      if (materialized?.narratorChip) {
+        narratorChip = materialized.narratorChip;
+      } else if (homeCard) {
         const viewerIsIntroducer = item.opportunity.actors.some(
           (a) => a.role === "introducer" && a.userId === userId,
         );
@@ -469,7 +537,13 @@ async function enrichOpportunities(
       const viewerIsIntroducerForCard = item.opportunity.actors.some(
         (a) => a.role === "introducer" && a.userId === userId,
       );
-      if (viewerIsIntroducerForCard) {
+      if (materialized?.secondParty?.name) {
+        secondParty = {
+          name: materialized.secondParty.name,
+          avatar: materialized.secondParty.avatar ?? null,
+          ...(materialized.secondParty.userId ? { userId: materialized.secondParty.userId } : {}),
+        };
+      } else if (viewerIsIntroducerForCard) {
         const otherPartyActor = item.opportunity.actors.find(
           (a) => a.role !== "introducer" && a.userId !== item.candidateUserId,
         );
@@ -774,6 +848,8 @@ export async function runDiscoverFromQuery(
         };
       }
 
+      opportunities = await rehydrateOpportunitiesFromDatabase(opportunities, database);
+
       const enriched = await enrichOpportunities({
         opportunities,
         database,
@@ -782,6 +858,7 @@ export async function runDiscoverFromQuery(
         minimalForChat: input.minimalForChat,
         presenter: input.presenter,
         useHomeCardFormat: input.useHomeCardFormat,
+        cache: input.cache,
         debugSteps,
         existingOpportunityIds,
         targetUserId,
@@ -939,14 +1016,17 @@ export async function continueDiscovery(input: {
     };
   }
 
+  const opportunitiesForEnrich = await rehydrateOpportunitiesFromDatabase(opportunities, database);
+
   const enriched = await enrichOpportunities({
-    opportunities,
+    opportunities: opportunitiesForEnrich,
     database,
     userId,
     chatSessionId,
     minimalForChat: input.minimalForChat,
     presenter: input.presenter,
     useHomeCardFormat: input.useHomeCardFormat,
+    cache: input.cache,
     debugSteps,
   });
 

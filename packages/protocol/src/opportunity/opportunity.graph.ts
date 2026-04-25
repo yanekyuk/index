@@ -69,9 +69,13 @@ import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResol
 import { AMBIENT_PARK_WINDOW_MS } from "../negotiation/negotiation.tools.js";
 import type { NegotiationGraphLike } from "../negotiation/negotiation.state.js";
 import type { AgentDispatcher } from "../shared/interfaces/agent-dispatcher.interface.js";
+import type { OpportunityCache } from "../shared/interfaces/cache.interface.js";
+import type { ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
 import { protocolLogger, withCallLogging } from '../shared/observability/protocol.logger.js';
 import { timed } from '../shared/observability/performance.js';
 import { requestContext } from "../shared/observability/request-context.js";
+import { OpportunityPresenter } from "./opportunity.presenter.js";
+import { getOrCreateHomeCardItemBatch } from "./opportunity.card-cache.js";
 
 const logger = protocolLogger('OpportunityGraph');
 
@@ -167,6 +171,13 @@ export class OpportunityGraphFactory {
      * negotiations after introducer approval.
      */
     private queueNegotiateExisting?: (opportunityId: string, userId: string) => Promise<void>,
+    /**
+     * When set with an optional explicit presenter (or the default constructed
+     * presenter), orchestrator `opportunity_draft_ready` events include home-card
+     * fields and results are written to this cache for the home feed.
+     */
+    private readonly opportunityHomeCardCache?: OpportunityCache,
+    private readonly opportunityHomeCardPresenter?: OpportunityPresenter,
   ) {}
 
   public createGraph() {
@@ -1862,6 +1873,41 @@ export class OpportunityGraphFactory {
                 });
               if (!updated || abortSignal?.aborted) return;
 
+              let mainText: string | undefined;
+              let headline: string | undefined;
+              let narratorRemark: string | undefined;
+              let mutualIntentsLabel: string | undefined;
+              let primaryActionLabel: string | undefined;
+              let secondaryActionLabel: string | undefined;
+              if (this.opportunityHomeCardCache) {
+                const presenter =
+                  this.opportunityHomeCardPresenter ?? new OpportunityPresenter();
+                try {
+                  const { cards } = await getOrCreateHomeCardItemBatch({
+                    presenter,
+                    database: this.database as unknown as ChatGraphCompositeDatabase,
+                    cache: this.opportunityHomeCardCache,
+                    opportunities: [updated],
+                    viewerUserId: state.userId,
+                    noCache: false,
+                  });
+                  const c = cards[0];
+                  if (c) {
+                    mainText = c.mainText;
+                    headline = c.headline;
+                    narratorRemark = c.narratorChip?.text;
+                    mutualIntentsLabel = c.mutualIntentsLabel;
+                    primaryActionLabel = c.primaryActionLabel;
+                    secondaryActionLabel = c.secondaryActionLabel;
+                  }
+                } catch (e) {
+                  logger.warn('[Graph:Negotiate] draft-ready card presentation failed', {
+                    opportunityId: candidate.opportunityId,
+                    error: e instanceof Error ? e.message : String(e),
+                  });
+                }
+              }
+
               traceEmitter?.({
                 type: 'opportunity_draft_ready',
                 opportunityId: candidate.opportunityId,
@@ -1872,6 +1918,12 @@ export class OpportunityGraphFactory {
                     ? { name: candidate.candidateUser.profile.name }
                     : {}),
                 },
+                ...(mainText != null ? { mainText } : {}),
+                ...(headline != null ? { headline } : {}),
+                ...(narratorRemark != null ? { narratorRemark } : {}),
+                ...(mutualIntentsLabel != null ? { mutualIntentsLabel } : {}),
+                ...(primaryActionLabel != null ? { primaryActionLabel } : {}),
+                ...(secondaryActionLabel != null ? { secondaryActionLabel } : {}),
               });
             }
           : undefined;

@@ -1832,7 +1832,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
 describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
   /**
    * Build N fake Opportunity records that list_opportunities can process.
-   * Each has a unique counterpart actor so buildMinimalOpportunityCard produces
+   * Each has a unique counterpart actor so opportunity cards resolve deterministically
    * a distinct card.
    */
   function buildFakeOpportunities(n: number): Opportunity[] {

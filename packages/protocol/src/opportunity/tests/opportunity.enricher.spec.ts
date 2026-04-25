@@ -235,6 +235,37 @@ describe('Opportunity enricher', () => {
     }
   });
 
+  test('many intent-matched related: all expiredIds kept; merge uses newest 32 rows only', async () => {
+    const sharedIntent = 'intent-bulk';
+    const opps: Opportunity[] = [];
+    for (let i = 0; i < 40; i++) {
+      const base = existingOpportunity(
+        `opp-bulk-${i}`,
+        [
+          { networkId: 'idx-1', userId: 'user-a', role: 'party', intent: sharedIntent },
+          { networkId: 'idx-1', userId: 'user-b', role: 'party', intent: sharedIntent },
+        ],
+        MEANINGFUL.reasoning.aiMlCofounder
+      );
+      opps.push({ ...base, updatedAt: new Date(Date.UTC(2020, 0, 1 + i)) });
+    }
+    const db = { findOverlappingOpportunities: async () => opps };
+    const embedder = { generate: async () => [] } as unknown as Embedder;
+    const newData: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch),
+      actors: [
+        { networkId: 'idx-1', userId: 'user-a', role: 'party', intent: sharedIntent },
+        { networkId: 'idx-1', userId: 'user-b', role: 'party', intent: sharedIntent },
+      ],
+    };
+    const result = await enrichOrCreate(db, embedder, newData);
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toHaveLength(40);
+      expect(result.data.detection.enrichedFrom).toHaveLength(40);
+    }
+  });
+
   test('actor deduplication: same (networkId, userId, intent) appears once', async () => {
     const existing = existingOpportunity(
       'opp-old',
