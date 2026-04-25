@@ -157,7 +157,7 @@ describe('handleDailyDigest', () => {
     expect(subagentRunCalls[1].message).toContain(EVALUATOR_CONTENT);
   });
 
-  it('phase 2: delivery message includes frontendUrl in prompt', async () => {
+  it('phase 1: evaluator prompt includes pre-computed URLs from frontendUrl', async () => {
     global.fetch = mock(async () =>
       new Response(JSON.stringify({
         opportunities: [
@@ -174,7 +174,10 @@ describe('handleDailyDigest', () => {
       maxCount: 5,
     });
 
-    expect(subagentRunCalls[1].message).toContain('https://dev.index.network');
+    const evaluatorPrompt = subagentRunCalls[0].message;
+    expect(evaluatorPrompt).toContain('https://dev.index.network/u/user-1');
+    expect(evaluatorPrompt).toContain('https://dev.index.network/opportunities/opp-1/accept');
+    expect(evaluatorPrompt).toContain('https://dev.index.network/opportunities/opp-1/skip');
   });
 
   it('returns false when no opportunities pending', async () => {

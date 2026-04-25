@@ -108,19 +108,6 @@ describe('dispatchDelivery', () => {
     expect(call.message).toContain('[View Profile](https://dev.index.network/u/abc123)');
   });
 
-  test('prompt includes temporal awareness instructions', async () => {
-    const api = makeApi({ runId: 'run-temporal' });
-
-    await dispatchDelivery(api, {
-      contentType: 'ambient_discovery',
-      content: 'New match.',
-      idempotencyKey: 'idem-temporal',
-    });
-
-    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('conversation history');
-  });
-
   test('passes model string from configGet to subagent', async () => {
     const api = makeApi({ runId: 'run-model-1' }, undefined, 'anthropic/claude-sonnet-4-6');
 
