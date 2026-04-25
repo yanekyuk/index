@@ -94,18 +94,19 @@ describe('dispatchDelivery', () => {
     expect(call.message).toContain('New match found.');
   });
 
-  test('prompt includes instruction to preserve markdown links from content', async () => {
-    const api = makeApi({ runId: 'run-preserve-links' });
+  test('prompt includes URL embedding rules for semantic link placement', async () => {
+    const api = makeApi({ runId: 'run-url-embed' });
 
     await dispatchDelivery(api, {
       contentType: 'ambient_discovery',
-      content: 'New match found. [View Profile](https://dev.index.network/u/abc123)',
-      idempotencyKey: 'idem-preserve',
+      content: '---\nopportunityId: opp-1\nname: Alice\nprofileUrl: https://dev.index.network/u/abc123\n---',
+      idempotencyKey: 'idem-url-embed',
     });
 
     const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('Preserve all markdown links from the content as-is');
-    expect(call.message).toContain('[View Profile](https://dev.index.network/u/abc123)');
+    expect(call.message).toContain('URL embedding rules');
+    expect(call.message).toContain('Link the person\'s name to their profileUrl');
+    expect(call.message).toContain('Do NOT add separate link sections');
   });
 
   test('passes model string from configGet to subagent', async () => {

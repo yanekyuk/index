@@ -48,4 +48,27 @@ describe('digestEvaluatorPrompt', () => {
     expect(prompt).toContain('rank');
     expect(prompt).not.toContain('Reject weak');
   });
+
+  it('uses structured output format instead of markdown links', () => {
+    const prompt = digestEvaluatorPrompt(
+      [
+        {
+          opportunityId: 'opp-1',
+          userId: 'user-1',
+          headline: 'H1',
+          personalizedSummary: 'S1',
+          suggestedAction: 'A1',
+          narratorRemark: '',
+          profileUrl: 'https://example.com/u/user-1',
+          acceptUrl: 'https://example.com/opportunities/opp-1/accept',
+          skipUrl: 'https://example.com/opportunities/opp-1/skip',
+        },
+      ],
+      10,
+    );
+    expect(prompt).toContain('opportunityId: <id from candidate data>');
+    expect(prompt).toContain('profileUrl: <exact profileUrl from candidate data>');
+    expect(prompt).not.toContain('[Name](profileUrl)');
+    expect(prompt).not.toContain('[Connect');
+  });
 });

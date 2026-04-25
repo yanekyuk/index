@@ -37,11 +37,17 @@ function channelStyleBlock(channel: DeliveryChannel): string {
     return [
       'CHANNEL: Telegram (Markdown — the gateway converts to HTML automatically)',
       'Format rules:',
-      '- Use **bold** for opportunity headlines.',
+      '- Use **bold** for headlines.',
       '- Keep messages concise and chat-friendly. No markdown tables.',
       '- Use [text](url) for hyperlinks — they render as tappable links in Telegram.',
       '- Do NOT use raw HTML tags — they will be escaped and shown literally.',
-      '- Preserve all markdown links from the content as-is. Do not construct, modify, or remove URLs.',
+      '',
+      'URL embedding rules:',
+      '- The CONTENT block contains structured opportunity data with URLs.',
+      '- Link the person\'s name to their profileUrl: e.g. [Myles](profileUrl)',
+      '- Weave accept/skip into the text naturally: e.g. "[Connect](acceptUrl) · [Skip](skipUrl)"',
+      '- Do NOT add separate link sections, raw URLs, or title-style "(url)" annotations.',
+      '- Use the exact URLs from the structured data — do not modify or construct URLs.',
     ].join('\n');
   }
   return `CHANNEL: ${channel}`;
@@ -52,15 +58,18 @@ function contentTypeContextBlock(contentType: DeliveryContentType): string {
     case 'ambient_discovery':
       return [
         'CONTENT TYPE: Real-time opportunity alert.',
-        'Surface only signal-rich matches. For each opportunity include the headline,',
-        'a one-sentence reason it\'s relevant, and the action links from the content.',
-        'Keep it to 2-3 lines per opportunity max.',
+        'Start with a one-sentence intro that makes clear this is a real-time alert, e.g. "⚡ A new connection just surfaced."',
+        'The content contains structured opportunity blocks with name, headline, summary, and URLs.',
+        'For each opportunity, compose a concise message (2-3 lines max) weaving the URLs',
+        'into natural text per the URL embedding rules above.',
       ].join('\n');
     case 'daily_digest':
       return [
         'CONTENT TYPE: Daily digest of ranked opportunities.',
-        'Present as a numbered list. For each entry: headline, one-sentence summary,',
-        'and the action links from the content. Add a brief intro line (e.g. "Here are today\'s top opportunities:").',
+        'Start with a one-sentence intro that makes clear this is a daily digest, e.g. "📋 Your daily digest is ready."',
+        'The content contains structured opportunity blocks with name, headline, summary, and URLs.',
+        'For each entry compose a concise message weaving the URLs',
+        'into natural text per the URL embedding rules above. Use a numbered list.',
       ].join('\n');
     case 'test_message':
       return [
