@@ -8,16 +8,10 @@ import {
   McpServer,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
-
-import { createDefaultProtocolDeps } from '../protocol-init';
-
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, OpportunityPresenter, createMcpServer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory } from '@indexnetwork/protocol';
 
- 
- 
- 
- 
+import { createDefaultProtocolDeps } from '../protocol-init';
 import { BASE_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 

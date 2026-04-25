@@ -187,8 +187,16 @@ async function rehydrateOpportunitiesFromDatabase(
   return Promise.all(
     opportunities.map(async (o) => {
       if (!o.id) return o;
-      const fresh = await database.getOpportunity(o.id);
-      return fresh ?? o;
+      try {
+        const fresh = await database.getOpportunity(o.id);
+        return fresh ?? o;
+      } catch (err) {
+        logger.warn("[rehydrateOpportunitiesFromDatabase] Failed to reload opportunity; using stale snapshot", {
+          opportunityId: o.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return o;
+      }
     }),
   );
 }
