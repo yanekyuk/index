@@ -21,7 +21,7 @@ Flow:
 2. Call `POST /opportunities/:id/start-chat`
 3. **Success** — redirect to `/chat/:conversationId`
 4. **Already accepted** — `startChat()` now handles this idempotently (see backend section), returns `{ conversationId }`, redirect to `/chat/:conversationId`
-5. **Not authenticated** — redirect to `/login`
+5. **Not authenticated** — redirect to `/` (home shows auth modal)
 6. **Not authorized / not found** — show error with "Go Home" button
 
 File: `frontend/src/app/opportunities/[id]/accept/page.tsx`
@@ -35,7 +35,7 @@ Flow:
 2. Call `PATCH /opportunities/:id/status` with `{ status: "rejected" }`
 3. **Success** — redirect to `/` with toast "Opportunity skipped"
 4. **Already rejected/expired** — redirect to `/` silently (already done)
-5. **Not authenticated** — redirect to `/login`
+5. **Not authenticated** — redirect to `/` (home shows auth modal)
 6. **Not authorized / not found** — show error with "Go Home" button
 
 File: `frontend/src/app/opportunities/[id]/skip/page.tsx`
