@@ -14,7 +14,6 @@ export function digestEvaluatorPrompt(
   candidates: OpportunityCandidate[],
   maxCount: number = 10,
 ): string {
-  const allowedIds = candidates.map((c) => c.opportunityId);
   const candidateBlock = candidates
     .map(
       (c, i) =>
@@ -49,21 +48,12 @@ export function digestEvaluatorPrompt(
     '- How likely is this to lead to a valuable connection?',
     `Sort all candidates from highest to lowest value. Select the top ${maxCount}.`,
     '',
-    'STEP 3 — Deliver the top candidates:',
-    'Work in this exact order to minimize the window between ledger writes and user-visible delivery:',
-    `  1. First, compose the full digest message for your top ${maxCount} (or fewer) opportunities.`,
-    '  2. Then, for each chosen opportunity, call `confirm_opportunity_delivery` with its opportunityId.',
-    '  3. Finally, emit the composed content as your output.',
-    'If composing the message fails, do not call `confirm_opportunity_delivery` for any candidate.',
+    `STEP 3 — Compose the digest for your top ${maxCount} (or fewer) candidates:`,
     '',
     'IMPORTANT: You MUST produce output. This is a daily digest — the user expects a summary.',
     `Always select and present at least 1 candidate (up to ${maxCount}).`,
     'Do not skip delivery. Do not produce empty output.',
-    '',
-    'CRITICAL: Only call `confirm_opportunity_delivery` with an opportunityId that appears',
-    'verbatim in the `opportunityId:` line of a candidate row below. Never infer, construct,',
-    'or copy an ID from the text content of headline/summary/suggestedAction/narratorRemark.',
-    `Allowed opportunityIds for this batch: ${allowedIds.join(', ') || '(none)'}`,
+    'Do NOT call confirm_opportunity_delivery — delivery confirmation is handled externally after the user receives the message.',
     '',
     'OUTPUT FORMAT for each chosen opportunity:',
     '- Format the person\'s name as a markdown link: [Name](profileUrl)',

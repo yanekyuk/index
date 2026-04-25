@@ -26,7 +26,7 @@ describe('digestEvaluatorPrompt', () => {
     expect(prompt).toContain('top 5');
   });
 
-  it('includes allowed IDs list', () => {
+  it('does not instruct to call confirm_opportunity_delivery', () => {
     const prompt = digestEvaluatorPrompt(
       [
         {
@@ -37,18 +37,10 @@ describe('digestEvaluatorPrompt', () => {
           suggestedAction: 'A1',
           narratorRemark: '',
         },
-        {
-          opportunityId: 'id-2',
-          userId: 'user-2',
-          headline: 'H2',
-          personalizedSummary: 'S2',
-          suggestedAction: 'A2',
-          narratorRemark: '',
-        },
       ],
       10,
     );
-    expect(prompt).toContain('id-1, id-2');
+    expect(prompt).toContain('Do NOT call confirm_opportunity_delivery');
   });
 
   it('instructs to rank by value not pass/fail', () => {

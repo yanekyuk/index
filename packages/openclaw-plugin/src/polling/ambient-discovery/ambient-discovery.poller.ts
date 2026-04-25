@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { readModel } from '../../lib/openclaw/plugin-api.js';
 import { isDeliveryConfigured, dispatchDelivery, EVALUATOR_TIMEOUT_MS } from '../../lib/delivery/delivery.dispatcher.js';
+import { extractSelectedIds, confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { opportunityEvaluatorPrompt } from './opportunity-evaluator.prompt.js';
 
@@ -18,15 +19,19 @@ export interface AmbientDiscoveryConfig {
 }
 
 /**
- * Handles one ambient discovery poll cycle using a two-phase pipeline:
+ * Handles one ambient discovery poll cycle using a three-phase pipeline:
  *
  * Phase 1 — Evaluator subagent (deliver: false, own session):
- *   Evaluates candidates, calls confirm_opportunity_delivery for selected ones,
- *   outputs plain content with no formatting instructions.
+ *   Evaluates candidates, selects high-value ones, and outputs plain content.
  *
  * Phase 2 — Delivery (via dispatchDelivery):
  *   Captures evaluator output via waitForRun + getSessionMessages, then
  *   dispatches it through the delivery dispatcher which applies channel styling.
+ *   Waits for delivery to complete before proceeding.
+ *
+ * Phase 3 — Confirm (direct HTTP):
+ *   After delivery succeeds, extracts selected opportunity IDs from the
+ *   evaluator output and confirms them via the batch-confirm backend endpoint.
  *
  * @param api - The OpenClaw plugin API instance.
  * @param config - Configuration for the ambient discovery poller.
@@ -165,13 +170,27 @@ export async function handle(
   }
 
   // Phase 2: dispatch to user via delivery dispatcher.
+  // Idempotency key uses the eval runId so a new eval run busts the cache.
   const dispatchResult = await dispatchDelivery(api, {
     contentType: 'ambient_discovery',
     content,
-    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
+    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${runId}`,
   });
 
   if (dispatchResult === null) {
+    return false;
+  }
+
+  // Wait for delivery to complete before confirming.
+  try {
+    await api.runtime.subagent.waitForRun({
+      runId: dispatchResult.runId,
+      timeoutMs: EVALUATOR_TIMEOUT_MS,
+    });
+  } catch (err) {
+    api.logger.warn(
+      `Ambient delivery timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return false;
   }
 
@@ -181,6 +200,17 @@ export async function handle(
     `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) evaluated`,
     { agentId: config.agentId },
   );
+
+  // Phase 3: confirm selected opportunities after successful delivery.
+  const batchIds = body.opportunities.map((o) => o.opportunityId);
+  const selectedIds = extractSelectedIds(content, batchIds);
+  await confirmDeliveredBatch({
+    baseUrl: config.baseUrl,
+    agentId: config.agentId,
+    apiKey: config.apiKey,
+    opportunityIds: selectedIds,
+    logger: api.logger,
+  });
 
   return true;
 }

@@ -180,9 +180,11 @@ describe('handleOpportunityBatch', () => {
     const fake = buildFakeApi();
     await handleOpportunityBatch(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: 'https://test.index.network' });
 
-    expect(fake.waitForRunCalls).toHaveLength(1);
+    expect(fake.waitForRunCalls).toHaveLength(2);
     expect(fake.waitForRunCalls[0].runId).toBe('fake-run-id-1');
     expect(fake.waitForRunCalls[0].timeoutMs).toBeGreaterThan(0);
+    expect(fake.waitForRunCalls[1].runId).toBe('fake-run-id-2');
+    expect(fake.waitForRunCalls[1].timeoutMs).toBeGreaterThan(0);
   });
 
   test('getSessionMessages is called with evaluator session key', async () => {

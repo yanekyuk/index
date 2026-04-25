@@ -14,6 +14,8 @@ export function buildDispatcherPrompt(
   const lines = [
     'You are delivering a message to the user via their active OpenClaw gateway.',
     'Always deliver the content below — do not skip or suppress it.',
+    'IMPORTANT: Do NOT call any tools — not to look up profiles, confirm deliveries, or read data.',
+    'Everything you need is in the CONTENT block below. Format it and output it as text.',
   ];
 
   lines.push(
