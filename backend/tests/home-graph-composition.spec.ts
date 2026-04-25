@@ -3,12 +3,31 @@ config({ path: '.env.development' });
 
 import { describe, it, expect } from 'bun:test';
 import { selectByComposition } from '@indexnetwork/protocol';
+import { ChatDatabaseAdapter } from '../src/adapters/database.adapter';
 
 /**
  * Tests that home graph's load step uses selectByComposition instead of plain .slice().
  * We verify this indirectly by importing the home graph module and checking that
  * selectByComposition is imported (code path verification is in the integration scope).
  */
+
+describe('ChatDatabaseAdapter HomeGraphDatabase contract', () => {
+  it('exposes getNegotiationTaskForOpportunity required by HomeGraphDatabase', () => {
+    const adapter = new ChatDatabaseAdapter();
+    expect(typeof adapter.getNegotiationTaskForOpportunity).toBe('function');
+  });
+
+  it('exposes getMessagesForConversation required by HomeGraphDatabase', () => {
+    const adapter = new ChatDatabaseAdapter();
+    expect(typeof adapter.getMessagesForConversation).toBe('function');
+  });
+
+  it('exposes getArtifactsForTask required by HomeGraphDatabase', () => {
+    const adapter = new ChatDatabaseAdapter();
+    expect(typeof adapter.getArtifactsForTask).toBe('function');
+  });
+});
+
 describe('home.graph.ts composition import', () => {
   it('selectByComposition is exported and callable', () => {
     expect(typeof selectByComposition).toBe('function');

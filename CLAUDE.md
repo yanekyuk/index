@@ -406,7 +406,9 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
    - `docs/specs/` — if public interfaces changed (API endpoints, CLI commands)
    - `docs/guides/` — if dev workflow or environment setup changed
 2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
-3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
+3. **Bump package versions** for every package touched by the branch, following [Semantic Versioning 2.0.0](https://semver.org/). Do this before merging or pushing — never skip it.
+   - **`packages/openclaw-plugin/`**: bump **both** `package.json` AND `openclaw.plugin.json` to the same version. The CLI reads `openclaw.plugin.json`; mismatched versions silently look like a no-op install.
+   - **`packages/cli/`** and **`packages/protocol/`**: bump `package.json` version.
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
 5. Push both remotes: `git push upstream dev && git push origin dev`
 6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.

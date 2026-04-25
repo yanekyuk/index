@@ -1,0 +1,31 @@
+# Resets Neon branch `dev` to latest parent (`production`) on push to git `dev`.
+# Migrations run in Railway (RAILWAY_BUILD_COMMAND). Not a PR preview workflow.
+#
+# Requires Neon GitHub integration or manual setup:
+# https://neon.tech/docs/guides/branching-github-actions
+name: Reset Neon dev from production
+
+on:
+  push:
+    branches: [dev]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  reset_neon_dev:
+    name: Reset Neon dev branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reset dev branch from production
+        id: reset_neon_dev
+        uses: neondatabase/reset-branch-action@v1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: dev
+          parent: true
+          api_key: ${{ secrets.NEON_API_KEY }}
+          cs_database: protocol_prod

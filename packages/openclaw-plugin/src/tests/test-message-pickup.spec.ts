@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
-import { _resetForTesting, handleTestMessagePickup } from '../index.js';
-import type { OpenClawPluginApi, SubagentRunOptions } from '../plugin-api.js';
+import { handle as handleTestMessagePickup } from '../polling/test-message/test-message.poller.js';
+import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plugin-api.js';
 
 interface FakeApi {
   api: OpenClawPluginApi;
@@ -33,6 +33,8 @@ function buildFakeApi(): FakeApi {
           subagentCalls.push(opts);
           return { runId: 'fake-run-id' };
         },
+        waitForRun: async () => ({ result: null }),
+        getSessionMessages: async () => ({ messages: [] }),
       },
     },
     logger,
@@ -45,18 +47,17 @@ function buildFakeApi(): FakeApi {
 const BASE_URL = 'http://localhost:3001';
 const AGENT_ID = 'agent-123';
 const API_KEY = 'test-api-key';
+const FRONTEND_URL = 'http://localhost:5173';
 
 describe('handleTestMessagePickup', () => {
   let originalFetch: typeof global.fetch;
 
   beforeEach(() => {
     originalFetch = global.fetch;
-    _resetForTesting();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
-    _resetForTesting();
   });
 
   test('204 response → returns false, no dispatch, no confirm POST', async () => {
@@ -67,7 +68,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -98,7 +99,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
 
     expect(result).toBe(true);
 
@@ -124,7 +125,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -148,7 +149,7 @@ describe('handleTestMessagePickup', () => {
 
     const fake = buildFakeApi();
     // Should not throw
-    const result = await handleTestMessagePickup(fake.api, BASE_URL, AGENT_ID, API_KEY);
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
 
     expect(result).toBe(true);
     expect(fake.subagentCalls).toHaveLength(1);

@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 
-import { dispatchDelivery } from '../delivery.dispatcher.js';
-import type { OpenClawPluginApi, SubagentRunResult } from '../plugin-api.js';
+import { dispatchDelivery } from '../lib/delivery/delivery.dispatcher.js';
+import type { OpenClawPluginApi, SubagentRunResult } from '../lib/openclaw/plugin-api.js';
 
 function makeApi(
   runResult: SubagentRunResult,
@@ -15,6 +15,8 @@ function makeApi(
     runtime: {
       subagent: {
         run: mock(() => Promise.resolve(runResult)),
+        waitForRun: mock(() => Promise.resolve({ result: null })),
+        getSessionMessages: mock(() => Promise.resolve({ messages: [] })),
       },
     },
     logger: {
@@ -31,87 +33,141 @@ function makeApi(
 }
 
 describe('dispatchDelivery', () => {
-  test('builds session key from pluginConfig and calls subagent.run with deliver: true', async () => {
-    const runResult: SubagentRunResult = { runId: 'run-abc-123' };
-    const api = makeApi(runResult);
+  test('calls subagent.run with deliver:true and correct sessionKey', async () => {
+    const api = makeApi({ runId: 'run-abc-123' });
 
-    const request = {
-      rendered: { headline: 'New match found', body: 'Alice is looking for a TypeScript engineer.' },
+    const result = await dispatchDelivery(api, {
+      contentType: 'ambient_discovery',
+      content: 'Alice is looking for a TypeScript engineer.',
       idempotencyKey: 'idem-001',
-    };
+    });
 
-    const result = await dispatchDelivery(api, request);
-
-    expect(result).toEqual(runResult);
+    expect(result).toEqual({ runId: 'run-abc-123' });
     expect(api.runtime.subagent.run).toHaveBeenCalledTimes(1);
 
-    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(callArgs.sessionKey).toBe('agent:main:telegram:direct:69340471');
-    expect(callArgs.idempotencyKey).toBe('idem-001');
-    expect(callArgs.deliver).toBe(true);
-    expect(callArgs.message).toContain('New match found');
-    expect(callArgs.message).toContain('Alice is looking for a TypeScript engineer.');
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.sessionKey).toBe('agent:main:telegram:direct:69340471');
+    expect(call.idempotencyKey).toBe('idem-001');
+    expect(call.deliver).toBe(true);
+    expect(call.message).toContain('Alice is looking for a TypeScript engineer.');
   });
 
-  test('the prompt interpolates both headline and body', async () => {
-    const api = makeApi({ runId: 'run-999' });
+  test('prompt includes channel style block', async () => {
+    const api = makeApi({ runId: 'run-channel' });
 
-    const request = {
-      rendered: {
-        headline: 'Opportunity Update',
-        body: 'Bob wants to connect about the seed round.',
-      },
-      idempotencyKey: 'idem-002',
-    };
+    await dispatchDelivery(api, {
+      contentType: 'test_message',
+      content: 'Hello world',
+      idempotencyKey: 'idem-channel',
+    });
 
-    await dispatchDelivery(api, request);
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.message).toContain('Telegram');
+    expect(call.message).toContain('Hello world');
+  });
 
-    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(callArgs.message).toContain('# Opportunity Update');
-    expect(callArgs.message).toContain('Bob wants to connect about the seed round.');
+  test('prompt includes content-type context for daily_digest', async () => {
+    const api = makeApi({ runId: 'run-ct-digest' });
+
+    await dispatchDelivery(api, {
+      contentType: 'daily_digest',
+      content: 'Three opportunities today.',
+      idempotencyKey: 'idem-digest',
+    });
+
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.message).toContain('Daily digest');
+    expect(call.message).toContain('Three opportunities today.');
+  });
+
+  test('prompt includes content-type context for ambient_discovery', async () => {
+    const api = makeApi({ runId: 'run-ct-ambient' });
+
+    await dispatchDelivery(api, {
+      contentType: 'ambient_discovery',
+      content: 'New match found.',
+      idempotencyKey: 'idem-ambient',
+    });
+
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.message).toContain('Real-time opportunity alert');
+    expect(call.message).toContain('New match found.');
+  });
+
+  test('prompt includes frontendUrl in channel style block when provided', async () => {
+    const api = makeApi({ runId: 'run-frontend-url' });
+
+    await dispatchDelivery(api, {
+      contentType: 'ambient_discovery',
+      content: 'New match found.',
+      idempotencyKey: 'idem-frontend',
+      frontendUrl: 'https://dev.index.network',
+    });
+
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.message).toContain('https://dev.index.network');
+    expect(call.message).toContain('[View Profile](https://dev.index.network/u/{userId})');
+    expect(call.message).toContain('[Start Chat ›](https://dev.index.network/u/{userId}/chat)');
+  });
+
+  test('prompt includes temporal awareness instructions', async () => {
+    const api = makeApi({ runId: 'run-temporal' });
+
+    await dispatchDelivery(api, {
+      contentType: 'ambient_discovery',
+      content: 'New match.',
+      idempotencyKey: 'idem-temporal',
+    });
+
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.message).toContain('conversation history');
   });
 
   test('passes model string from configGet to subagent', async () => {
     const api = makeApi({ runId: 'run-model-1' }, undefined, 'anthropic/claude-sonnet-4-6');
 
     await dispatchDelivery(api, {
-      rendered: { headline: 'h', body: 'b' },
+      contentType: 'test_message',
+      content: 'hi',
       idempotencyKey: 'idem-model-1',
     });
 
-    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(callArgs.model).toBe('anthropic/claude-sonnet-4-6');
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.model).toBe('anthropic/claude-sonnet-4-6');
   });
 
   test('passes primary from configGet object to subagent', async () => {
     const api = makeApi({ runId: 'run-model-2' }, undefined, { primary: 'anthropic/claude-opus-4-6' });
 
     await dispatchDelivery(api, {
-      rendered: { headline: 'h', body: 'b' },
+      contentType: 'test_message',
+      content: 'hi',
       idempotencyKey: 'idem-model-2',
     });
 
-    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(callArgs.model).toBe('anthropic/claude-opus-4-6');
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.model).toBe('anthropic/claude-opus-4-6');
   });
 
   test('passes undefined model when configGet is absent', async () => {
     const api = makeApi({ runId: 'run-model-3' });
 
     await dispatchDelivery(api, {
-      rendered: { headline: 'h', body: 'b' },
+      contentType: 'test_message',
+      content: 'hi',
       idempotencyKey: 'idem-model-3',
     });
 
-    const callArgs = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(callArgs.model).toBeUndefined();
+    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
+    expect(call.model).toBeUndefined();
   });
 
   test('returns null and skips subagent.run when deliveryChannel is missing', async () => {
     const api = makeApi({ runId: 'unused' }, { deliveryTarget: '123' });
 
     const result = await dispatchDelivery(api, {
-      rendered: { headline: 'h', body: 'b' },
+      contentType: 'test_message',
+      content: 'hi',
       idempotencyKey: 'idem-003',
     });
 
@@ -124,7 +180,8 @@ describe('dispatchDelivery', () => {
     const api = makeApi({ runId: 'unused' }, { deliveryChannel: 'telegram' });
 
     const result = await dispatchDelivery(api, {
-      rendered: { headline: 'h', body: 'b' },
+      contentType: 'test_message',
+      content: 'hi',
       idempotencyKey: 'idem-004',
     });
 

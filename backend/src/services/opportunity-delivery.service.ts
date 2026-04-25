@@ -56,6 +56,7 @@ export interface PickupPendingResult {
 
 export interface PendingCandidate {
   opportunityId: string;
+  counterpartUserId: string | null;
   rendered: RenderedCard;
 }
 
@@ -349,10 +350,15 @@ export class OpportunityDeliveryService {
     });
 
     const candidates = await Promise.all(
-      visible.map(async (row) => ({
-        opportunityId: row.id,
-        rendered: await this.renderOpportunityCard(row.id, userId),
-      })),
+      visible.map(async (row) => {
+        const actors = row.actors as Array<{ userId: string; role: string }>;
+        const counterpart = actors.find((a) => a.userId !== userId);
+        return {
+          opportunityId: row.id,
+          counterpartUserId: counterpart?.userId ?? null,
+          rendered: await this.renderOpportunityCard(row.id, userId),
+        };
+      }),
     );
 
     return candidates;
