@@ -108,7 +108,13 @@ function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
 }
 
-const DEFAULT_TEST_MESSAGE = "Hello from Index Network — this is a test delivery.";
+const DEFAULT_TEST_MESSAGE = [
+  "🔔 New opportunity: AI-Assisted Developer Tooling",
+  "",
+  "Alice Park (user:00000000-0000-0000-0000-000000000001) is building an LLM-powered code review tool & looking for early design partners with TypeScript expertise.",
+  "",
+  "Relevance: strong overlap with your signals around developer experience & LLM integrations.",
+].join("\n");
 
 function SendTestMessageDialog({
   agentId,
@@ -150,13 +156,14 @@ function SendTestMessageDialog({
             Send test message
           </Dialog.Title>
           <Dialog.Description className="text-sm text-gray-600 mb-4">
-            This message will be delivered to your OpenClaw gateway via the MCP
-            transport. Edit if needed, then hit Send.
+            Tests the full delivery pipeline: the default content includes a
+            headline, user reference, and multi-line structure so you can verify
+            bold, links, and HTML formatting render correctly. Edit if needed.
           </Dialog.Description>
           <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            rows={4}
+            rows={6}
             disabled={sending}
             className="w-full mb-4 font-mono text-sm"
           />
@@ -584,7 +591,7 @@ function WizardPromptGrid({
         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Value</span>
       </div>
       <div className="grid grid-cols-2">
-        <WizardRow prompt="Server URL" description="Index Network API endpoint" value={serverUrl} copyable />
+        <WizardRow prompt="URL" description="Index Network URL" value={serverUrl} copyable />
         <WizardRow prompt="Agent ID" description="Your personal agent's unique identifier" value={agentId} copyable />
         <WizardRow prompt="API Key" description="The API key you just generated" value={apiKey} copyable />
         <div className="col-span-2 px-3 py-2 border-b border-gray-200 bg-gray-100">
@@ -662,6 +669,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   const agentValue = agentId || "YOUR_AGENT_ID";
 
   const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
+  const baseUrl = window.location.origin;
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -713,7 +721,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
-            <WizardPromptGrid serverUrl={protocolUrl} agentId={agentValue} apiKey={keyValue} />
+            <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
           </div>
         </div>
       )}

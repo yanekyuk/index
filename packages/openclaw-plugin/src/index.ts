@@ -24,6 +24,7 @@ import * as ambientDiscoveryScheduler from './polling/ambient-discovery/ambient-
 import * as testMessagePoller from './polling/test-message/test-message.poller.js';
 import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
 import { registerSetupCli } from './setup/setup.cli.js';
+import { deriveUrls } from './lib/utils/url.js';
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
@@ -45,7 +46,7 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
         .description('Manage Index Network plugin configuration');
       registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
     },
-    { commands: ['index-network'] },
+    { descriptors: [{ name: 'index-network', description: 'Manage Index Network plugin configuration' }] },
   );
 }
 
@@ -113,7 +114,15 @@ export function register(api: OpenClawPluginApi): void {
     return;
   }
 
-  const baseUrl = readConfig(api, 'protocolUrl') || 'https://protocol.index.network';
+  const urlFromConfig = readConfig(api, 'url');
+  const legacyProtocolUrl = readConfig(api, 'protocolUrl');
+  if (!urlFromConfig && legacyProtocolUrl) {
+    api.logger.warn(
+      'Plugin config uses deprecated "protocolUrl". Run `openclaw index-network setup` to migrate to the new "url" field.',
+    );
+  }
+  const configUrl = urlFromConfig || legacyProtocolUrl || 'https://index.network';
+  const { protocolUrl: baseUrl, frontendUrl } = deriveUrls(configUrl);
   ensureMcpServer(api, baseUrl, apiKey);
   const gatewayPort = api.config?.gateway?.port ?? 18789;
   const gatewayToken = api.config?.gateway?.auth?.token ?? '';
@@ -125,7 +134,7 @@ export function register(api: OpenClawPluginApi): void {
     match: 'exact',
     handler: async (_req, res) => {
       try {
-        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey });
+        await testMessagePoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
         res.statusCode = 200;
         res.end('ok');
       } catch (err) {
@@ -179,7 +188,7 @@ export function register(api: OpenClawPluginApi): void {
     match: 'exact',
     handler: async (_req, res) => {
       try {
-        const result = await ambientDiscoveryPoller.handle(api, { baseUrl, agentId, apiKey });
+        const result = await ambientDiscoveryPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
         if (!result) {
           ambientDiscoveryScheduler.increaseBackoff(api.logger);
         } else {
@@ -215,7 +224,7 @@ export function register(api: OpenClawPluginApi): void {
     dailyDigestScheduler.start({
       digestTime,
       logger: api.logger,
-      onTrigger: async () => { await dailyDigestPoller.handle(api, { baseUrl, agentId, apiKey, maxCount: digestMaxCount }); },
+      onTrigger: async () => { await dailyDigestPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl, maxCount: digestMaxCount }); },
     });
   }
 
@@ -246,7 +255,7 @@ function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void
   }).catch(() => {
     api.logger.warn(
       `Cannot reach Index Network backend at ${baseUrl}. ` +
-      `Check that the backend is running and protocolUrl is correct in plugin config.`,
+      `Check that the backend is running and url is correct in plugin config.`,
     );
   });
 }

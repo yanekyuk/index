@@ -1,14 +1,85 @@
-export function deliveryPrompt(rendered: {
-  headline: string;
-  body: string;
-}): string {
-  return [
+export type DeliveryContentType =
+  | 'ambient_discovery'
+  | 'daily_digest'
+  | 'test_message'
+  | 'negotiation_accept';
+
+export type DeliveryChannel = 'telegram';
+
+export function buildDispatcherPrompt(
+  channel: DeliveryChannel,
+  contentType: DeliveryContentType,
+  content: string,
+  frontendUrl?: string,
+): string {
+  const lines = [
     'You are delivering a message to the user via their active OpenClaw gateway.',
-    'The content below was prepared by Index Network. Relay it faithfully — preserve substance, format for the gateway (concise, chat-friendly).',
-    'Do not summarize, rewrite, or add your own commentary. Do not ask the user for input.',
+    'Always deliver the content below — do not skip or suppress it.',
+  ];
+
+  lines.push(
     '',
-    `# ${rendered.headline}`,
+    channelStyleBlock(channel, frontendUrl),
     '',
-    rendered.body,
-  ].join('\n');
+    contentTypeContextBlock(contentType),
+    '',
+    '===== CONTENT =====',
+    content,
+    '===== END CONTENT =====',
+  );
+
+  return lines.join('\n');
+}
+
+function channelStyleBlock(channel: DeliveryChannel, frontendUrl?: string): string {
+  if (channel === 'telegram') {
+    const lines = [
+      'CHANNEL: Telegram (Markdown — the gateway converts to HTML automatically)',
+      'Format rules:',
+      '- Use **bold** for opportunity headlines.',
+      '- Keep messages concise and chat-friendly. No markdown tables.',
+      '- Use [text](url) for hyperlinks — they render as tappable links in Telegram.',
+      '- Do NOT use raw HTML tags — they will be escaped and shown literally.',
+    ];
+    if (frontendUrl) {
+      lines.push(
+        `- Base URL for links: ${frontendUrl}`,
+        '- For each opportunity that includes a userId, add these links:',
+        `  • [View Profile](${frontendUrl}/u/{userId}) — replace {userId} with the actual user ID`,
+        `  • [Start Chat ›](${frontendUrl}/u/{userId}/chat) — replace {userId} with the actual user ID`,
+        '- Place links on their own line after the opportunity summary.',
+      );
+    }
+    return lines.join('\n');
+  }
+  return `CHANNEL: ${channel}`;
+}
+
+function contentTypeContextBlock(contentType: DeliveryContentType): string {
+  switch (contentType) {
+    case 'ambient_discovery':
+      return [
+        'CONTENT TYPE: Real-time opportunity alert.',
+        'Surface only signal-rich matches. For each opportunity include the headline,',
+        'a one-sentence reason it\'s relevant, and the profile/chat links.',
+        'Keep it to 2-3 lines per opportunity max.',
+      ].join('\n');
+    case 'daily_digest':
+      return [
+        'CONTENT TYPE: Daily digest of ranked opportunities.',
+        'Present as a numbered list. For each entry: headline, one-sentence summary,',
+        'and profile/chat links. Add a brief intro line (e.g. "Here are today\'s top opportunities:").',
+      ].join('\n');
+    case 'test_message':
+      return [
+        'CONTENT TYPE: Delivery verification message.',
+        'Format the content using all the channel formatting rules above (bold headlines,',
+        'markdown links, etc.) so the user can verify that rich formatting renders correctly.',
+        'If the content mentions a user or profile, include sample profile/chat links.',
+      ].join('\n');
+    case 'negotiation_accept':
+      return 'CONTENT TYPE: Negotiation outcome notification — one short natural sentence.';
+    default:
+      return `CONTENT TYPE: ${contentType satisfies never}`;
+  }
 }

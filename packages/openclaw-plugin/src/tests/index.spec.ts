@@ -39,6 +39,12 @@ function buildFakeApi(
           subagentCalls.push(o);
           return { runId: 'fake-run-id' };
         },
+        waitForRun: async () => ({
+          result: undefined,
+        }),
+        getSessionMessages: async () => ({
+          messages: [],
+        }),
       },
     },
     logger,
@@ -90,7 +96,7 @@ describe('register(api)', () => {
 
   test('auto-registers MCP server when not present', () => {
     const fake = buildFakeApi(
-      { agentId: 'agent-1', apiKey: 'key-1', protocolUrl: 'https://protocol.index.network' },
+      { agentId: 'agent-1', apiKey: 'key-1', url: 'https://index.network' },
       { mcpServers: {} },
     );
     register(fake.api);
@@ -106,7 +112,7 @@ describe('register(api)', () => {
 
   test('skips MCP registration when already correct', () => {
     const fake = buildFakeApi(
-      { agentId: 'agent-1', apiKey: 'key-1', protocolUrl: 'https://protocol.index.network' },
+      { agentId: 'agent-1', apiKey: 'key-1', url: 'https://index.network' },
       {
         mcpServers: {
           'index-network': {
@@ -124,7 +130,7 @@ describe('register(api)', () => {
 
   test('updates MCP server when apiKey changes', () => {
     const fake = buildFakeApi(
-      { agentId: 'agent-1', apiKey: 'new-key', protocolUrl: 'https://protocol.index.network' },
+      { agentId: 'agent-1', apiKey: 'new-key', url: 'https://index.network' },
       {
         mcpServers: {
           'index-network': {
@@ -141,7 +147,7 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).headers['x-api-key']).toBe('new-key');
   });
 
-  test('uses default protocolUrl https://protocol.index.network when not set', () => {
+  test('uses default url https://index.network when not set', () => {
     const fake = buildFakeApi(
       { agentId: 'agent-1', apiKey: 'key-1' },
       { mcpServers: {} },
@@ -158,5 +164,21 @@ describe('register(api)', () => {
 
     const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
     expect(warnMsg).toContain('openclaw index-network setup');
+  });
+
+  test('falls back to protocolUrl and warns about migration', () => {
+    const fake = buildFakeApi(
+      { agentId: 'agent-1', apiKey: 'key-1', protocolUrl: 'https://protocol.index.network' },
+      { mcpServers: {} },
+    );
+    register(fake.api);
+
+    const warnCalls = fake.logger.warn.mock.calls as string[][];
+    const migrationWarn = warnCalls.find((args) => args[0].includes('deprecated'));
+    expect(migrationWarn).toBeTruthy();
+    expect(migrationWarn![0]).toContain('openclaw index-network setup');
+
+    expect(fake.configSetCalls.length).toBe(1);
+    expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
   });
 });

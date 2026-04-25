@@ -70,15 +70,15 @@ describe('setup wizard', () => {
     await setup(fake.ctx);
 
     const paths = fake.configWrites.map((w) => w.path);
-    expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl');
+    expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.url');
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.agentId');
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.apiKey');
     expect(paths).toContain('mcp.servers.index-network');
 
-    const protocolWrite = fake.configWrites.find(
-      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl',
+    const urlWrite = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.url',
     );
-    expect(protocolWrite?.value).toBe('https://protocol.index.network');
+    expect(urlWrite?.value).toBe('https://index.network');
 
     const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index-network');
     expect(mcpWrite?.value).toEqual({
@@ -88,10 +88,10 @@ describe('setup wizard', () => {
     });
   });
 
-  test('uses custom server URL when provided', async () => {
+  test('uses custom URL when provided', async () => {
     const fake = buildFakeCtx({
       promptResponses: {
-        'Server URL': 'http://localhost:3001',
+        'Index Network URL': 'https://dev.index.network',
         'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
@@ -100,13 +100,39 @@ describe('setup wizard', () => {
 
     await setup(fake.ctx);
 
-    const protocolWrite = fake.configWrites.find(
-      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl',
+    const urlWrite = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.url',
     );
-    expect(protocolWrite?.value).toBe('http://localhost:3001');
+    expect(urlWrite?.value).toBe('https://dev.index.network');
 
     const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index-network');
-    expect((mcpWrite?.value as { url: string }).url).toBe('http://localhost:3001/mcp');
+    expect((mcpWrite?.value as { url: string }).url).toBe('https://protocol.dev.index.network/mcp');
+  });
+
+  test('migrates legacy protocolUrl to url on re-run', async () => {
+    const fake = buildFakeCtx({
+      existingConfig: { protocolUrl: 'https://protocol.dev.index.network' },
+      promptResponses: {
+        'Agent ID': 'agent-123',
+        'API key': 'key-456',
+      },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const urlPrompt = fake.promptCalls.find((p) => p.label === 'Index Network URL');
+    expect(urlPrompt?.opts?.default).toBe('https://dev.index.network');
+
+    const urlWrite = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.url',
+    );
+    expect(urlWrite?.value).toBe('https://dev.index.network');
+
+    const protocolUrlClear = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl',
+    );
+    expect(protocolUrlClear?.value).toBeUndefined();
   });
 
   test('throws if Agent ID is empty', async () => {

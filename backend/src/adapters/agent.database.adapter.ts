@@ -307,13 +307,47 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       .where(eq(schema.agentTransports.id, transportId));
   }
 
+  /**
+   * Grant a permission to an agent for a user. Global-scope permissions are upserted
+   * (actions updated on conflict via partial unique index). Non-global scopes have no
+   * unique constraint — repeated calls create additional rows.
+   * @param input - permission details including agentId, userId, scope, and actions
+   * @returns the created or updated permission row
+   */
   async grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow> {
+    const isGlobal = (input.scope ?? 'global') === 'global';
+
+    if (isGlobal) {
+      const [row] = await db
+        .insert(schema.agentPermissions)
+        .values({
+          agentId: input.agentId,
+          userId: input.userId,
+          scope: 'global',
+          scopeId: null,
+          actions: input.actions,
+        })
+        .onConflictDoUpdate({
+          target: [schema.agentPermissions.agentId, schema.agentPermissions.userId],
+          targetWhere: sql`${schema.agentPermissions.scope} = 'global'`,
+          set: { actions: input.actions },
+        })
+        .returning();
+
+      logger.info('Granted agent permission', {
+        agentId: input.agentId,
+        permissionId: row.id,
+        userId: input.userId,
+      });
+      return this.toPermissionRow(row);
+    }
+
     const [row] = await db
       .insert(schema.agentPermissions)
       .values({
         agentId: input.agentId,
         userId: input.userId,
-        scope: input.scope ?? 'global',
+        scope: input.scope!,
         scopeId: input.scopeId ?? null,
         actions: input.actions,
       })
