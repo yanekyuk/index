@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Loader2 } from "lucide-react";
 
@@ -12,6 +12,8 @@ export default function SkipOpportunityPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const { info } = useNotifications();
+  const infoRef = useRef(info);
+  useEffect(() => { infoRef.current = info; }, [info]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,8 +28,8 @@ export default function SkipOpportunityPage() {
       try {
         await opportunitiesService.updateStatus(id!, "rejected");
         if (!cancelled) {
-          info("Opportunity skipped");
           navigate("/", { replace: true });
+          setTimeout(() => infoRef.current("Opportunity skipped"), 0);
         }
       } catch (err: unknown) {
         if (cancelled) return;
@@ -41,7 +43,7 @@ export default function SkipOpportunityPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [id, authLoading, isAuthenticated, navigate, opportunitiesService, info]);
+  }, [id, authLoading, isAuthenticated, navigate, opportunitiesService]);
 
   if (error) {
     return (

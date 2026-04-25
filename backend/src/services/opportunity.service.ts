@@ -437,6 +437,10 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
     if (opp.status === 'accepted') {
+      const isActor = opp.actors.some((a) => a.userId === userId);
+      if (!isActor) {
+        return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+      }
       const counterpart =
         opp.actors.find((a) => a.role !== 'introducer' && a.userId !== userId)
         ?? opp.actors.find((a) => a.userId !== userId);

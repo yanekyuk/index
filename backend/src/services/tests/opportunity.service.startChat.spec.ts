@@ -110,6 +110,18 @@ describe('OpportunityService.startChat', () => {
     expect(db.upsertContactMembership).not.toHaveBeenCalled();
   });
 
+  it('rejects with 403 when caller is not an actor on an accepted opportunity', async () => {
+    const opp = makeOpportunity({ status: 'accepted' });
+    const { service, db } = makeServiceWithDb(opp);
+
+    const result = await service.startChat(OPP_ID, 'user-stranger-999');
+
+    expect('error' in result).toBe(true);
+    if (!('error' in result)) return;
+    expect(result.status).toBe(403);
+    expect(db.getOrCreateDM).not.toHaveBeenCalled();
+  });
+
   it('rejects with 400 when opportunity is rejected or expired', async () => {
     for (const status of ['rejected', 'expired'] as const) {
       const opp = makeOpportunity({ status });
