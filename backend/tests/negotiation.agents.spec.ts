@@ -2,8 +2,7 @@ import { config } from "dotenv";
 config({ path: ".env.development" });
 
 import { describe, it, expect } from "bun:test";
-import { NegotiationProposer } from "@indexnetwork/protocol";
-import { NegotiationResponder } from "@indexnetwork/protocol";
+import { IndexNegotiator } from "@indexnetwork/protocol";
 import type { UserNegotiationContext, SeedAssessment, NegotiationTurn } from "@indexnetwork/protocol";
 
 const sourceUser: UserNegotiationContext = {
@@ -19,55 +18,49 @@ const candidateUser: UserNegotiationContext = {
 };
 
 const seedAssessment: SeedAssessment = {
-  score: 78,
   reasoning: "Strong complementary skills between product management and ML engineering",
   valencyRole: "Peer",
 };
 
-describe("NegotiationProposer", () => {
+describe("IndexNegotiator (proposer)", () => {
   it("generates a valid proposal turn", async () => {
-    const proposer = new NegotiationProposer();
-    const result = await proposer.invoke({
+    const negotiator = new IndexNegotiator();
+    const result = await negotiator.invoke({
       ownUser: sourceUser,
       otherUser: candidateUser,
-      indexContext: { indexId: "idx-1", prompt: "AI startup co-founders" },
+      indexContext: { networkId: "idx-1", prompt: "AI startup co-founders" },
       seedAssessment,
       history: [],
     });
 
     expect(result.action).toBe("propose");
-    expect(result.assessment.fitScore).toBeGreaterThanOrEqual(0);
-    expect(result.assessment.fitScore).toBeLessThanOrEqual(100);
     expect(result.assessment.reasoning).toBeTruthy();
     expect(["agent", "patient", "peer"]).toContain(result.assessment.suggestedRoles.ownUser);
     expect(["agent", "patient", "peer"]).toContain(result.assessment.suggestedRoles.otherUser);
   }, 30_000);
 });
 
-describe("NegotiationResponder", () => {
+describe("IndexNegotiator (responder)", () => {
   it("evaluates a proposal and responds with accept, reject, or counter", async () => {
-    const responder = new NegotiationResponder();
+    const negotiator = new IndexNegotiator();
 
     const proposal: NegotiationTurn = {
       action: "propose",
       assessment: {
-        fitScore: 78,
         reasoning: "Strong complementary skills — Alice needs ML, Bob needs product leadership",
         suggestedRoles: { ownUser: "peer", otherUser: "peer" },
       },
     };
 
-    const result = await responder.invoke({
+    const result = await negotiator.invoke({
       ownUser: candidateUser,
       otherUser: sourceUser,
-      indexContext: { indexId: "idx-1", prompt: "AI startup co-founders" },
+      indexContext: { networkId: "idx-1", prompt: "AI startup co-founders" },
       seedAssessment,
       history: [proposal],
     });
 
-    expect(["accept", "reject", "counter"]).toContain(result.action);
-    expect(result.assessment.fitScore).toBeGreaterThanOrEqual(0);
-    expect(result.assessment.fitScore).toBeLessThanOrEqual(100);
+    expect(["propose", "accept", "reject", "counter"]).toContain(result.action);
     expect(result.assessment.reasoning).toBeTruthy();
   }, 30_000);
 });

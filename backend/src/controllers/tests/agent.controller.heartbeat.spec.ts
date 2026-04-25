@@ -72,11 +72,19 @@ const opportunityPickupMock = mock(async (_agentId: string) => {
   return null;
 });
 
+const opportunityDeliveryInstance = {
+  pickupPending: opportunityPickupMock,
+  confirmDelivered: mock(async () => {}),
+  fetchPendingCandidates: mock(async () => []),
+};
+
 mock.module('../../services/opportunity-delivery.service', () => ({
   OpportunityDeliveryService: class {
     pickupPending = opportunityPickupMock;
     confirmDelivered = mock(async () => {});
+    fetchPendingCandidates = mock(async () => []);
   },
+  opportunityDeliveryService: opportunityDeliveryInstance,
 }));
 
 // Guards: bypass auth so we can call handlers directly

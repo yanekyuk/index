@@ -12,7 +12,6 @@ describe("Opportunity Graph — Negotiation Integration", () => {
         return Promise.resolve({
           outcome: {
             hasOpportunity: isFirstCandidate,
-            finalScore: isFirstCandidate ? 82 : 0,
             agreedRoles: isFirstCandidate
               ? [{ userId: "source", role: "peer" as const }, { userId: "candidate-1", role: "peer" as const }]
               : [],
@@ -26,8 +25,8 @@ describe("Opportunity Graph — Negotiation Integration", () => {
     const { negotiateCandidates } = await import("@indexnetwork/protocol");
 
     const candidates = [
-      { userId: "candidate-1", score: 78, reasoning: "OK", valencyRole: "Peer" },
-      { userId: "candidate-2", score: 72, reasoning: "Weak", valencyRole: "Agent" },
+      { userId: "candidate-1", reasoning: "OK", valencyRole: "Peer" },
+      { userId: "candidate-2", reasoning: "Weak", valencyRole: "Agent" },
     ];
 
     const sourceUser = {
@@ -45,13 +44,13 @@ describe("Opportunity Graph — Negotiation Integration", () => {
           id: c.userId,
           intents: [{ id: "i2", title: "Test", description: "Counter intent", confidence: 0.8 }],
           profile: { name: c.userId },
-            },
+        },
       })),
-      { indexId: "idx-1", prompt: "Test" },
+      { networkId: "idx-1", prompt: "Test" },
     );
 
     expect(results).toHaveLength(1);
     expect(results[0].userId).toBe("candidate-1");
-    expect(results[0].negotiationScore).toBe(82);
+    expect(results[0].turnCount).toBe(2);
   }, 30_000);
 });

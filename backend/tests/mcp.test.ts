@@ -42,7 +42,7 @@ const mockAgentDb: AgentDatabase = {
   }),
 };
 
-const mockDeps: ToolDeps = {
+const mockDeps = {
   database: {} as ToolDeps['database'],
   userDb: {} as ToolDeps['userDb'],
   systemDb: {} as ToolDeps['systemDb'],
@@ -50,6 +50,10 @@ const mockDeps: ToolDeps = {
   embedder: {} as ToolDeps['embedder'],
   cache: {} as ToolDeps['cache'],
   integration: {} as ToolDeps['integration'],
+  contactService: {} as ToolDeps['contactService'],
+  integrationImporter: {} as ToolDeps['integrationImporter'],
+  enricher: {} as ToolDeps['enricher'],
+  negotiationDatabase: {} as ToolDeps['negotiationDatabase'],
   agentDatabase: mockAgentDb,
   graphs: {
     profile: { invoke: async () => ({}) },
@@ -59,7 +63,7 @@ const mockDeps: ToolDeps = {
     intentIndex: { invoke: async () => ({}) },
     opportunity: { invoke: async () => ({}) } as ToolDeps['graphs']['opportunity'],
   },
-};
+} satisfies ToolDeps;
 
 const mockDepsWithoutAgentDb: ToolDeps = {
   ...mockDeps,
@@ -216,7 +220,8 @@ describe('MCP Server Factory', () => {
 
     expect(parseToolResult(result ?? '')).toEqual({
       success: false,
-      error: 'This agent can only manage its own registration.',
+      error: 'Agent registration must be done from a user session (web UI or personal API key), ' +
+        'not from within an existing agent context. To register a new agent, visit the Index web app.',
     });
     expect(createAgentCalls).toEqual([]);
   });
@@ -266,7 +271,7 @@ describe('MCP Server Factory', () => {
 
     expect(parseToolResult(result ?? '')).toEqual({
       success: false,
-      error: 'Failed to register agent: permission grant failed',
+      error: 'Failed to register agent. Please try again.',
     });
     expect(deletedAgentIds).toEqual(['agent-123']);
   });

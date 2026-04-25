@@ -13,7 +13,7 @@ import {
 } from '../src/adapters/agent.database.adapter';
 import type { AgentTokenStore } from '../src/adapters/agent-token.adapter';
 import { AgentController } from '../src/controllers/agent.controller';
-import { AGENT_ACTIONS, PERSONAL_AGENT_DEFAULT_ACTIONS, AgentService, type AgentServiceStore } from '../src/services/agent.service';
+import { PERSONAL_AGENT_DEFAULT_ACTIONS, AgentService, type AgentServiceStore } from '../src/services/agent.service';
 import { agentService } from '../src/services/agent.service';
 
 const OWNER_ID = 'owner-1';
@@ -32,6 +32,7 @@ function createAgentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     dailySummaryEnabled: true,
     handleNegotiations: false,
     lastDailySummaryAt: null,
+    lastSeenAt: null,
     createdAt: new Date('2026-04-08T00:00:00.000Z'),
     updatedAt: new Date('2026-04-08T00:00:00.000Z'),
     ...overrides,
@@ -111,13 +112,14 @@ function createStore(overrides: Partial<AgentServiceStore> = {}): AgentServiceSt
     hasPermission: async () => false,
     findAuthorizedAgents: async () => [createAgentWithRelations()],
     getSystemAgentIds: () => SYSTEM_AGENT_IDS,
+    touchLastSeen: async () => undefined,
     ...overrides,
   };
 }
 
 function createTokenStore(overrides: Partial<AgentTokenStore> = {}): AgentTokenStore {
   return {
-    create: async () => ({
+    create: async (_userId, _params) => ({
       id: 'token-1',
       key: 'secret-key',
       name: 'Agent API Key',
@@ -175,7 +177,8 @@ describe('AgentService', () => {
       },
     ]);
     expect(result.transports).toEqual([]);
-    expect(result.permissions).toEqual([]);
+    expect(result.permissions).toHaveLength(1);
+    expect(result.permissions[0]!.actions).toEqual([...PERSONAL_AGENT_DEFAULT_ACTIONS]);
   });
 
   it('rejects empty agent names on create', async () => {
@@ -449,13 +452,16 @@ describe('AgentService', () => {
       action: 'manage:negotiations',
       scope: { type: 'global' },
     });
-    expect(calls.grantPermission).toEqual([
-      {
-        agentId: SYSTEM_AGENT_IDS.chatOrchestrator,
-        userId: OWNER_ID,
-        scope: 'global',
-        actions: [...AGENT_ACTIONS],
-      },
+    const orchestratorGrant = calls.grantPermission.find(
+      (g) => g.agentId === SYSTEM_AGENT_IDS.chatOrchestrator,
+    );
+    expect(orchestratorGrant).toBeDefined();
+    expect(orchestratorGrant!.actions).toEqual([
+      'manage:profile',
+      'manage:intents',
+      'manage:networks',
+      'manage:contacts',
+      'manage:opportunities',
     ]);
   });
 
@@ -483,13 +489,15 @@ describe('AgentService', () => {
 
     await service.grantDefaultSystemPermissions(OWNER_ID);
 
-    expect(calls.grantPermission).toEqual([
-      {
-        agentId: SYSTEM_AGENT_IDS.chatOrchestrator,
-        userId: OWNER_ID,
-        scope: 'global',
-        actions: ['manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
-      },
+    const orchestratorGrant = calls.grantPermission.find(
+      (g) => g.agentId === SYSTEM_AGENT_IDS.chatOrchestrator,
+    );
+    expect(orchestratorGrant).toBeDefined();
+    expect(orchestratorGrant!.actions).toEqual([
+      'manage:intents',
+      'manage:networks',
+      'manage:contacts',
+      'manage:opportunities',
     ]);
   });
 
@@ -547,11 +555,10 @@ describe('AgentService', () => {
   });
 
   it('creates agent-linked tokens for owned personal agents', async () => {
-    const headers = new Headers({ authorization: 'Bearer test' });
     const service = new AgentService(
       createStore(),
       createTokenStore({
-        create: async (_headers, params) => {
+        create: async (_userId, params) => {
           calls.createToken.push(params);
           return {
             id: 'token-1',
@@ -563,7 +570,7 @@ describe('AgentService', () => {
       }),
     );
 
-    const token = await service.createToken('agent-1', OWNER_ID, headers, 'Custom Key');
+    const token = await service.createToken('agent-1', OWNER_ID, 'Custom Key');
 
     expect(token.key).toBe('secret-key');
     expect(calls.createToken).toEqual([{ name: 'Custom Key', agentId: 'agent-1' }]);
@@ -574,7 +581,7 @@ describe('AgentService', () => {
     const originalCreateToken = agentService.createToken;
     const serviceCalls: Array<{ agentId: string; userId: string; name: string | undefined }> = [];
 
-    agentService.createToken = async (agentId, userId, _headers, name) => {
+    agentService.createToken = async (agentId, userId, name) => {
       serviceCalls.push({ agentId, userId, name });
       return {
         id: 'token-1',
@@ -612,7 +619,7 @@ describe('AgentService', () => {
       createTokenStore(),
     );
 
-    await expect(service.createToken('agent-1', OWNER_ID, new Headers())).rejects.toThrow(
+    await expect(service.createToken('agent-1', OWNER_ID)).rejects.toThrow(
       'System agents cannot be modified',
     );
   });
@@ -629,13 +636,13 @@ describe('AgentService', () => {
           lastUsedAt: null,
           metadata: { agentId: 'agent-1' },
         }],
-        revoke: async (_headers, tokenId) => {
+        revoke: async (_userId, tokenId) => {
           calls.revokeToken.push(tokenId);
         },
       }),
     );
 
-    await service.revokeToken('agent-1', 'token-1', OWNER_ID, new Headers());
+    await service.revokeToken('agent-1', 'token-1', OWNER_ID);
     expect(calls.revokeToken).toEqual(['token-1']);
   });
 
@@ -654,7 +661,7 @@ describe('AgentService', () => {
       }),
     );
 
-    await expect(service.revokeToken('agent-1', 'token-1', OWNER_ID, new Headers())).rejects.toThrow(
+    await expect(service.revokeToken('agent-1', 'token-1', OWNER_ID)).rejects.toThrow(
       'Token not found',
     );
   });
@@ -681,13 +688,13 @@ describe('AgentService', () => {
             metadata: { agentId: 'other-agent' },
           },
         ],
-        revoke: async (_headers, tokenId) => {
+        revoke: async (_userId, tokenId) => {
           calls.revokeToken.push(tokenId);
         },
       }),
     );
 
-    await service.delete('agent-1', OWNER_ID, new Headers());
+    await service.delete('agent-1', OWNER_ID);
 
     expect(calls.revokeToken).toEqual(['token-1']);
   });
