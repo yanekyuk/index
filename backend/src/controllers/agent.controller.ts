@@ -571,6 +571,34 @@ export class AgentController {
     }
   }
 
+  @Get('/:id/opportunities/delivery-stats')
+  @UseGuards(AuthOrApiKeyGuard)
+  async getDeliveryStats(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    const url = new URL(req.url);
+    const sinceParam = url.searchParams.get('since');
+    if (!sinceParam) {
+      return jsonError('since query parameter is required (ISO 8601)', 400);
+    }
+    const since = new Date(sinceParam);
+    if (Number.isNaN(since.getTime())) {
+      return jsonError('since must be a valid ISO 8601 timestamp', 400);
+    }
+
+    try {
+      await agentService.getById(agentId, user.id);
+      await agentService.touchLastSeen(agentId);
+      const counts = await opportunityDeliveryService.countDeliveriesSince(agentId, since);
+      return Response.json(counts);
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
   @Post('/:id/opportunities/:opportunityId/delivered')
   @UseGuards(AuthOrApiKeyGuard)
   async confirmOpportunityDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
