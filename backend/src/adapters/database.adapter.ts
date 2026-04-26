@@ -3702,13 +3702,17 @@ export class OpportunityDatabaseAdapter {
       )
     )`;
     const conditions = [visibilityGuard];
-    // Draft visibility: without conversationId exclude all draft; with conversationId include draft only for that session
-    if (options?.conversationId == null) {
-      conditions.push(sql`${opportunities.status} != 'draft'`);
-    } else {
-      conditions.push(
-        sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
-      );
+    // Draft visibility: when explicit statuses are requested, the caller decides;
+    // otherwise exclude drafts unless a conversationId scopes them to one session.
+    const hasExplicitStatuses = (options?.statuses?.length ?? 0) > 0 || !!options?.status;
+    if (!hasExplicitStatuses) {
+      if (options?.conversationId == null) {
+        conditions.push(sql`${opportunities.status} != 'draft'`);
+      } else {
+        conditions.push(
+          sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
+        );
+      }
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
