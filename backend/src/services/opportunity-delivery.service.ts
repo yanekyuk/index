@@ -226,6 +226,8 @@ export class OpportunityDeliveryService {
    * @param opportunityId - The opportunity being confirmed as delivered.
    * @param userId - The user the opportunity was delivered to.
    * @param agentId - The agent performing the delivery.
+   * @param trigger - Which dispatch path produced this delivery: 'ambient' for
+   *                  real-time critical alerts, 'digest' for the daily sweep.
    * @returns `'confirmed'` on first delivery, `'already_delivered'` on duplicates.
    * @throws Error `'opportunity_not_found'` when the opportunity does not exist.
    * @throws Error `'not_authorized'` when userId is not an actor on the opportunity.
