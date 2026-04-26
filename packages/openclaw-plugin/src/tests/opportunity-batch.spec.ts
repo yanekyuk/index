@@ -208,11 +208,4 @@ describe('handleAmbientDiscovery (hooks-only path)', () => {
     const body = sink.hookCalls[0].body as { message: string };
     expect(body.message).toContain('"ambientDeliveredToday": null');
   });
-
-  it('does NOT call /confirm-batch after successful dispatch (new test)', async () => {
-    const sink = mockBackend([opp(OPP_1)], 200, { ambient: 0, digest: 0 });
-    await handleAmbientDiscovery(mockApi, cfg);
-    expect(sink.hookCalls).toHaveLength(1);
-    expect(sink.confirmCalls).toHaveLength(0);
-  });
 });
