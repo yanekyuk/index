@@ -125,6 +125,33 @@ describe('dispatchToMainAgent', () => {
     expect(out.deliveredText).toBe('Hi');
   });
 
+  it('SDK returns messages array (multimodal blocks) → reply text extracted from text blocks', async () => {
+    (mockApi.runtime.agent!.runEmbeddedAgent as ReturnType<typeof mock>).mockResolvedValueOnce({
+      messages: [
+        { role: 'system', content: 'irrelevant' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Hello via blocks' },
+            { type: 'tool_use', id: 'tool-1' },
+            { type: 'text', text: 'second line' },
+          ],
+        },
+      ],
+    });
+    const out = await dispatchToMainAgent(mockApi, ctx);
+    expect(out.suppressedByNoReply).toBe(false);
+    expect(out.deliveredText).toBe('Hello via blocks\nsecond line');
+  });
+
+  it('SDK returns messages array (string content) → reply text extracted directly', async () => {
+    (mockApi.runtime.agent!.runEmbeddedAgent as ReturnType<typeof mock>).mockResolvedValueOnce({
+      messages: [{ role: 'assistant', content: 'plain string reply' }],
+    });
+    const out = await dispatchToMainAgent(mockApi, ctx);
+    expect(out.deliveredText).toBe('plain string reply');
+  });
+
   it('both SDK and hooks fail → returns null deliveredText', async () => {
     (mockApi.runtime.agent!.runEmbeddedAgent as ReturnType<typeof mock>).mockRejectedValueOnce(
       new Error('boom'),

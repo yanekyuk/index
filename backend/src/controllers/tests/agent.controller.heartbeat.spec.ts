@@ -161,11 +161,9 @@ describe('AgentController pickup endpoints heartbeat', () => {
     await controller.pickupOpportunity(req, mockUser as never, makeParams(TEST_AGENT_ID));
 
     expect(touchLastSeenMock).toHaveBeenCalledWith(TEST_AGENT_ID);
-    // pickupOpportunity heartbeats between getById (auth) and pickupPending (work).
-    // The important invariant is that the heartbeat cannot fire without getById.
-    expect(callOrder[0]).toBe('getById');
-    expect(callOrder).toContain('touch');
-    expect(callOrder).toContain('pickupOpportunity');
+    // Pickup pins the order: getById (auth) → touch (heartbeat) → pickupPending (work).
+    // The heartbeat cannot fire without getById, and work follows the heartbeat.
+    expect(callOrder).toEqual(['getById', 'touch', 'pickupOpportunity']);
   });
 
   it('bumps lastSeenAt even when nothing pending (empty poll)', async () => {

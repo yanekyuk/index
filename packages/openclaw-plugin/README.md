@@ -98,14 +98,21 @@ Opportunity and digest rendering happens inside your main OpenClaw agent session
 
 ### Privacy note
 
-Subagent runs are logged by OpenClaw's standard subagent logging. Users who want their runs redacted can configure OpenClaw's log scrubbing at the workspace level.
+Two distinct rendering paths are logged differently:
+
+- **Opportunity / digest / test-message rendering** runs inside your main OpenClaw agent session via `runEmbeddedAgent`. It surfaces in your normal main-agent log — there is no separate subagent transcript.
+- **Negotiation turns** still run in a silent subagent (`api.runtime.subagent.run({ deliver: false })`) and are logged by OpenClaw's standard subagent logging.
+
+Users who want either path redacted can configure OpenClaw's log scrubbing at the workspace level.
 
 ## What it ships
 
 - `openclaw.plugin.json` — plugin manifest
 - `src/index.ts` — plugin entry point: registers poll route and background polling loop
-- `src/lib/delivery/main-agent.dispatcher.ts` — dispatches opportunities into the main agent session
+- `src/lib/delivery/main-agent.dispatcher.ts` — drives the user's main OpenClaw agent (SDK first, `/hooks/agent` HTTP fallback)
 - `src/lib/delivery/main-agent.prompt.ts` — prompt template passed to the main agent for rendering
+- `src/lib/delivery/post-delivery-confirm.ts` — scrapes rendered text for opportunity IDs and confirms the delivery batch
+- `src/lib/delivery/config.ts` — reads the `mainAgentToolUse` knob from plugin config
 - `src/polling/negotiator/negotiation-turn.prompt.ts` — prompt for the silent negotiation-turn subagent
 - `skills/index-network/SKILL.md` — bootstrap skill (generated from the monorepo template)
 

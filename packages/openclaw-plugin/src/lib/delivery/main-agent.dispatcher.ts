@@ -101,6 +101,15 @@ async function trySdk(
     const workspaceDir = agent.resolveAgentWorkspaceDir(api.config);
     const timeoutMs = ctx.timeoutMs ?? agent.resolveAgentTimeoutMs(api.config);
 
+    // We pass `ctx.idempotencyKey` as both the SDK `runId` and (in the hooks
+    // fallback below) the `idempotency-key` header. SDK semantics for a
+    // duplicate `runId` are runtime-dependent — most OpenClaw builds treat it
+    // as "already-completed → return cached result", which matches the HTTP
+    // header contract closely enough that callers can stay primitive-agnostic.
+    // Timeout intentionally diverges between paths: the SDK uses the
+    // config-resolved per-agent timeout (so user agent-timeout overrides
+    // apply); the hooks fallback uses a 120 s default because the gateway
+    // handles its own per-request budget independently.
     const result = await agent.runEmbeddedAgent({
       sessionId,
       runId: ctx.idempotencyKey,

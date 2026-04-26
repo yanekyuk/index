@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
-import { dispatchToMainAgent, detectNoReply } from '../../lib/delivery/main-agent.dispatcher.js';
+import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 
@@ -63,8 +63,10 @@ export async function handle(
     return false;
   }
 
-  // 3. Detect agent ignoring no-suppress instruction.
-  if (dispatch.suppressedByNoReply || detectNoReply(dispatch.deliveredText ?? '')) {
+  // 3. Detect agent ignoring no-suppress instruction. The dispatcher already
+  // sets `suppressedByNoReply` (via shapeResult) whenever the reply is the
+  // bare NO_REPLY token, so we don't need a second detection pass here.
+  if (dispatch.suppressedByNoReply) {
     api.logger.error(
       'Test-message: agent emitted NO_REPLY despite prompt forbidding suppression. ' +
         'Reservation will expire and backend will retry.',
