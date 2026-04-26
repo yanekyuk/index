@@ -400,6 +400,86 @@ describe('setup wizard', () => {
     expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('3');
   });
 
+  // --- Hooks bootstrap ---
+
+  test('bootstraps hooks: writes hooks.enabled=true, generates hooks.token, sets hooks.path=/hooks', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const enabledWrite = fake.configWrites.find((w) => w.path === 'hooks.enabled');
+    expect(enabledWrite?.value).toBe(true);
+
+    const tokenWrite = fake.configWrites.find((w) => w.path === 'hooks.token');
+    expect(typeof tokenWrite?.value).toBe('string');
+    expect((tokenWrite?.value as string).length).toBeGreaterThanOrEqual(32);
+
+    const pathWrite = fake.configWrites.find((w) => w.path === 'hooks.path');
+    expect(pathWrite?.value).toBe('/hooks');
+  });
+
+  test('preserves existing hooks.token when present', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.hooks = { enabled: true, token: 'existing-token-abc', path: '/hooks' };
+
+    await setup(fake.ctx);
+
+    // No new hooks.token write because the existing one is preserved
+    const tokenWrites = fake.configWrites.filter((w) => w.path === 'hooks.token');
+    expect(tokenWrites).toHaveLength(0);
+    // hooks.enabled also not rewritten when already true
+    const enabledWrites = fake.configWrites.filter((w) => w.path === 'hooks.enabled');
+    expect(enabledWrites).toHaveLength(0);
+    const pathWrites = fake.configWrites.filter((w) => w.path === 'hooks.path');
+    expect(pathWrites).toHaveLength(0);
+  });
+
+  test('flips hooks.enabled to true when previously false', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.hooks = { enabled: false };
+
+    await setup(fake.ctx);
+
+    const enabledWrite = fake.configWrites.find((w) => w.path === 'hooks.enabled');
+    expect(enabledWrite?.value).toBe(true);
+    const tokenWrite = fake.configWrites.find((w) => w.path === 'hooks.token');
+    expect(typeof tokenWrite?.value).toBe('string');
+  });
+
+  test('rejects when existing hooks.token equals gateway.auth.token', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.gateway = { auth: { token: 'shared-secret' } };
+    fake.ctx.cfg.hooks = { enabled: true, token: 'shared-secret' };
+
+    await expect(setup(fake.ctx)).rejects.toThrow('hooks.token must be distinct');
+  });
+
+  test('generates a fresh hooks.token (does not reuse gateway.auth.token) when starting from scratch', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.gateway = { auth: { token: 'gateway-tok' } };
+
+    await setup(fake.ctx);
+
+    const tokenWrite = fake.configWrites.find((w) => w.path === 'hooks.token');
+    expect(tokenWrite?.value).not.toBe('gateway-tok');
+    expect(typeof tokenWrite?.value).toBe('string');
+  });
+
   test('re-resolves agentId from API key on re-run, ignoring existing config', async () => {
     const fake = buildFakeCtx({
       existingConfig: { agentId: 'stale-agent-456' },

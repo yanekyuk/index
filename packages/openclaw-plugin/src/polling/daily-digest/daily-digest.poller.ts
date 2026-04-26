@@ -2,7 +2,7 @@ import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
-import { extractSelectedIds, confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
+import { confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 
 export interface DailyDigestConfig {
@@ -19,12 +19,19 @@ const PENDING_LIMIT = 20;
  * Handles one daily digest cycle. Single-pass:
  *  1. GET /opportunities/pending?limit=20
  *  2. Build the digest prompt and hand it to the user's main OpenClaw agent
- *     via dispatchToMainAgent (SDK first, /hooks/agent fallback).
- *  3. If the agent didn't suppress via NO_REPLY, scrape opportunity IDs from
- *     the rendered text and confirm the batch.
+ *     via `dispatchToMainAgent` (POST /hooks/agent → user's last channel).
+ *  3. On dispatch success, confirm the entire batch via /confirm-batch.
  *
- * @returns `true` when a digest was attempted (delivered or suppressed),
- *          `false` when nothing was eligible.
+ * Trade-off: the agent decides which subset to surface, but the plugin
+ * cannot see what was rendered (the gateway delivers asynchronously and
+ * returns only `{status: "sent"}`). We therefore confirm every candidate
+ * in the batch on success — items the agent didn't surface this cycle do
+ * not roll over. The dedup hash prevents back-to-back redispatch of the
+ * same set, so this matches the user's effective experience: "the digest
+ * already saw these; show new ones tomorrow".
+ *
+ * @returns `true` when a digest was attempted (delivered or empty),
+ *          `false` when nothing was eligible or dispatch failed.
  */
 export async function handle(
   api: OpenClawPluginApi,
@@ -87,51 +94,38 @@ export async function handle(
   const prompt = buildMainAgentPrompt({
     contentType: 'daily_digest',
     mainAgentToolUse,
-    allowSuppress: true,
     payload: { contentType: 'daily_digest', maxToSurface, candidates },
   });
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
     idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
-    allowSuppress: true,
   });
 
-  if (dispatch.error === 'network_error') {
+  if (!dispatch.delivered) {
     return false;
   }
 
-  if (dispatch.suppressedByNoReply) {
-    api.logger.info('Daily digest: agent suppressed via NO_REPLY.');
-    return true;
-  }
-
-  if (!dispatch.deliveredText) {
-    api.logger.debug('Daily digest: empty rendered text.');
-    return true;
-  }
-
   const batchIds = candidates.map((c) => c.opportunityId);
-  const selectedIds = extractSelectedIds(dispatch.deliveredText, batchIds);
-
-  if (selectedIds.length === 0) {
-    api.logger.debug('Daily digest: rendered text has no recognizable IDs.');
-    return true;
-  }
-
-  await confirmDeliveredBatch({
+  const confirmed = await confirmDeliveredBatch({
     baseUrl: config.baseUrl,
     agentId: config.agentId,
     apiKey: config.apiKey,
-    opportunityIds: selectedIds,
+    opportunityIds: batchIds,
     logger: api.logger,
   });
 
+  if (!confirmed) {
+    api.logger.warn(
+      'Daily digest: confirm failed; the agent already received the dispatch but the ledger was not updated.',
+    );
+    return true;
+  }
+
   api.logger.info(
-    `Daily digest dispatched: ${candidates.length} candidate(s); ${selectedIds.length} confirmed`,
+    `Daily digest dispatched and confirmed: ${batchIds.length} candidate(s)`,
     { agentId: config.agentId },
   );
 
   return true;
 }
-

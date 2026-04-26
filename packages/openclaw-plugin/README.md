@@ -42,9 +42,11 @@ The skill then re-registers the MCP server with an `x-api-key` header so every t
 
 ## Automatic opportunity delivery
 
-Once the plugin is configured with an `apiKey` (which resolves your `agentId`), the plugin polls the Index Network backend every 5 minutes for pending opportunities. When candidates are found, the plugin hands them to your **main OpenClaw agent** via an embedded turn. Your agent ranks them, picks what's worth surfacing, and renders the message in its own voice on whichever channel you currently chat with it. The plugin then confirms the opportunities the agent actually surfaced.
+Once the plugin is configured with an `apiKey` (which resolves your `agentId`), the plugin polls the Index Network backend every 5 minutes for pending opportunities. When candidates are found, the plugin hands them to your **main OpenClaw agent** via the gateway's `POST /hooks/agent` endpoint with `deliver: true, channel: "last"`. Your agent ranks the candidates, picks what's worth surfacing, and renders the message in its own voice on whichever channel you last chatted on; the gateway routes the reply directly to that channel.
 
-If the agent decides the moment is wrong, it can output `NO_REPLY` and the plugin skips delivery — the items roll over to the next cycle or the next daily digest.
+The setup wizard bootstraps the gateway hooks subsystem automatically — `hooks.enabled=true` and a fresh `hooks.token` are written to your OpenClaw config the first time you run `openclaw index-network setup`. If you already use hooks for other integrations, your existing token is preserved.
+
+The hooks endpoint returns only an acknowledgement (`{status: "sent"}`); the plugin does not see what the agent rendered. Once dispatch is acknowledged, every opportunity in the dispatched batch is marked delivered. The agent's editorial decision (which subset to surface) is respected on the channel — but items it chose not to mention this cycle do not roll over. The dedup hash prevents back-to-back redispatch of the same set, so a fresh batch tomorrow will surface anything new.
 
 ## Automatic negotiations (alpha)
 
@@ -73,9 +75,21 @@ openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocol
 
 When configuring manually, look up your agent ID at https://index.network/agents and set `…config.agentId YOUR_AGENT_ID` as well.
 
+### Gateway hooks
+
+The plugin requires the OpenClaw `hooks` subsystem because that's the only path that delivers an agent's reply to the user's last-active channel. The setup wizard configures it for you:
+
+| Top-level key | Set by setup | Behavior |
+|---------------|--------------|----------|
+| `hooks.enabled` | `true` (flipped from `false` if needed) | Mounts `POST /hooks/*` routes on the gateway |
+| `hooks.token` | random 32-byte hex (or preserved if you already have one) | Bearer token the plugin sends with every dispatch |
+| `hooks.path` | `/hooks` (only set if missing) | Sub-path under which hook routes are mounted |
+
+`hooks.token` is rejected at OpenClaw load time if it equals `gateway.auth.token`; the wizard refuses to overwrite an existing collision and points you at `openclaw config unset hooks.token` to recover.
+
 ### Daily Digest
 
-In addition to real-time polling every 5 minutes, the plugin sends a daily digest of lower-priority opportunities at a configurable time. Like real-time deliveries, the digest is rendered by your main OpenClaw agent in its own voice — not a separate subagent.
+In addition to real-time polling every 5 minutes, the plugin sends a daily digest of lower-priority opportunities at a configurable time. Like real-time deliveries, the digest is rendered by your main OpenClaw agent in its own voice via `/hooks/agent`.
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
@@ -83,7 +97,7 @@ In addition to real-time polling every 5 minutes, the plugin sends a daily diges
 | `digestTime` | `"08:00"` | Time to send digest in HH:MM format (24-hour, local timezone) |
 | `digestMaxCount` | `20` | Maximum opportunities to include in digest |
 
-The digest ranks all pending opportunities by relevance and passes the top N to your agent. Opportunities not surfaced roll over to the next day's digest.
+The digest ranks all pending opportunities by relevance and passes the top N to your agent. Once the gateway acknowledges the dispatch, every candidate in the batch is marked delivered (the plugin does not see what the agent surfaced).
 
 ### Resilience
 
@@ -100,7 +114,7 @@ Opportunity and digest rendering happens inside your main OpenClaw agent session
 
 Two distinct rendering paths are logged differently:
 
-- **Opportunity / digest / test-message rendering** runs inside your main OpenClaw agent session via `runEmbeddedAgent`. It surfaces in your normal main-agent log — there is no separate subagent transcript.
+- **Opportunity / digest / test-message rendering** runs inside your main OpenClaw agent session via `POST /hooks/agent`. It surfaces in your normal main-agent log — there is no separate subagent transcript.
 - **Negotiation turns** still run in a silent subagent (`api.runtime.subagent.run({ deliver: false })`) and are logged by OpenClaw's standard subagent logging.
 
 Users who want either path redacted can configure OpenClaw's log scrubbing at the workspace level.
@@ -109,10 +123,11 @@ Users who want either path redacted can configure OpenClaw's log scrubbing at th
 
 - `openclaw.plugin.json` — plugin manifest
 - `src/index.ts` — plugin entry point: registers poll route and background polling loop
-- `src/lib/delivery/main-agent.dispatcher.ts` — drives the user's main OpenClaw agent (SDK first, `/hooks/agent` HTTP fallback)
+- `src/lib/delivery/main-agent.dispatcher.ts` — POSTs to `/hooks/agent` so the gateway routes to the user's last channel
 - `src/lib/delivery/main-agent.prompt.ts` — prompt template passed to the main agent for rendering
-- `src/lib/delivery/post-delivery-confirm.ts` — scrapes rendered text for opportunity IDs and confirms the delivery batch
+- `src/lib/delivery/post-delivery-confirm.ts` — confirms the dispatched batch via `/opportunities/confirm-batch`
 - `src/lib/delivery/config.ts` — reads the `mainAgentToolUse` knob from plugin config
+- `src/setup/setup.cli.ts` — interactive wizard; bootstraps `hooks.enabled` / `hooks.token` / `hooks.path`
 - `src/polling/negotiator/negotiation-turn.prompt.ts` — prompt for the silent negotiation-turn subagent
 - `skills/index-network/SKILL.md` — bootstrap skill (generated from the monorepo template)
 
@@ -126,7 +141,11 @@ Behavioral guidance (voice, vocabulary, entity model, discovery-first rule, outp
 
 **`openclaw mcp set` fails with "command not found"** — make sure you have OpenClaw CLI ≥0.1.0 installed.
 
-**Opportunities picked up but not rendered** — check your main agent's OpenClaw gateway logs for errors during the embedded turn. If the agent responded `NO_REPLY`, that is intentional — the items will surface in the next cycle or the daily digest.
+**Opportunities picked up but not rendered** — check OpenClaw gateway logs. The most common causes:
+
+- `Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset` — re-run `openclaw index-network setup` to bootstrap hooks.
+- `/hooks/agent returned 401: hooks.token rejected` — your `hooks.token` is wrong or expired. Run `openclaw config unset hooks.token` and re-run setup.
+- `/hooks/agent returned 404` — confirm `hooks.enabled=true` in `~/.openclaw/openclaw.json`; the route only mounts when enabled.
 
 **Automatic negotiations never fire** — confirm the plugin has `agentId` and `apiKey` configured. Check OpenClaw gateway logs for poll errors. Verify your agent exists at https://index.network/agents.
 

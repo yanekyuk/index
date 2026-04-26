@@ -25,6 +25,7 @@
  * `frontend/src/app/agents/[id]/page.tsx` so the two stay in sync.
  */
 
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -56,13 +57,29 @@ export interface SetupContext {
 
 /** Read a single dot-path value from the OpenClaw config snapshot. */
 function getExistingConfig(cfg: Record<string, unknown>, dotPath: string): string | undefined {
+  return getStringAt(cfg, dotPath);
+}
+
+/** Read a string at a dot-path in the cfg snapshot, or return undefined. */
+function getStringAt(cfg: Record<string, unknown>, dotPath: string): string | undefined {
+  const value = getRawAt(cfg, dotPath);
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** Read a boolean at a dot-path in the cfg snapshot, or return undefined. */
+function getBooleanAt(cfg: Record<string, unknown>, dotPath: string): boolean | undefined {
+  const value = getRawAt(cfg, dotPath);
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function getRawAt(cfg: Record<string, unknown>, dotPath: string): unknown {
   const parts = dotPath.split('.');
   let obj: unknown = cfg;
   for (const key of parts) {
     if (typeof obj !== 'object' || obj === null) return undefined;
     obj = (obj as Record<string, unknown>)[key];
   }
-  return typeof obj === 'string' ? obj : undefined;
+  return obj;
 }
 
 /**
@@ -131,6 +148,38 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     { label: 'Enabled — agent may call MCP tools to enrich', value: 'enabled' },
   ]);
   await ctx.configSet(`${configPrefix}.mainAgentToolUse`, mainAgentToolUse || 'disabled');
+
+  // --- Bootstrap gateway hooks (required for /hooks/agent dispatch) ---
+  // The plugin dispatches notifications via POST /hooks/agent, which requires
+  // hooks.enabled=true and a non-empty hooks.token distinct from the gateway
+  // auth token. Existing hooks.token values are preserved (a user may already
+  // be using the hooks subsystem for other integrations); only fill in gaps.
+  const existingHooksToken = getStringAt(ctx.cfg, 'hooks.token');
+  const existingHooksEnabled = getBooleanAt(ctx.cfg, 'hooks.enabled');
+  const existingHooksPath = getStringAt(ctx.cfg, 'hooks.path');
+  const gatewayAuthToken = getStringAt(ctx.cfg, 'gateway.auth.token');
+
+  const hooksToken =
+    existingHooksToken && existingHooksToken !== gatewayAuthToken
+      ? existingHooksToken
+      : randomBytes(32).toString('hex');
+
+  if (existingHooksToken && existingHooksToken === gatewayAuthToken) {
+    throw new Error(
+      'hooks.token must be distinct from gateway.auth.token. ' +
+        'Run `openclaw config unset hooks.token` and re-run setup to regenerate.',
+    );
+  }
+
+  if (hooksToken !== existingHooksToken) {
+    await ctx.configSet('hooks.token', hooksToken);
+  }
+  if (existingHooksEnabled !== true) {
+    await ctx.configSet('hooks.enabled', true);
+  }
+  if (!existingHooksPath) {
+    await ctx.configSet('hooks.path', '/hooks');
+  }
 
   // --- Register MCP server ---
   const normalizedProtocolUrl = protocolUrl.replace(/\/+$/, '');

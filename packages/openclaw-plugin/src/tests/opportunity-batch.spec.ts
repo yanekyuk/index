@@ -3,72 +3,82 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { handle as handleAmbientDiscovery, _resetForTesting } from '../polling/ambient-discovery/ambient-discovery.poller.js';
 import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
-describe('handleAmbientDiscovery (main-agent path)', () => {
+const OPP_1 = '11111111-1111-1111-1111-111111111111';
+const OPP_2 = '22222222-2222-2222-2222-222222222222';
+
+interface FetchSink {
+  pendingUrls: string[];
+  hookCalls: Array<{ url: string; headers?: Record<string, string>; body?: unknown }>;
+  confirmCalls: Array<{ url: string; body?: unknown }>;
+}
+
+function makeApi(): OpenClawPluginApi {
+  return {
+    id: 'indexnetwork-openclaw-plugin',
+    name: 'Index Network',
+    pluginConfig: { mainAgentToolUse: 'disabled' },
+    config: {
+      gateway: { port: 18789 },
+      hooks: { enabled: true, token: 'hooks-tok', path: '/hooks' },
+    },
+    runtime: {
+      subagent: {
+        run: mock(async () => ({ runId: 'unused' })),
+        waitForRun: mock(async () => ({ result: null })),
+        getSessionMessages: mock(async () => ({ messages: [] })),
+      },
+    },
+    logger: {
+      debug: mock(() => {}),
+      info: mock(() => {}),
+      warn: mock(() => {}),
+      error: mock(() => {}),
+    },
+    registerHttpRoute: mock(() => {}),
+  };
+}
+
+function mockBackend(opportunities: unknown[], hookStatus = 200, confirmStatus = 200): FetchSink {
+  const sink: FetchSink = { pendingUrls: [], hookCalls: [], confirmCalls: [] };
+  global.fetch = mock(async (input: RequestInfo, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/opportunities/pending')) {
+      sink.pendingUrls.push(url);
+      return new Response(JSON.stringify({ opportunities }), { status: 200 });
+    }
+    if (url.includes('/hooks/agent')) {
+      const body = init?.body ? (JSON.parse(init.body as string) as unknown) : undefined;
+      const headers = init?.headers as Record<string, string> | undefined;
+      sink.hookCalls.push({ url, headers, body });
+      return new Response(JSON.stringify({ status: 'sent' }), { status: hookStatus });
+    }
+    if (url.includes('/confirm-batch')) {
+      const body = init?.body ? (JSON.parse(init.body as string) as unknown) : undefined;
+      sink.confirmCalls.push({ url, body });
+      return new Response(
+        JSON.stringify({ confirmed: 1, alreadyDelivered: 0 }),
+        { status: confirmStatus },
+      );
+    }
+    return new Response('not-found', { status: 404 });
+  }) as unknown as typeof fetch;
+  return sink;
+}
+
+describe('handleAmbientDiscovery (hooks-only path)', () => {
   let mockApi: OpenClawPluginApi;
-  let runEmbeddedCalls: Array<{ prompt: string }>;
   let originalFetch: typeof global.fetch;
 
-  // Use UUID-format IDs so extractSelectedIds (UUID regex) can find them in rendered text
-  const OPP_1 = '11111111-1111-1111-1111-111111111111';
-  const OPP_2 = '22222222-2222-2222-2222-222222222222';
-
   beforeEach(() => {
-    runEmbeddedCalls = [];
     originalFetch = global.fetch;
     _resetForTesting();
-
-    mockApi = {
-      id: 'test-plugin',
-      name: 'Test',
-      pluginConfig: { mainAgentToolUse: 'disabled' },
-      config: { gateway: { port: 18789 } },
-      runtime: {
-        subagent: {
-          run: mock(async () => ({ runId: 'unused' })),
-          waitForRun: mock(async () => ({ result: null })),
-          getSessionMessages: mock(async () => ({ messages: [] })),
-        },
-        agent: {
-          resolveAgentDir: () => '/tmp/agent',
-          resolveAgentWorkspaceDir: () => '/tmp/ws',
-          resolveAgentIdentity: () => ({ id: 'main', sessionId: 'main' }),
-          resolveAgentTimeoutMs: () => 60_000,
-          runEmbeddedAgent: mock(async (opts) => {
-            runEmbeddedCalls.push({ prompt: opts.prompt });
-            // Default: render only OPP_1 in voice (contains its UUID in URLs)
-            return {
-              text: `1. [Bryan](https://test.index.network/u/user-1) - good match (https://test.index.network/opportunities/${OPP_1}/accept) (https://test.index.network/opportunities/${OPP_1}/skip)`,
-            };
-          }),
-        },
-      },
-      logger: { debug: mock(() => {}), info: mock(() => {}), warn: mock(() => {}), error: mock(() => {}) },
-      registerHttpRoute: mock(() => {}),
-    };
+    mockApi = makeApi();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
     _resetForTesting();
   });
-
-  function mockBackend(opportunities: unknown[]) {
-    const pendingUrls: string[] = [];
-    const confirmCalls: string[] = [];
-    global.fetch = mock(async (input: RequestInfo) => {
-      const url = String(input);
-      if (url.includes('/opportunities/pending')) {
-        pendingUrls.push(url);
-        return new Response(JSON.stringify({ opportunities }), { status: 200 });
-      }
-      if (url.includes('/delivered') || url.includes('/confirm-batch')) {
-        confirmCalls.push(url);
-        return new Response('{}', { status: 200 });
-      }
-      return new Response('not-found', { status: 404 });
-    }) as unknown as typeof fetch;
-    return { pendingUrls, confirmCalls };
-  }
 
   const cfg = {
     baseUrl: 'https://test.example.com',
@@ -84,105 +94,81 @@ describe('handleAmbientDiscovery (main-agent path)', () => {
     expect(sink.pendingUrls[0]).toContain('limit=10');
   });
 
-  it('returns false when /pending is empty', async () => {
-    mockBackend([]);
+  it('returns false when /pending is empty (no hook dispatch)', async () => {
+    const sink = mockBackend([]);
     const result = await handleAmbientDiscovery(mockApi, cfg);
     expect(result).toBe(false);
-    expect(runEmbeddedCalls).toHaveLength(0);
+    expect(sink.hookCalls).toHaveLength(0);
   });
 
-  it('drives main agent with the ambient prompt (mentions Real-time alert)', async () => {
-    mockBackend([
+  it('dispatches via /hooks/agent with bearer token and ambient prompt', async () => {
+    const sink = mockBackend([
       { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ]);
-    await handleAmbientDiscovery(mockApi, cfg);
-    expect(runEmbeddedCalls).toHaveLength(1);
-    expect(runEmbeddedCalls[0].prompt).toContain('INDEX NETWORK NOTIFICATION');
-    expect(runEmbeddedCalls[0].prompt).toContain('Real-time alert');
+    const result = await handleAmbientDiscovery(mockApi, cfg);
+    expect(result).toBe(true);
+    expect(sink.hookCalls).toHaveLength(1);
+    const hookCall = sink.hookCalls[0];
+    expect(hookCall.headers?.authorization).toBe('Bearer hooks-tok');
+    const body = hookCall.body as { message: string; deliver: boolean; channel: string };
+    expect(body.message).toContain('Real-time alert');
+    expect(body.deliver).toBe(true);
+    expect(body.channel).toBe('last');
   });
 
-  it('confirms only IDs that appear in the rendered text', async () => {
+  it('confirms ALL batch IDs after successful dispatch (no scrape)', async () => {
     const sink = mockBackend([
       { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
       { opportunityId: OPP_2, counterpartUserId: 'user-2', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ]);
-    // runEmbedded default mock returns text mentioning only OPP_1 (via its UUID in URLs)
     await handleAmbientDiscovery(mockApi, cfg);
-    // Confirm endpoint is called once. The plugin uses the batch-confirm endpoint, so one call covers all selected IDs.
     expect(sink.confirmCalls).toHaveLength(1);
-  });
-
-  it('skips confirms when the agent emits NO_REPLY', async () => {
-    (mockApi.runtime.agent!.runEmbeddedAgent as ReturnType<typeof mock>).mockResolvedValueOnce({
-      text: 'NO_REPLY',
-    });
-    const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-    ]);
-    await handleAmbientDiscovery(mockApi, cfg);
-    expect(sink.confirmCalls).toHaveLength(0);
-  });
-
-  it('skips confirms when rendered text contains no recognizable IDs', async () => {
-    (mockApi.runtime.agent!.runEmbeddedAgent as ReturnType<typeof mock>).mockResolvedValueOnce({
-      text: 'A vague update with no IDs',
-    });
-    const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-    ]);
-    await handleAmbientDiscovery(mockApi, cfg);
-    expect(sink.confirmCalls).toHaveLength(0);
+    const confirmBody = sink.confirmCalls[0].body as { opportunityIds: string[] };
+    expect(confirmBody.opportunityIds.sort()).toEqual([OPP_1, OPP_2].sort());
   });
 
   it('skips opportunities with null counterpartUserId', async () => {
-    mockBackend([
+    const sink = mockBackend([
       { opportunityId: OPP_1, counterpartUserId: null, rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ]);
     const result = await handleAmbientDiscovery(mockApi, cfg);
     expect(result).toBe(false);
-    expect(runEmbeddedCalls).toHaveLength(0);
+    expect(sink.hookCalls).toHaveLength(0);
   });
 
-  it('dedup: second call with identical pending body does NOT call runEmbeddedAgent again', async () => {
-    mockBackend([
+  it('returns false when dispatch fails (config_error)', async () => {
+    mockApi.config = { gateway: { port: 18789 } };
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ]);
+    const result = await handleAmbientDiscovery(mockApi, cfg);
+    expect(result).toBe(false);
+    expect(sink.hookCalls).toHaveLength(0);
+    expect(sink.confirmCalls).toHaveLength(0);
+  });
+
+  it('does not advance dedup hash when confirm fails', async () => {
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ], 200, 500);
+
+    await handleAmbientDiscovery(mockApi, cfg);
+    expect(sink.hookCalls).toHaveLength(1);
+    expect(sink.confirmCalls).toHaveLength(1);
+
+    // Same batch on next cycle — should re-dispatch since confirm failed.
+    await handleAmbientDiscovery(mockApi, cfg);
+    expect(sink.hookCalls).toHaveLength(2);
+  });
+
+  it('dedups: identical batch on second cycle does NOT re-dispatch', async () => {
+    const sink = mockBackend([
       { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ]);
     await handleAmbientDiscovery(mockApi, cfg);
-    expect(runEmbeddedCalls).toHaveLength(1);
-
-    // Second call with identical backend response — should short-circuit
-    await handleAmbientDiscovery(mockApi, cfg);
-    expect(runEmbeddedCalls).toHaveLength(1);
-  });
-
-  it('confirm failure leaves dedup hash unchanged so next cycle retries the same batch', async () => {
-    const opportunities = [
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-    ];
-    let confirmCalls = 0;
-    global.fetch = mock(async (input: RequestInfo) => {
-      const url = String(input);
-      if (url.includes('/opportunities/pending')) {
-        return new Response(JSON.stringify({ opportunities }), { status: 200 });
-      }
-      if (url.includes('/confirm-batch')) {
-        confirmCalls += 1;
-        // First confirm fails (5xx); second confirm succeeds.
-        if (confirmCalls === 1) {
-          return new Response('boom', { status: 500 });
-        }
-        return new Response('{}', { status: 200 });
-      }
-      return new Response('not-found', { status: 404 });
-    }) as unknown as typeof fetch;
+    expect(sink.hookCalls).toHaveLength(1);
 
     await handleAmbientDiscovery(mockApi, cfg);
-    expect(runEmbeddedCalls).toHaveLength(1);
-    expect(confirmCalls).toBe(1);
-
-    // Confirm failed — dedup hash NOT advanced — next cycle re-dispatches.
-    await handleAmbientDiscovery(mockApi, cfg);
-    expect(runEmbeddedCalls).toHaveLength(2);
-    expect(confirmCalls).toBe(2);
+    expect(sink.hookCalls).toHaveLength(1);
   });
 });
