@@ -1020,6 +1020,13 @@ export class ChatDatabaseAdapter {
     return profileAdapter.findDuplicateUser(userId, socials);
   }
 
+  /**
+   * Merge a ghost user (source) into a target user.
+   * Re-points all data from source to target, cleans up ghost-only records, and soft-deletes source.
+   * Delegates to ProfileDatabaseAdapter.
+   * @param sourceId - The ghost user to merge away (must be an active ghost)
+   * @param targetId - The user to merge into
+   */
   async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.mergeGhostUser(sourceId, targetId);
@@ -3633,6 +3640,16 @@ export class ProfileDatabaseAdapter {
    */
   async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
     await db.transaction(async (tx) => {
+      // Guard: only active ghost users may be merged away
+      const [source] = await tx
+        .select({ isGhost: schema.users.isGhost })
+        .from(schema.users)
+        .where(and(eq(schema.users.id, sourceId), isNull(schema.users.deletedAt)))
+        .limit(1);
+      if (!source?.isGhost) {
+        throw new Error(`mergeGhostUser: sourceId ${sourceId} is not an active ghost user`);
+      }
+
       // ── 1. Delete ghost-only records (unique constraints prevent re-pointing) ──
 
       await tx.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, sourceId));
@@ -3673,7 +3690,7 @@ export class ProfileDatabaseAdapter {
 
       const targetMemberships = await tx.select({ networkId: schema.networkMembers.networkId })
         .from(schema.networkMembers)
-        .where(eq(schema.networkMembers.userId, targetId));
+        .where(and(eq(schema.networkMembers.userId, targetId), isNull(schema.networkMembers.deletedAt)));
       const targetNetworkIds = new Set(targetMemberships.map(m => m.networkId));
 
       for (const gm of ghostMemberships) {
