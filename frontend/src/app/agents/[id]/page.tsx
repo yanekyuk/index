@@ -575,13 +575,15 @@ function WizardRow({
   );
 }
 
+// MIRROR: This grid previews the OpenClaw setup wizard prompts for users
+// who can't run an LLM-driven setup. Keep it in sync with `runSetup` in
+// `packages/openclaw-plugin/src/setup/setup.cli.ts` — any prompt added,
+// renamed, or removed there must be reflected here (and vice versa).
 function WizardPromptGrid({
   serverUrl,
-  agentId,
   apiKey,
 }: {
   serverUrl: string;
-  agentId: string;
   apiKey: string;
 }) {
   return (
@@ -592,8 +594,7 @@ function WizardPromptGrid({
       </div>
       <div className="grid grid-cols-2">
         <WizardRow prompt="URL" description="Index Network URL" value={serverUrl} copyable />
-        <WizardRow prompt="Agent ID" description="Your personal agent's unique identifier" value={agentId} copyable />
-        <WizardRow prompt="API Key" description="The API key you just generated" value={apiKey} copyable />
+        <WizardRow prompt="API Key" description="The API key you just generated. Setup resolves your agent from this key automatically." value={apiKey} copyable />
         <div className="col-span-2 px-3 py-2 border-b border-gray-200 bg-gray-100">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Optional</span>
         </div>
@@ -663,10 +664,9 @@ function OpenClawSetup({
   );
 }
 
-function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
+function SetupInstructions({ apiKey }: { apiKey?: string }) {
   const [expanded, setExpanded] = useState(false);
   const keyValue = apiKey || "YOUR_API_KEY";
-  const agentValue = agentId || "YOUR_AGENT_ID";
 
   const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
   const baseUrl = window.location.origin;
@@ -721,7 +721,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
-            <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
+            <WizardPromptGrid serverUrl={baseUrl} apiKey={keyValue} />
           </div>
         </div>
       )}
@@ -847,7 +847,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
             </Button>
           </div>
           <div className="mt-3">
-            <SetupInstructions apiKey={createdKey} agentId={agent.id} />
+            <SetupInstructions apiKey={createdKey} />
           </div>
           <button
             onClick={() => { setCreatedKey(null); setCopied(false); }}
@@ -940,7 +940,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
         </div>
       )}
 
-      {!createdKey && keys.length > 0 && <SetupInstructions agentId={agent.id} />}
+      {!createdKey && keys.length > 0 && <SetupInstructions />}
 
       <AlertDialog.Root open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialog.Portal>

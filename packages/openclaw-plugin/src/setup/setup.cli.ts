@@ -8,6 +8,12 @@
  * Collects url, apiKey, and optional delivery routing, resolves the
  * caller's agentId from the API key via GET /api/agents/me, then writes
  * plugin config and registers the MCP server.
+ *
+ * MIRROR: The Index Network agents page renders a copyable preview of
+ * this same wizard for users who run setup outside an LLM. When you
+ * change the prompts here (add a step, rename a label, remove a field),
+ * also update `WizardPromptGrid` and `SetupInstructions` in
+ * `frontend/src/app/agents/[id]/page.tsx` so the two stay in sync.
  */
 
 import * as fs from 'node:fs';
