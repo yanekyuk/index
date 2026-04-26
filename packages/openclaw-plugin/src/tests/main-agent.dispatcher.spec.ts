@@ -98,9 +98,9 @@ describe('dispatchToMainAgent', () => {
     (mockApi.runtime.agent!.runEmbeddedAgent as ReturnType<typeof mock>).mockRejectedValueOnce(
       new Error('not supported'),
     );
-    let capturedReq: { url: string; init?: RequestInit } | null = null;
-    global.fetch = mock(async (input: RequestInfo, init?: RequestInit) => {
-      capturedReq = { url: String(input), init };
+    const capturedUrls: string[] = [];
+    global.fetch = mock(async (input: RequestInfo, _init?: RequestInit) => {
+      capturedUrls.push(String(input));
       return new Response(JSON.stringify({ status: 'ok', text: 'Hello via hooks' }), {
         status: 200,
       });
@@ -109,7 +109,8 @@ describe('dispatchToMainAgent', () => {
     const out = await dispatchToMainAgent(mockApi, ctx);
     expect(out.deliveredText).toBe('Hello via hooks');
     expect(out.suppressedByNoReply).toBe(false);
-    expect(capturedReq?.url).toContain('/hooks/agent');
+    expect(capturedUrls).toHaveLength(1);
+    expect(capturedUrls[0]).toContain('/hooks/agent');
   });
 
   it('SDK missing entirely → falls back to /hooks/agent', async () => {
