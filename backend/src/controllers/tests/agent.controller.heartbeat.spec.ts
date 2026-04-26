@@ -72,17 +72,19 @@ const opportunityPickupMock = mock(async (_agentId: string) => {
   return null;
 });
 
+const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number) => []);
+
 const opportunityDeliveryInstance = {
   pickupPending: opportunityPickupMock,
   confirmDelivered: mock(async () => {}),
-  fetchPendingCandidates: mock(async () => []),
+  fetchPendingCandidates: fetchPendingCandidatesMock,
 };
 
 mock.module('../../services/opportunity-delivery.service', () => ({
   OpportunityDeliveryService: class {
     pickupPending = opportunityPickupMock;
     confirmDelivered = mock(async () => {});
-    fetchPendingCandidates = mock(async () => []);
+    fetchPendingCandidates = fetchPendingCandidatesMock;
   },
   opportunityDeliveryService: opportunityDeliveryInstance,
 }));
@@ -91,6 +93,7 @@ mock.module('../../services/opportunity-delivery.service', () => ({
 mock.module('../../guards/auth.guard', () => ({
   AuthGuard: {},
   AuthOrApiKeyGuard: {},
+  resolveApiKeyAgentId: mock(async () => null),
 }));
 
 // ---------------------------------------------------------------------------
@@ -129,6 +132,7 @@ describe('AgentController pickup endpoints heartbeat', () => {
     negotiationPickupMock.mockClear();
     testMessagePickupMock.mockClear();
     opportunityPickupMock.mockClear();
+    fetchPendingCandidatesMock.mockClear();
     getByIdMock.mockClear();
   });
 
@@ -192,5 +196,59 @@ describe('AgentController pickup endpoints heartbeat', () => {
     expect(negotiationPickupMock).toHaveBeenCalled();
     expect(touchLastSeenMock).not.toHaveBeenCalled();
     expect(callOrder).toEqual(['pickupNegotiation']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id/opportunities/pending — ?limit query parameter
+// ---------------------------------------------------------------------------
+
+describe('AgentController getPendingOpportunities ?limit parameter', () => {
+  let controller: AgentController;
+
+  beforeEach(() => {
+    controller = makeController();
+    fetchPendingCandidatesMock.mockClear();
+    getByIdMock.mockClear();
+    touchLastSeenMock.mockClear();
+  });
+
+  it('passes numeric limit to service when ?limit=7', async () => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=7`);
+    await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, 7);
+  });
+
+  it('passes undefined to service when ?limit is absent', async () => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending`);
+    await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, undefined);
+  });
+
+  it('passes limit=21 to service without clamping (service clamps)', async () => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=21`);
+    await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, 21);
+  });
+
+  it('returns 400 when ?limit is not an integer (abc)', async () => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=abc`);
+    const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    expect((res as Response).status).toBe(400);
+    expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when ?limit=0', async () => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=0`);
+    const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    expect((res as Response).status).toBe(400);
+    expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when ?limit=-3', async () => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=-3`);
+    const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+    expect((res as Response).status).toBe(400);
+    expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
   });
 });

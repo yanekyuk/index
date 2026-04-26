@@ -292,10 +292,13 @@ export class OpportunityDeliveryService {
    * decides which candidates to commit via `commitDelivery`.
    *
    * @param agentId - The agent whose owner's pending opportunities are fetched.
-   * @returns Array of candidates with rendered cards, ordered oldest-first (up to 20).
+   * @param limit - Optional maximum number of candidates to return. Clamped to [1, 20]. Defaults to 20.
+   * @returns Array of candidates with rendered cards, ordered oldest-first (up to `limit`).
    */
-  async fetchPendingCandidates(agentId: string): Promise<PendingCandidate[]> {
+  async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidate[]> {
     const userId = await this.resolveAgentOwner(agentId);
+    const raw = Number.isFinite(limit as number) ? Math.trunc(limit as number) : 20;
+    const effectiveLimit = Math.min(20, Math.max(1, raw));
 
     const result = await db.execute(sql`
       SELECT o.id, o.actors, o.status, o.interpretation, o.detection
@@ -323,7 +326,7 @@ export class OpportunityDeliveryService {
             AND d.delivered_at IS NOT NULL
         )
       ORDER BY o.updated_at ASC
-      LIMIT 20
+      LIMIT ${effectiveLimit}
     `);
 
     const rows = result as unknown as Array<{

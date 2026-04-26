@@ -542,16 +542,27 @@ export class AgentController {
 
   @Get('/:id/opportunities/pending')
   @UseGuards(AuthOrApiKeyGuard)
-  async getPendingOpportunities(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async getPendingOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
       return jsonError('Agent ID is required', 400);
     }
 
+    const url = new URL(req.url);
+    const limitParam = url.searchParams.get('limit');
+    let limit: number | undefined;
+    if (limitParam !== null) {
+      const parsed = Number(limitParam);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        return jsonError('limit must be a positive integer', 400);
+      }
+      limit = parsed;
+    }
+
     try {
       await agentService.getById(agentId, user.id);
       await agentService.touchLastSeen(agentId);
-      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId);
+      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
       return Response.json({ opportunities });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
