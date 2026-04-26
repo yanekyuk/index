@@ -3432,8 +3432,8 @@ export class ProfileDatabaseAdapter {
    */
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
-  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
+    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
+  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
     // Load current user to merge socials
     const current = await this.getUser(userId);
     if (!current) return null;
@@ -3476,7 +3476,7 @@ export class ProfileDatabaseAdapter {
       intro: updated.intro,
       avatar: updated.avatar,
       location: updated.location,
-      socials: updated.socials as { x?: string; linkedin?: string; github?: string; websites?: string[] } | null,
+      socials: updated.socials as { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null,
       onboarding: (updated as { onboarding?: unknown }).onboarding as OnboardingState | null,
     };
   }
