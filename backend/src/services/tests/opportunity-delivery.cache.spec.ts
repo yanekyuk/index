@@ -92,9 +92,9 @@ mock.module('../../lib/drizzle/drizzle', () => ({
 //   - gatherPresenterContext → returns minimal stub (no DB calls)
 //   - OpportunityPresenter   → stub class with trackable presentHomeCard
 //   - canUserSeeOpportunity  → always true
-//   - getOrCreateHomeCardBatch → use the REAL implementation so cache.mget/set are exercised
+//   - getOrCreateDeliveryCardBatch → use the REAL implementation so cache.mget/set are exercised
 
-import { getOrCreateHomeCardBatch as realGetOrCreate } from '@indexnetwork/protocol';
+import { getOrCreateDeliveryCardBatch as realGetOrCreate } from '@indexnetwork/protocol';
 
 const presentHomeCardMock = mock(async (_input: unknown) => ({
   ...STUB_CARD,
@@ -122,7 +122,7 @@ mock.module('@indexnetwork/protocol', () => {
     })),
 
     // Use the real implementation so cache.mget / cache.set are exercised
-    getOrCreateHomeCardBatch: realGetOrCreate,
+    getOrCreateDeliveryCardBatch: realGetOrCreate,
   };
 });
 
@@ -289,7 +289,7 @@ describe('OpportunityDeliveryService cache-aside wiring', () => {
     expect(mgetCalls.length).toBe(0);
   });
 
-  it('uses the correct cache key format: home:card:{id}:{status}:{viewerId}', async () => {
+  it('uses the correct cache key format: delivery:card:{id}:{status}:{viewerId}', async () => {
     const { OpportunityPresenter } = await import('@indexnetwork/protocol');
     const cache = makeMockCache(false);
     const svc = new OpportunityDeliveryService(
@@ -301,6 +301,6 @@ describe('OpportunityDeliveryService cache-aside wiring', () => {
     await renderCard(svc, OPP_ID, USER_ID);
 
     const key = cache.mgetCalls[0][0];
-    expect(key).toBe(`home:card:${OPP_ID}:${STUB_OPP.status}:${USER_ID}`);
+    expect(key).toBe(`delivery:card:${OPP_ID}:${STUB_OPP.status}:${USER_ID}`);
   });
 });

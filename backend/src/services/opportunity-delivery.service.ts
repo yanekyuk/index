@@ -19,7 +19,7 @@ import {
   OpportunityPresenter,
   canUserSeeOpportunity,
   gatherPresenterContext,
-  getOrCreateHomeCardBatch,
+  getOrCreateDeliveryCardBatch,
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
@@ -410,7 +410,7 @@ export class OpportunityDeliveryService {
           detection: opp.detection,
         };
 
-        const cards = await getOrCreateHomeCardBatch(
+        const cards = await getOrCreateDeliveryCardBatch(
           this.cache,
           this.presenter,
           this.presenterDb,
