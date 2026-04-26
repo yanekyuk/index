@@ -234,6 +234,7 @@ export class OpportunityDeliveryService {
     opportunityId: string,
     userId: string,
     agentId: string | null,
+    trigger: 'ambient' | 'digest',
   ): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
@@ -269,7 +270,7 @@ export class OpportunityDeliveryService {
         userId,
         agentId,
         channel: CHANNEL,
-        trigger: TRIGGER_PENDING,
+        trigger,
         deliveredAtStatus: opp.status,
         reservationToken: randomUUID(),
         reservedAt: new Date(),

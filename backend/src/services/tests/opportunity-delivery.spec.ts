@@ -232,7 +232,7 @@ describe('fetchPendingCandidates', () => {
 
   it('excludes opportunity already committed in delivery ledger', async () => {
     const opportunityId = await seedOpportunity([userId], 'pending');
-    await svc.commitDelivery(opportunityId, userId, agentId);
+    await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
     const results = await svc.fetchPendingCandidates(agentId);
     expect(results).toEqual([]);
   });
@@ -322,7 +322,7 @@ describe('commitDelivery', () => {
   });
 
   it('returns confirmed and inserts delivery row on first call', async () => {
-    const result = await svc.commitDelivery(opportunityId, userId, agentId);
+    const result = await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
     expect(result).toBe('confirmed');
 
     const rows = await db
@@ -335,13 +335,28 @@ describe('commitDelivery', () => {
   });
 
   it('returns already_delivered on second call', async () => {
-    await svc.commitDelivery(opportunityId, userId, agentId);
-    const result = await svc.commitDelivery(opportunityId, userId, agentId);
+    await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
+    const result = await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
     expect(result).toBe('already_delivered');
   });
 
   it('throws not_authorized when user is not an actor', async () => {
     const otherId = await seedUser();
-    await expect(svc.commitDelivery(opportunityId, otherId, agentId)).rejects.toThrow('not_authorized');
+    await expect(svc.commitDelivery(opportunityId, otherId, agentId, 'ambient')).rejects.toThrow('not_authorized');
+  });
+
+  it('writes the supplied trigger value to the ledger', async () => {
+    const userId = await seedUser();
+    const agentId = await seedAgent(userId);
+    const opportunityId = await seedOpportunity([userId], 'pending');
+
+    const result = await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
+    expect(result).toBe('confirmed');
+
+    const [row] = await db
+      .select({ trigger: opportunityDeliveries.trigger })
+      .from(opportunityDeliveries)
+      .where(eq(opportunityDeliveries.opportunityId, opportunityId));
+    expect(row.trigger).toBe('ambient');
   });
 });
