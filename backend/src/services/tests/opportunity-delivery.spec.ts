@@ -260,7 +260,7 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, 50);
-    expect(results.length).toBeLessThanOrEqual(20);
+    expect(results).toHaveLength(20);
   });
 
   it('clamps limit at or below 0 to 1', async () => {
@@ -271,12 +271,36 @@ describe('fetchPendingCandidates', () => {
     expect(results).toHaveLength(1);
   });
 
+  it('clamps negative limit to 1', async () => {
+    for (let i = 0; i < 5; i++) {
+      await seedOpportunity([userId], 'pending');
+    }
+    const results = await svc.fetchPendingCandidates(agentId, -3);
+    expect(results).toHaveLength(1);
+  });
+
+  it('truncates fractional limit (1.9 → 1)', async () => {
+    for (let i = 0; i < 5; i++) {
+      await seedOpportunity([userId], 'pending');
+    }
+    const results = await svc.fetchPendingCandidates(agentId, 1.9);
+    expect(results).toHaveLength(1);
+  });
+
+  it('falls back to 20 when limit is non-finite (NaN)', async () => {
+    for (let i = 0; i < 25; i++) {
+      await seedOpportunity([userId], 'pending');
+    }
+    const results = await svc.fetchPendingCandidates(agentId, Number.NaN);
+    expect(results).toHaveLength(20);
+  });
+
   it('uses 20 as default when limit is omitted', async () => {
     for (let i = 0; i < 25; i++) {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId);
-    expect(results.length).toBeLessThanOrEqual(20);
+    expect(results).toHaveLength(20);
   });
 });
 

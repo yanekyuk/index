@@ -297,7 +297,7 @@ export class OpportunityDeliveryService {
    */
   async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidate[]> {
     const userId = await this.resolveAgentOwner(agentId);
-    const raw = Number.isFinite(limit as number) ? Math.trunc(limit as number) : 20;
+    const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 20;
     const effectiveLimit = Math.min(20, Math.max(1, raw));
 
     const result = await db.execute(sql`

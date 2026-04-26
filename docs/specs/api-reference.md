@@ -755,7 +755,7 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
 
 | Parameter | Type    | Required | Description |
 |-----------|---------|----------|-------------|
-| `limit`   | integer | no       | Maximum number of opportunities to return. Accepted range: `1..20`. Values above 20 are clamped to 20. Defaults to `20` when omitted. |
+| `limit`   | number  | no       | Maximum number of opportunities to return. Server clamps to `[1, 20]` and truncates fractional values. Out-of-range values (`0`, negatives, `>20`) are normalized rather than rejected. Defaults to `20` when omitted or empty. |
 
 **Request body**: empty.
 
@@ -780,7 +780,7 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
 - Each poll also bumps `agents.last_seen_at`.
 
 **Errors**:
-- `400` if `limit` is not a positive integer — `{"error":"limit must be a positive integer"}`.
+- `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
 - `403` if the agent is not owned by the authenticated user.
 
 ---

@@ -40,18 +40,22 @@ export interface DispatchResult {
   error?: 'network_error';
 }
 
-const NO_REPLY_PATTERN = /^\s*no[\s_-]?reply\b/i;
+const NO_REPLY_PATTERN = /^NO[_\s-]?REPLY\.?\s*$/i;
 
 /**
- * Returns true when the agent reply begins with a NO_REPLY token (case-
- * insensitive, leading whitespace stripped). Empty or nullish input returns
- * false — empty replies are handled separately as implicit suppression.
+ * Returns true when the agent reply is exactly the NO_REPLY token (case-
+ * insensitive, surrounding whitespace and an optional trailing period
+ * tolerated). Empty or nullish input returns false — empty replies are
+ * handled separately as implicit suppression.
+ *
+ * The whole-string anchor avoids false positives on legitimate replies that
+ * happen to start with "no reply" (e.g. "No reply yet from Bob — but...").
  *
  * @param text - Raw reply text from the agent, or null/undefined.
  */
 export function detectNoReply(text: string | null | undefined): boolean {
   if (!text) return false;
-  return NO_REPLY_PATTERN.test(text);
+  return NO_REPLY_PATTERN.test(text.trim());
 }
 
 /**

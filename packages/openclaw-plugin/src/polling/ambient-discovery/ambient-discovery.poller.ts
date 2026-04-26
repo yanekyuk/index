@@ -109,17 +109,20 @@ export async function handle(
     return false;
   }
 
-  // Update the hash after any non-network-error outcome so a suppressed or empty
-  // batch isn't re-tried on the next cycle.
-  lastOpportunityBatchHash = batchHash;
-
+  // The dedup hash advances when there is no further work to do for this batch —
+  // either the agent chose to suppress, the rendered text was empty/unparseable,
+  // or a confirm round-trip succeeded. On confirm failure we leave the hash
+  // unchanged so the next cycle retries the same batch instead of going quiet.
+  // Note: this state is module-level and resets on plugin reload.
   if (dispatch.suppressedByNoReply) {
     api.logger.info('Ambient discovery: agent suppressed via NO_REPLY.');
+    lastOpportunityBatchHash = batchHash;
     return true;
   }
 
   if (!dispatch.deliveredText) {
     api.logger.debug('Ambient discovery: empty rendered text.');
+    lastOpportunityBatchHash = batchHash;
     return true;
   }
 
@@ -128,16 +131,26 @@ export async function handle(
 
   if (selectedIds.length === 0) {
     api.logger.debug('Ambient discovery: rendered text has no recognizable IDs.');
+    lastOpportunityBatchHash = batchHash;
     return true;
   }
 
-  await confirmDeliveredBatch({
+  const confirmed = await confirmDeliveredBatch({
     baseUrl: config.baseUrl,
     agentId: config.agentId,
     apiKey: config.apiKey,
     opportunityIds: selectedIds,
     logger: api.logger,
   });
+
+  if (!confirmed) {
+    api.logger.warn(
+      'Ambient discovery: confirm failed; leaving dedup hash unchanged so the batch retries next cycle.',
+    );
+    return true;
+  }
+
+  lastOpportunityBatchHash = batchHash;
 
   api.logger.info(
     `Ambient discovery dispatched: ${candidates.length} candidate(s); ${selectedIds.length} confirmed`,

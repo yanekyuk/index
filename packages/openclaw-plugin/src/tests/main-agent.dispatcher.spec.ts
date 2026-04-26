@@ -12,7 +12,7 @@ describe('detectNoReply', () => {
     'no_reply',
     'NoReply',
     '  NO_REPLY\n',
-    'NO_REPLY then more text',
+    'NO_REPLY.',
     'noreply',
   ])('detects suppression in %p', (input) => {
     expect(detectNoReply(input)).toBe(true);
@@ -21,6 +21,9 @@ describe('detectNoReply', () => {
   it.each([
     'Hello — here is your digest',
     'I picked NO_REPLY out of curiosity', // not at start
+    'NO_REPLY then more text', // suffix beyond the token must not match
+    'No reply yet from Bob — but Alice looks fresh today', // legitimate digest opener
+    'No reply needed for this message',
     '',
     '   ',
   ])('does not detect suppression in %p', (input) => {

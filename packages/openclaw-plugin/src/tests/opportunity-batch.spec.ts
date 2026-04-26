@@ -154,4 +154,35 @@ describe('handleAmbientDiscovery (main-agent path)', () => {
     await handleAmbientDiscovery(mockApi, cfg);
     expect(runEmbeddedCalls).toHaveLength(1);
   });
+
+  it('confirm failure leaves dedup hash unchanged so next cycle retries the same batch', async () => {
+    const opportunities = [
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ];
+    let confirmCalls = 0;
+    global.fetch = mock(async (input: RequestInfo) => {
+      const url = String(input);
+      if (url.includes('/opportunities/pending')) {
+        return new Response(JSON.stringify({ opportunities }), { status: 200 });
+      }
+      if (url.includes('/confirm-batch')) {
+        confirmCalls += 1;
+        // First confirm fails (5xx); second confirm succeeds.
+        if (confirmCalls === 1) {
+          return new Response('boom', { status: 500 });
+        }
+        return new Response('{}', { status: 200 });
+      }
+      return new Response('not-found', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    await handleAmbientDiscovery(mockApi, cfg);
+    expect(runEmbeddedCalls).toHaveLength(1);
+    expect(confirmCalls).toBe(1);
+
+    // Confirm failed — dedup hash NOT advanced — next cycle re-dispatches.
+    await handleAmbientDiscovery(mockApi, cfg);
+    expect(runEmbeddedCalls).toHaveLength(2);
+    expect(confirmCalls).toBe(2);
+  });
 });

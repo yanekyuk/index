@@ -213,42 +213,41 @@ describe('AgentController getPendingOpportunities ?limit parameter', () => {
     touchLastSeenMock.mockClear();
   });
 
-  it('passes numeric limit to service when ?limit=7', async () => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=7`);
+  // The controller only validates "parses to a finite number"; the service
+  // does the [1, 20] clamp + integer truncation. So in-range out-of-bounds
+  // values (0, -3, 21, 1.5) are passed through and normalized downstream;
+  // only NaN/Infinity/non-numeric strings get a 400 here.
+
+  it.each<[string, number]>([
+    ['7', 7],
+    ['1', 1],
+    ['20', 20],
+    ['21', 21], // service clamps to 20
+    ['0', 0], // service clamps to 1
+    ['-3', -3], // service clamps to 1
+    ['1.5', 1.5], // service truncates to 1
+  ])('forwards ?limit=%s to service as %p', async (param, forwarded) => {
+    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=${param}`);
     await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, 7);
+    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, forwarded);
   });
 
-  it('passes undefined to service when ?limit is absent', async () => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending`);
+  it.each<[string, string]>([
+    ['absent', `http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending`],
+    ['empty', `http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=`],
+  ])('passes undefined to service when ?limit is %s', async (_label, url) => {
+    const req = new Request(url);
     await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
     expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, undefined);
   });
 
-  it('passes limit=21 to service without clamping (service clamps)', async () => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=21`);
-    await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect(fetchPendingCandidatesMock).toHaveBeenCalledWith(TEST_AGENT_ID, 21);
-  });
-
-  it('returns 400 when ?limit is not an integer (abc)', async () => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=abc`);
-    const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect((res as Response).status).toBe(400);
-    expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when ?limit=0', async () => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=0`);
-    const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect((res as Response).status).toBe(400);
-    expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when ?limit=-3', async () => {
-    const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=-3`);
-    const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
-    expect((res as Response).status).toBe(400);
-    expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
-  });
+  it.each(['abc', 'Infinity', '-Infinity', 'NaN'])(
+    'returns 400 when ?limit=%s (not finite)',
+    async (param) => {
+      const req = new Request(`http://localhost/agents/${TEST_AGENT_ID}/opportunities/pending?limit=${param}`);
+      const res = await controller.getPendingOpportunities(req, mockUser as never, makeParams(TEST_AGENT_ID));
+      expect((res as Response).status).toBe(400);
+      expect(fetchPendingCandidatesMock).not.toHaveBeenCalled();
+    },
+  );
 });

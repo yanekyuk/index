@@ -548,13 +548,19 @@ export class AgentController {
       return jsonError('Agent ID is required', 400);
     }
 
+    // Validation contract: the controller only enforces "the param parses to a
+    // finite number". The service is the single source of truth for clamping
+    // (rounds to integer, then clamps to [1, 20]), so values like 0, -3, 1.5,
+    // 100 are all accepted here and normalized downstream. NaN/Infinity/empty
+    // are rejected with 400 — they signal a malformed request, not a value out
+    // of range.
     const url = new URL(req.url);
     const limitParam = url.searchParams.get('limit');
     let limit: number | undefined;
-    if (limitParam !== null) {
+    if (limitParam !== null && limitParam !== '') {
       const parsed = Number(limitParam);
-      if (!Number.isInteger(parsed) || parsed < 1) {
-        return jsonError('limit must be a positive integer', 400);
+      if (!Number.isFinite(parsed)) {
+        return jsonError('limit must be a finite number', 400);
       }
       limit = parsed;
     }
