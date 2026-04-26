@@ -22,6 +22,7 @@ import * as path from 'node:path';
 import * as readline from 'node:readline/promises';
 
 import { deriveUrls } from '../lib/utils/url.js';
+import { defaultFetchAgentId } from './fetch-agent-id.js';
 
 const PLUGIN_ID = 'indexnetwork-openclaw-plugin';
 const CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json');
@@ -184,34 +185,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
  * @param program - Commander program instance provided by OpenClaw's `registerCli`.
  * @param api     - Plugin API for reading config and calling `configSet`.
  */
-/**
- * Resolve the calling key's bound agentId via `GET /api/agents/me`.
- * Throws a user-readable error if the key is invalid or not agent-bound.
- */
-async function defaultFetchAgentId(protocolUrl: string, apiKey: string): Promise<string> {
-  const normalized = protocolUrl.replace(/\/+$/, '');
-  let res: Response;
-  try {
-    res = await fetch(`${normalized}/api/agents/me`, {
-      headers: { 'x-api-key': apiKey },
-    });
-  } catch (err) {
-    throw new Error(`Failed to reach Index Network at ${normalized}: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  if (!res.ok) {
-    throw new Error(`Could not resolve agent from API key (HTTP ${res.status}). Generate a fresh key on the Index Network Agents page.`);
-  }
-
-  const body = await res.json() as { agent?: { id?: string } };
-  const id = body.agent?.id;
-  if (!id) {
-    throw new Error('API key resolved but no agent was returned. Generate a fresh key on the Index Network Agents page.');
-  }
-
-  return id;
-}
-
 /**
  * Read the OpenClaw config file, or return an empty object if missing.
  */
