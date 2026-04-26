@@ -188,7 +188,28 @@ describe('setup wizard', () => {
     expect(apiKeyPrompt?.opts?.secret).toBe(true);
   });
 
-  test('skips delivery when no channels are configured', async () => {
+  test('never prompts for delivery channel regardless of configured channels', async () => {
+    // Even when channels are configured, the wizard no longer asks about delivery
+    const fake = buildFakeCtx({
+      channels: {
+        telegram: { token: 'bot-token-123' },
+        discord: { token: 'discord-token' },
+      },
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const deliverySelect = fake.selectCalls.find((s) => s.label === 'Delivery channel');
+    expect(deliverySelect).toBeUndefined();
+
+    const paths = fake.configWrites.map((w) => w.path);
+    expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel');
+    expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget');
+  });
+
+  test('never writes deliveryChannel or deliveryTarget even with no channels', async () => {
     const fake = buildFakeCtx({
       channels: {},
       promptResponses: { 'API key': 'key-456' },
@@ -204,57 +225,86 @@ describe('setup wizard', () => {
     expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel');
   });
 
-  test('offers detected channels and writes delivery config when selected', async () => {
+  test('existing deliveryChannel and deliveryTarget in config do not break the wizard', async () => {
+    // Pre-existing delivery config is left untouched — wizard neither reads nor writes it
     const fake = buildFakeCtx({
-      channels: {
-        telegram: { token: 'bot-token-123' },
-        discord: { token: 'discord-token' },
-      },
-      promptResponses: {
-        'API key': 'key-456',
-        'Telegram chat ID (message @userinfobot on Telegram to find yours)': '99887766',
-      },
-      selectResponses: {
-        'Delivery channel': 'telegram',
-        'Daily digest': 'true',
-      },
-    });
-
-    await setup(fake.ctx);
-
-    const deliverySelect = fake.selectCalls.find((s) => s.label === 'Delivery channel');
-    expect(deliverySelect).toBeDefined();
-    const choices = deliverySelect!.choices;
-    expect(choices.map((c) => c.value)).toContain('telegram');
-    expect(choices.map((c) => c.value)).toContain('discord');
-    expect(choices.map((c) => c.value)).toContain('');
-
-    const channelWrite = fake.configWrites.find(
-      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel',
-    );
-    expect(channelWrite?.value).toBe('telegram');
-
-    const targetWrite = fake.configWrites.find(
-      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget',
-    );
-    expect(targetWrite?.value).toBe('99887766');
-  });
-
-  test('skips delivery config when user selects Skip', async () => {
-    const fake = buildFakeCtx({
-      channels: { telegram: { token: 'bot-token' } },
+      existingConfig: { deliveryChannel: 'telegram', deliveryTarget: '12345' },
       promptResponses: { 'API key': 'key-456' },
-      selectResponses: {
-        'Delivery channel': '',
-        'Daily digest': 'true',
-      },
+      selectResponses: { 'Daily digest': 'true' },
     });
 
     await setup(fake.ctx);
 
+    // Wizard completes without error
     const paths = fake.configWrites.map((w) => w.path);
+    expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.url');
+    expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.apiKey');
+    // Not overwritten
     expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel');
     expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget');
+  });
+
+  // --- Main agent tool use ---
+
+  test('prompts for mainAgentToolUse and writes disabled by default', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+      // No selectResponse for mainAgentToolUse — falls back to first choice ('disabled')
+    });
+
+    await setup(fake.ctx);
+
+    const mainAgentSelect = fake.selectCalls.find(
+      (s) => s.label === 'Main agent tool use during Index Network renders',
+    );
+    expect(mainAgentSelect).toBeDefined();
+
+    const mainAgentWrite = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.mainAgentToolUse',
+    );
+    expect(mainAgentWrite?.value).toBe('disabled');
+  });
+
+  test('writes mainAgentToolUse enabled when user picks enabled', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: {
+        'Daily digest': 'true',
+        'Main agent tool use during Index Network renders': 'enabled',
+      },
+    });
+
+    await setup(fake.ctx);
+
+    const mainAgentWrite = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.mainAgentToolUse',
+    );
+    expect(mainAgentWrite?.value).toBe('enabled');
+  });
+
+  test('mainAgentToolUse prompt appears after digest config and before MCP registration', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const selectLabels = fake.selectCalls.map((s) => s.label);
+    const digestIdx = selectLabels.indexOf('Daily digest');
+    const mainAgentIdx = selectLabels.indexOf('Main agent tool use during Index Network renders');
+    expect(digestIdx).toBeGreaterThanOrEqual(0);
+    expect(mainAgentIdx).toBeGreaterThan(digestIdx);
+
+    // MCP write comes after mainAgentToolUse write in configWrites
+    const paths = fake.configWrites.map((w) => w.path);
+    const mainAgentWriteIdx = paths.indexOf(
+      'plugins.entries.indexnetwork-openclaw-plugin.config.mainAgentToolUse',
+    );
+    const mcpWriteIdx = paths.indexOf('mcp.servers.index-network');
+    expect(mainAgentWriteIdx).toBeGreaterThanOrEqual(0);
+    expect(mcpWriteIdx).toBeGreaterThan(mainAgentWriteIdx);
   });
 
   // --- Digest config ---
@@ -274,7 +324,19 @@ describe('setup wizard', () => {
 
     expect(fake.configWrites.find((w) => w.path.endsWith('digestEnabled'))?.value).toBe('true');
     expect(fake.configWrites.find((w) => w.path.endsWith('digestTime'))?.value).toBe('08:00');
-    expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('10');
+    expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('20');
+  });
+
+  test('digestMaxCount default is 20', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const digestMaxPrompt = fake.promptCalls.find((p) => p.label === 'Max opportunities per digest');
+    expect(digestMaxPrompt?.opts?.default).toBe('20');
   });
 
   test('writes custom digest time and count when provided', async () => {
@@ -352,32 +414,5 @@ describe('setup wizard', () => {
       (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.agentId',
     );
     expect(agentWrite?.value).toBe('fresh-agent-from-key');
-  });
-
-  test('shows delivery section with existing config as defaults when re-running setup', async () => {
-    const fake = buildFakeCtx({
-      channels: { telegram: { token: 'bot-token' } },
-      existingConfig: { deliveryChannel: 'telegram', deliveryTarget: '12345' },
-      promptResponses: { 'API key': 'key-456' },
-      selectResponses: {
-        'Delivery channel': 'telegram',
-        'Daily digest': 'true',
-      },
-    });
-
-    await setup(fake.ctx);
-
-    const deliverySelect = fake.selectCalls.find((s) => s.label === 'Delivery channel');
-    expect(deliverySelect).toBeDefined();
-
-    // Existing channel annotated as (current)
-    const telegramChoice = deliverySelect!.choices.find((c) => c.value === 'telegram');
-    expect(telegramChoice?.label).toContain('(current)');
-
-    // Existing target surfaced as default so pressing Enter keeps it
-    const targetPrompt = fake.promptCalls.find(
-      (p) => p.label === 'Telegram chat ID (message @userinfobot on Telegram to find yours)',
-    );
-    expect(targetPrompt?.opts?.default).toBe('12345');
   });
 });

@@ -5,9 +5,18 @@
  *
  *   openclaw index-network setup
  *
- * Collects url, apiKey, and optional delivery routing, resolves the
- * caller's agentId from the API key via GET /api/agents/me, then writes
- * plugin config and registers the MCP server.
+ * Collects url, apiKey, and mainAgentToolUse, resolves the caller's
+ * agentId from the API key via GET /api/agents/me, then writes plugin
+ * config and registers the MCP server.
+ *
+ * Wizard steps (in order):
+ *   1. Index Network URL
+ *   2. API key
+ *   3. Daily digest (enabled/disabled)
+ *   4. Digest time (if enabled)
+ *   5. Max opportunities per digest (if enabled)
+ *   6. Main agent tool use during Index Network renders
+ *   7. MCP server registration
  *
  * MIRROR: The Index Network agents page renders a copyable preview of
  * this same wizard for users who run setup outside an LLM. When you
@@ -27,26 +36,6 @@ import { defaultFetchAgentId } from './fetch-agent-id.js';
 const PLUGIN_ID = 'indexnetwork-openclaw-plugin';
 const CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json');
 const DEFAULT_URL = 'https://index.network';
-
-/** Human-readable labels for known channel IDs. */
-const CHANNEL_LABELS: Record<string, string> = {
-  telegram: 'Telegram',
-  discord: 'Discord',
-  slack: 'Slack',
-  whatsapp: 'WhatsApp',
-  signal: 'Signal',
-  matrix: 'Matrix',
-};
-
-/** Channel-specific prompts for the delivery target input. */
-const TARGET_PROMPTS: Record<string, string> = {
-  telegram: 'Telegram chat ID (message @userinfobot on Telegram to find yours)',
-  discord: 'Discord channel ID',
-  slack: 'Slack channel ID',
-  whatsapp: 'WhatsApp number',
-  signal: 'Signal number',
-  matrix: 'Matrix room ID',
-};
 
 /**
  * Abstraction over user I/O and config writes. The CLI command injects
@@ -117,39 +106,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     await ctx.configSet(`${configPrefix}.protocolUrl`, undefined);
   }
 
-  // --- Detect available delivery channels ---
-  const channels = ctx.cfg.channels as Record<string, unknown> | undefined;
-  const configuredChannels = Object.entries(channels || {})
-    .filter(([, val]) => val && typeof val === 'object')
-    .map(([id]) => id);
-
-  if (configuredChannels.length > 0) {
-    const currentChannel = existing('deliveryChannel') || '';
-    const choices = [
-      ...configuredChannels.map((id) => ({
-        label: id === currentChannel
-          ? `${CHANNEL_LABELS[id] || id} (current)`
-          : (CHANNEL_LABELS[id] || id),
-        value: id,
-      })),
-      { label: 'Skip', value: '' },
-    ];
-
-    const selectedChannel = await ctx.select('Delivery channel', choices);
-
-    if (selectedChannel) {
-      const targetLabel = TARGET_PROMPTS[selectedChannel] || `${selectedChannel} recipient ID`;
-      const deliveryTarget = await ctx.prompt(targetLabel, {
-        default: existing('deliveryTarget') || undefined,
-      });
-
-      if (deliveryTarget) {
-        await ctx.configSet(`${configPrefix}.deliveryChannel`, selectedChannel);
-        await ctx.configSet(`${configPrefix}.deliveryTarget`, deliveryTarget);
-      }
-    }
-  }
-
   // --- Daily digest config ---
   const digestEnabled = await ctx.select('Daily digest', [
     { label: 'Enabled (default)', value: 'true' },
@@ -164,10 +120,17 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     await ctx.configSet(`${configPrefix}.digestTime`, digestTime);
 
     const digestMaxCount = await ctx.prompt('Max opportunities per digest', {
-      default: existing('digestMaxCount') || '10',
+      default: existing('digestMaxCount') || '20',
     });
     await ctx.configSet(`${configPrefix}.digestMaxCount`, digestMaxCount);
   }
+
+  // --- Main agent tool use ---
+  const mainAgentToolUse = await ctx.select('Main agent tool use during Index Network renders', [
+    { label: 'Disabled — agent renders from provided content only (default)', value: 'disabled' },
+    { label: 'Enabled — agent may call MCP tools to enrich', value: 'enabled' },
+  ]);
+  await ctx.configSet(`${configPrefix}.mainAgentToolUse`, mainAgentToolUse || 'disabled');
 
   // --- Register MCP server ---
   const normalizedProtocolUrl = protocolUrl.replace(/\/+$/, '');
