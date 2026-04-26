@@ -221,13 +221,11 @@ export function register(api: OpenClawPluginApi): void {
   const digestEnabled = readConfig(api, 'digestEnabled') !== 'false';
   if (digestEnabled) {
     const digestTime = readConfig(api, 'digestTime') || '08:00';
-    const _parsedMax = parseInt(readConfig(api, 'digestMaxCount') || '20', 10);
-    const digestMaxCount = Math.max(1, Number.isNaN(_parsedMax) ? 20 : _parsedMax);
 
     dailyDigestScheduler.start({
       digestTime,
       logger: api.logger,
-      onTrigger: async () => { await dailyDigestPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl, maxCount: digestMaxCount }); },
+      onTrigger: async () => { await dailyDigestPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl }); },
     });
   }
 

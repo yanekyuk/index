@@ -82,7 +82,6 @@ describe('handleDailyDigest (hooks-only path)', () => {
     agentId: 'agent-123',
     apiKey: 'k',
     frontendUrl: 'https://test.index.network',
-    maxCount: 20,
   };
 
   it('fetches /pending with ?limit=20 (digest cap)', async () => {
@@ -99,7 +98,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
     expect(sink.hookCalls).toHaveLength(0);
   });
 
-  it('dispatches via /hooks/agent with digest prompt and confirms ALL batch IDs', async () => {
+  it('dispatches via /hooks/agent with digest prompt', async () => {
     const sink = mockBackend([
       { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
       { opportunityId: OPP_2, counterpartUserId: 'user-2', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
@@ -109,11 +108,9 @@ describe('handleDailyDigest (hooks-only path)', () => {
     expect(result).toBe(true);
     expect(sink.hookCalls).toHaveLength(1);
     const body = sink.hookCalls[0].body as { message: string };
-    expect(body.message.toLowerCase()).toContain('rank');
+    expect(body.message.toLowerCase()).toContain('digest');
 
-    expect(sink.confirmCalls).toHaveLength(1);
-    const confirmBody = sink.confirmCalls[0].body as { opportunityIds: string[] };
-    expect(confirmBody.opportunityIds.sort()).toEqual([OPP_1, OPP_2].sort());
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 
   it('returns false when dispatch fails', async () => {
@@ -126,7 +123,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
     expect(sink.confirmCalls).toHaveLength(0);
   });
 
-  it('returns true (with warning) when confirm fails after successful dispatch', async () => {
+  it('returns true after successful dispatch (no confirm step)', async () => {
     const sink = mockBackend([
       { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ], 200, 500);
@@ -134,8 +131,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
     const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(true);
     expect(sink.hookCalls).toHaveLength(1);
-    expect(sink.confirmCalls).toHaveLength(1);
-    expect(mockApi.logger.warn).toHaveBeenCalled();
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 
   it('skips opportunities with null counterpartUserId', async () => {
@@ -147,14 +143,13 @@ describe('handleDailyDigest (hooks-only path)', () => {
     expect(sink.hookCalls).toHaveLength(0);
   });
 
-  it('caps maxToSurface at config.maxCount and at candidate count', async () => {
+  it('does NOT call /confirm-batch after successful dispatch', async () => {
     const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-      { opportunityId: OPP_2, counterpartUserId: 'user-2', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_1, counterpartUserId: 'cp-1', rendered: { headline: 'h', personalizedSummary: 's', suggestedAction: 'a', narratorRemark: 'n' } },
     ]);
-    await handleDailyDigest(mockApi, { ...cfg, maxCount: 1 });
-    const body = sink.hookCalls[0].body as { message: string };
-    // Prompt template uses maxToSurface in the wording — make sure it's clamped to 1
-    expect(body.message).toContain('pick up to 1');
+    const result = await handleDailyDigest(mockApi, cfg);
+    expect(result).toBe(true);
+    expect(sink.hookCalls).toHaveLength(1);
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 });
