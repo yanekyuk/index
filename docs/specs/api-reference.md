@@ -514,6 +514,10 @@ Create a personal agent owned by the current user.
 }
 ```
 
+### GET /api/agents/me
+
+Resolve and return the agent bound to the calling API key (`x-api-key` header). The key's `metadata.agentId` is read from the database and the matching agent is returned in the same shape as `GET /api/agents/:id`. Returns 400 if called with a JWT or with a key that has no agent binding. Used by personal-agent runtimes (e.g. the OpenClaw plugin setup wizard) to bootstrap their `agentId` from a single pasted API key, avoiding a separate agent-id input.
+
 ### GET /api/agents/:id
 
 Fetch one agent by ID if the current user owns it or has a permission grant on it.

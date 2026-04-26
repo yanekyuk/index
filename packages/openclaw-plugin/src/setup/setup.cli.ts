@@ -5,8 +5,9 @@
  *
  *   openclaw index-network setup
  *
- * Collects url, agentId, apiKey, and optional delivery routing,
- * then writes plugin config and registers the MCP server.
+ * Collects url, apiKey, and optional delivery routing, resolves the
+ * caller's agentId from the API key via GET /api/agents/me, then writes
+ * plugin config and registers the MCP server.
  */
 
 import * as fs from 'node:fs';
@@ -53,6 +54,8 @@ export interface SetupContext {
   select(label: string, choices: Array<{ label: string; value: string }>): Promise<string>;
   /** Write a value into the OpenClaw config file. */
   configSet(path: string, value: unknown): Promise<void>;
+  /** Resolve the caller's agentId from the API key. Tests inject a fake. */
+  fetchAgentId(protocolUrl: string, apiKey: string): Promise<string>;
 }
 
 /** Read a single dot-path value from the OpenClaw config snapshot. */
@@ -86,12 +89,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   const url = await ctx.prompt('Index Network URL', { default: defaultUrl });
   const { protocolUrl } = deriveUrls(url);
 
-  // --- Agent ID ---
-  const agentId = await ctx.prompt('Agent ID', { default: existing('agentId') });
-  if (!agentId) {
-    throw new Error('Agent ID is required. Find it on the Index Network Agents page.');
-  }
-
   // --- API Key ---
   const apiKey = existing('apiKey')
     ? await ctx.prompt('API key (leave blank to keep existing)', { secret: true })
@@ -100,6 +97,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   if (!resolvedApiKey) {
     throw new Error('API key is required. Generate one on the Index Network Agents page.');
   }
+
+  // --- Resolve agentId from API key ---
+  const agentId = await ctx.fetchAgentId(protocolUrl, resolvedApiKey);
 
   // --- Write core config ---
   await ctx.configSet(`${configPrefix}.url`, url);
@@ -179,6 +179,34 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
  * @param api     - Plugin API for reading config and calling `configSet`.
  */
 /**
+ * Resolve the calling key's bound agentId via `GET /api/agents/me`.
+ * Throws a user-readable error if the key is invalid or not agent-bound.
+ */
+async function defaultFetchAgentId(protocolUrl: string, apiKey: string): Promise<string> {
+  const normalized = protocolUrl.replace(/\/+$/, '');
+  let res: Response;
+  try {
+    res = await fetch(`${normalized}/api/agents/me`, {
+      headers: { 'x-api-key': apiKey },
+    });
+  } catch (err) {
+    throw new Error(`Failed to reach Index Network at ${normalized}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (!res.ok) {
+    throw new Error(`Could not resolve agent from API key (HTTP ${res.status}). Generate a fresh key on the Index Network Agents page.`);
+  }
+
+  const body = await res.json() as { agent?: { id?: string } };
+  const id = body.agent?.id;
+  if (!id) {
+    throw new Error('API key resolved but no agent was returned. Generate a fresh key on the Index Network Agents page.');
+  }
+
+  return id;
+}
+
+/**
  * Read the OpenClaw config file, or return an empty object if missing.
  */
 function readOpenClawConfig(): Record<string, unknown> {
@@ -239,6 +267,7 @@ export function registerSetupCli(
         configSet: async (dotPath, value) => {
           setConfigValue(cfg, dotPath, value);
         },
+        fetchAgentId: defaultFetchAgentId,
       };
 
       try {

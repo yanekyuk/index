@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, AuthOrApiKeyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
@@ -177,6 +177,22 @@ export class AgentController {
       return Response.json({ agent }, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Get('/me')
+  @UseGuards(AuthOrApiKeyGuard)
+  async getMe(req: Request, user: AuthenticatedUser) {
+    const agentId = await resolveApiKeyAgentId(req);
+    if (!agentId) {
+      return jsonError('This endpoint requires an agent-bound API key', 400);
+    }
+
+    try {
+      const agent = await agentService.getById(agentId, user.id);
+      return Response.json({ agent });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err, 404));
     }
   }
 

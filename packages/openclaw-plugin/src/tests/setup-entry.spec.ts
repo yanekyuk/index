@@ -16,10 +16,15 @@ function buildFakeCtx(overrides?: {
   promptResponses?: Record<string, string>;
   /** Per-label select responses. Unspecified labels fall back to the first choice. */
   selectResponses?: Record<string, string>;
-}): FakeCtx {
+  /** Agent id returned by the fake /agents/me lookup. */
+  resolvedAgentId?: string;
+  /** Throw from fetchAgentId to simulate auth/network failure. */
+  fetchAgentIdError?: Error;
+}): FakeCtx & { fetchAgentIdCalls: Array<{ protocolUrl: string; apiKey: string }> } {
   const configWrites: FakeCtx['configWrites'] = [];
   const promptCalls: FakeCtx['promptCalls'] = [];
   const selectCalls: FakeCtx['selectCalls'] = [];
+  const fetchAgentIdCalls: Array<{ protocolUrl: string; apiKey: string }> = [];
 
   const promptResponses = overrides?.promptResponses || {};
 
@@ -52,19 +57,22 @@ function buildFakeCtx(overrides?: {
     configSet: async (path, value) => {
       configWrites.push({ path, value });
     },
+    fetchAgentId: async (protocolUrl, apiKey) => {
+      fetchAgentIdCalls.push({ protocolUrl, apiKey });
+      if (overrides?.fetchAgentIdError) throw overrides.fetchAgentIdError;
+      return overrides?.resolvedAgentId ?? 'agent-resolved-default';
+    },
   };
 
-  return { ctx, configWrites, promptCalls, selectCalls };
+  return { ctx, configWrites, promptCalls, selectCalls, fetchAgentIdCalls };
 }
 
 describe('setup wizard', () => {
   test('writes core config and MCP server with defaults', async () => {
     const fake = buildFakeCtx({
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
+      resolvedAgentId: 'agent-from-key',
     });
 
     await setup(fake.ctx);
@@ -80,6 +88,15 @@ describe('setup wizard', () => {
     );
     expect(urlWrite?.value).toBe('https://index.network');
 
+    const agentWrite = fake.configWrites.find(
+      (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.agentId',
+    );
+    expect(agentWrite?.value).toBe('agent-from-key');
+
+    expect(fake.fetchAgentIdCalls).toEqual([
+      { protocolUrl: 'https://protocol.index.network', apiKey: 'key-456' },
+    ]);
+
     const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index-network');
     expect(mcpWrite?.value).toEqual({
       url: 'https://protocol.index.network/mcp',
@@ -88,11 +105,21 @@ describe('setup wizard', () => {
     });
   });
 
+  test('does not prompt for Agent ID', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    expect(fake.promptCalls.find((p) => p.label === 'Agent ID')).toBeUndefined();
+  });
+
   test('uses custom URL when provided', async () => {
     const fake = buildFakeCtx({
       promptResponses: {
         'Index Network URL': 'https://dev.index.network',
-        'Agent ID': 'agent-123',
         'API key': 'key-456',
       },
       selectResponses: { 'Daily digest': 'true' },
@@ -112,10 +139,7 @@ describe('setup wizard', () => {
   test('migrates legacy protocolUrl to url on re-run', async () => {
     const fake = buildFakeCtx({
       existingConfig: { protocolUrl: 'https://protocol.dev.index.network' },
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
     });
 
@@ -135,34 +159,26 @@ describe('setup wizard', () => {
     expect(protocolUrlClear?.value).toBeUndefined();
   });
 
-  test('throws if Agent ID is empty', async () => {
-    const fake = buildFakeCtx({
-      promptResponses: {
-        'Agent ID': '',
-        'API key': 'key-456',
-      },
-    });
-
-    await expect(setup(fake.ctx)).rejects.toThrow('Agent ID is required');
-  });
-
   test('throws if API key is empty', async () => {
     const fake = buildFakeCtx({
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': '',
-      },
+      promptResponses: { 'API key': '' },
     });
 
     await expect(setup(fake.ctx)).rejects.toThrow('API key is required');
   });
 
+  test('surfaces fetchAgentId errors', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      fetchAgentIdError: new Error('Could not resolve agent from API key (HTTP 401).'),
+    });
+
+    await expect(setup(fake.ctx)).rejects.toThrow('Could not resolve agent from API key');
+  });
+
   test('prompts API key with secret flag', async () => {
     const fake = buildFakeCtx({
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
     });
 
@@ -175,10 +191,7 @@ describe('setup wizard', () => {
   test('skips delivery when no channels are configured', async () => {
     const fake = buildFakeCtx({
       channels: {},
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
     });
 
@@ -198,7 +211,6 @@ describe('setup wizard', () => {
         discord: { token: 'discord-token' },
       },
       promptResponses: {
-        'Agent ID': 'agent-123',
         'API key': 'key-456',
         'Telegram chat ID (message @userinfobot on Telegram to find yours)': '99887766',
       },
@@ -231,10 +243,7 @@ describe('setup wizard', () => {
   test('skips delivery config when user selects Skip', async () => {
     const fake = buildFakeCtx({
       channels: { telegram: { token: 'bot-token' } },
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: {
         'Delivery channel': '',
         'Daily digest': 'true',
@@ -252,10 +261,7 @@ describe('setup wizard', () => {
 
   test('writes digest config with default time and count when not overridden', async () => {
     const fake = buildFakeCtx({
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
     });
 
@@ -332,34 +338,27 @@ describe('setup wizard', () => {
     expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('3');
   });
 
-  test('uses existing agentId as default when re-running setup', async () => {
+  test('re-resolves agentId from API key on re-run, ignoring existing config', async () => {
     const fake = buildFakeCtx({
-      existingConfig: { agentId: 'existing-agent-456' },
-      promptResponses: {
-        'API key': 'key-789',
-      },
+      existingConfig: { agentId: 'stale-agent-456' },
+      promptResponses: { 'API key': 'key-789' },
       selectResponses: { 'Daily digest': 'true' },
+      resolvedAgentId: 'fresh-agent-from-key',
     });
 
     await setup(fake.ctx);
 
-    const agentIdPrompt = fake.promptCalls.find((p) => p.label === 'Agent ID');
-    expect(agentIdPrompt?.opts?.default).toBe('existing-agent-456');
-
     const agentWrite = fake.configWrites.find(
       (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.agentId',
     );
-    expect(agentWrite?.value).toBe('existing-agent-456');
+    expect(agentWrite?.value).toBe('fresh-agent-from-key');
   });
 
   test('shows delivery section with existing config as defaults when re-running setup', async () => {
     const fake = buildFakeCtx({
       channels: { telegram: { token: 'bot-token' } },
       existingConfig: { deliveryChannel: 'telegram', deliveryTarget: '12345' },
-      promptResponses: {
-        'Agent ID': 'agent-123',
-        'API key': 'key-456',
-      },
+      promptResponses: { 'API key': 'key-456' },
       selectResponses: {
         'Delivery channel': 'telegram',
         'Daily digest': 'true',

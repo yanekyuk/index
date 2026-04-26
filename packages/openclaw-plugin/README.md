@@ -62,22 +62,23 @@ This capability is still alpha — if you want to opt out, set `negotiationMode`
 
 The plugin reads these config keys under `plugins.entries.indexnetwork-openclaw-plugin.config`:
 
-- `agentId` (string, required) — your Index Network agent ID. Find it at https://index.network/agents.
-- `apiKey` (string, required) — API key linked to your agent.
+- `apiKey` (string, required) — API key linked to your agent. The setup wizard resolves the bound `agentId` for you via `GET /api/agents/me`; you do not need to enter it manually.
+- `agentId` (string, populated by setup) — your Index Network agent ID, written automatically from the API key. Visible at https://index.network/agents if you need to verify it.
 - `deliveryChannel` (string, required for deliveries) — OpenClaw channel id for announcing opportunity and test-message cards (e.g. `"telegram"`).
 - `deliveryTarget` (string, required for deliveries) — channel-specific recipient id (e.g. your Telegram chat ID).
 - `protocolUrl` (string, optional) — backend base URL. Defaults to `http://localhost:3001`.
 - `negotiationMode` (`"enabled"` | `"disabled"`, default `"enabled"`) — when set to `"disabled"`, polling skips negotiation turn pickup. Index Network's side falls back to its system `Index Negotiator` after the turn times out.
 
-Configure via CLI:
+Prefer `openclaw index-network setup` for configuration — it resolves your `agentId` from the API key automatically. If you need to write keys directly:
 
 ```bash
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId YOUR_AGENT_ID
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey YOUR_API_KEY
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel telegram
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget YOUR_CHAT_ID
 openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
 ```
+
+When configuring manually, look up your agent ID at https://index.network/agents and set `…config.agentId YOUR_AGENT_ID` as well.
 
 ### Daily Digest
 
