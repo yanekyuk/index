@@ -220,11 +220,20 @@ export class UserController {
       ? (resultParam as 'has_opportunity' | 'no_opportunity' | 'in_progress')
       : undefined;
 
+    const sinceParam = url.searchParams.get('since');
+    if (sinceParam) {
+      const parsed = new Date(sinceParam);
+      if (isNaN(parsed.getTime())) {
+        return Response.json({ error: `Invalid since parameter: "${sinceParam}". Use an ISO 8601 date string.` }, { status: 400 });
+      }
+    }
+    const validSince = sinceParam ? new Date(sinceParam) : undefined;
+
     const isSelf = viewer.id === params.userId;
     const mutualWithUserId = isSelf ? undefined : viewer.id;
 
     try {
-      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit, offset, mutualWithUserId, result });
+      const rows = await this.taskService.getNegotiationsByUser(params.userId, { limit, offset, mutualWithUserId, result, since: validSince });
 
       const taskIds = rows.map((r) => r.id);
       const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);

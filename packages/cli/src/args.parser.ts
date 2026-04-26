@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "network" | "conversation" | "contact" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "negotiation" | "network" | "conversation" | "contact" | "scrape" | "onboarding" | "sync" | "help" | "version" | "unknown";
   /** One-shot message for conversation command (H2A agent chat). */
   message?: string;
   /** Resume a specific chat session (--session flag). */
@@ -62,11 +62,15 @@ export interface ParsedCommand {
   title?: string;
   /** Details text for profile update --details. */
   details?: string;
+  /** ISO date string for --since filter (e.g. negotiation list). */
+  since?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "network", "conversation", "contact", "scrape", "onboarding", "sync", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "negotiation", "network", "conversation", "contact", "scrape", "onboarding", "sync", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "discover"]);
+
+const NEGOTIATION_SUBCOMMANDS = new Set(["list", "show"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite", "update", "delete"]);
 
@@ -92,17 +96,32 @@ export function parseArgs(args: string[]): ParsedCommand {
     return result;
   }
 
-  const first = args[0];
+  // Pre-scan: extract global flags that may appear before the command
+  let commandIndex = -1;
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j];
+    if (a === "--api-url" || a === "--app-url" || a === "--token" || a === "-t") {
+      if (a === "--api-url") result.apiUrl = args[j + 1];
+      else if (a === "--app-url") result.appUrl = args[j + 1];
+      else result.token = args[j + 1];
+      j++; // skip value
+    } else if (a === "--help" || a === "-h") {
+      result.command = "help";
+      return result;
+    } else if (a === "--version" || a === "-v") {
+      result.command = "version";
+      return result;
+    } else if (!a.startsWith("--")) {
+      commandIndex = j;
+      break;
+    }
+  }
 
-  // Global flags
-  if (first === "--help" || first === "-h") {
-    result.command = "help";
+  if (commandIndex === -1) {
     return result;
   }
-  if (first === "--version" || first === "-v") {
-    result.command = "version";
-    return result;
-  }
+
+  const first = args[commandIndex];
 
   // Route to command
   if (!KNOWN_COMMANDS.has(first)) {
@@ -114,7 +133,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   result.command = first as ParsedCommand["command"];
 
   // Parse remaining args for the command
-  let i = 1;
+  let i = commandIndex + 1;
   const positionals: string[] = [];
 
   while (i < args.length) {
@@ -180,6 +199,9 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (arg === "--details") {
       result.details = args[i + 1];
       i += 2;
+    } else if (arg === "--since") {
+      result.since = args[i + 1];
+      i += 2;
     } else if (arg.startsWith("--")) {
       // Skip unknown flags
       i++;
@@ -199,6 +221,18 @@ export function parseArgs(args: string[]): ParsedCommand {
         result.positionals = positionals.slice(1);
       } else if (positionals[1]) {
         // Second positional is the target ID (for show/accept/reject)
+        result.targetId = positionals[1];
+      }
+    }
+    return result;
+  }
+
+  // Negotiation subcommand parsing
+  if (result.command === "negotiation") {
+    const sub = positionals[0];
+    if (sub && NEGOTIATION_SUBCOMMANDS.has(sub)) {
+      result.subcommand = sub as ParsedCommand["subcommand"];
+      if (positionals[1]) {
         result.targetId = positionals[1];
       }
     }

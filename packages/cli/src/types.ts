@@ -206,6 +206,48 @@ export interface ConversationMessage {
   metadata?: Record<string, unknown>;
 }
 
+// ── Negotiation types ────────────────────────────────────────────────
+
+/** A speaker in a negotiation turn. */
+export interface NegotiationSpeaker {
+  id: string;
+  name: string;
+  avatar?: string | null;
+}
+
+/** A single turn in a negotiation. */
+export interface NegotiationTurn {
+  speaker: NegotiationSpeaker;
+  action: string;
+  reasoning: string;
+  suggestedRoles: { ownUser?: string; otherUser?: string } | null;
+  createdAt: string;
+}
+
+/** Outcome summary of a negotiation. */
+export interface NegotiationOutcome {
+  hasOpportunity: boolean;
+  role?: string;
+  turnCount?: number;
+  reason?: string;
+}
+
+/** A negotiation as returned by GET /api/users/:userId/negotiations. */
+export interface Negotiation {
+  id: string;
+  counterparty: NegotiationSpeaker;
+  outcome: NegotiationOutcome | null;
+  turns: NegotiationTurn[];
+  createdAt: string;
+}
+
+/** Options for listing negotiations. */
+export interface NegotiationListOptions {
+  limit?: number;
+  offset?: number;
+  since?: string;
+}
+
 // ── Tool types ───────────────────────────────────────────────────────
 
 /** Generic result from POST /api/tools/:toolName. */

@@ -6361,7 +6361,7 @@ export class ConversationDatabaseAdapter {
    */
   async getNegotiationsByUser(
     userId: string,
-    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress' },
+    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress'; since?: Date },
   ): Promise<Array<Task & { artifact: Artifact | null }>> {
     const limit = opts?.limit ?? 10;
     const offset = opts?.offset ?? 0;
@@ -6396,6 +6396,13 @@ export class ConversationDatabaseAdapter {
           ? and(isNull(schema.artifacts.id), inArray(schema.tasks.state, ['submitted', 'working', 'input_required']))
           : undefined;
 
+    const sinceFilter = opts?.since
+      ? sql`${schema.tasks.createdAt} >= ${opts.since.toISOString()}`
+      : undefined;
+
+    const allFilters = [userFilter, resultFilter, sinceFilter].filter(Boolean);
+    const combinedFilter = allFilters.length > 1 ? and(...allFilters) : allFilters[0];
+
     const rows = await db
       .select({
         task: schema.tasks,
@@ -6409,7 +6416,7 @@ export class ConversationDatabaseAdapter {
           eq(schema.artifacts.name, 'negotiation-outcome'),
         ),
       )
-      .where(resultFilter ? and(userFilter, resultFilter) : userFilter)
+      .where(combinedFilter)
       .orderBy(desc(schema.tasks.createdAt))
       .limit(limit)
       .offset(offset);
