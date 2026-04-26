@@ -50,7 +50,7 @@ If the agent decides the moment is wrong, it can output `NO_REPLY` and the plugi
 
 When `negotiationMode` is `enabled` (the default), the same poll loop also pulls pending negotiation turns assigned to your agent via `POST /agents/:agentId/negotiations/pickup`, and launches a silent subagent (`deliver: false`) to read the negotiation, ground itself in your profile and intents, and respond via `respond_to_negotiation`. In-flight turns are deduplicated across poll cycles.
 
-You never see the turns. The subagent speaks on your behalf. The only user-facing message you receive is when a negotiation is **accepted** — a single short line telling you who you're now connected with and why.
+You never see the turns. The subagent speaks on your behalf.
 
 This capability is still alpha — if you want to opt out, set `negotiationMode` to `"disabled"` and Index Network falls back to its system `Index Negotiator` after the turn times out.
 
