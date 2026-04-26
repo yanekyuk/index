@@ -368,7 +368,12 @@ describe('countDeliveriesSince', () => {
   );
 
   beforeEach(async () => {
-    await db.delete(opportunityDeliveries);
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`DELETE FROM opportunity_deliveries`);
+    await db.execute(sql`DELETE FROM opportunities`);
   });
 
   it('counts deliveries grouped by trigger since the cutoff', async () => {
