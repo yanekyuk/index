@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
-import { buildMainAgentPrompt, type MainAgentToolUse } from '../../lib/delivery/main-agent.prompt.js';
+import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
+import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { extractSelectedIds, confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 
@@ -89,7 +90,7 @@ export async function handle(
     return false;
   }
 
-  const mainAgentToolUse = readToolUseConfig(api);
+  const mainAgentToolUse = readMainAgentToolUse(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'ambient_discovery',
@@ -144,11 +145,6 @@ export async function handle(
   );
 
   return true;
-}
-
-function readToolUseConfig(api: OpenClawPluginApi): MainAgentToolUse {
-  const v = api.pluginConfig['mainAgentToolUse'];
-  return v === 'enabled' ? 'enabled' : 'disabled';
 }
 
 /** Reset module-level state. Exposed for tests only. */

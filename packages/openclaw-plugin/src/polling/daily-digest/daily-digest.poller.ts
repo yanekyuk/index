@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
-import { buildMainAgentPrompt, type MainAgentToolUse } from '../../lib/delivery/main-agent.prompt.js';
+import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
+import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { extractSelectedIds, confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 
@@ -81,7 +82,7 @@ export async function handle(
   const dateStr = new Date().toISOString().slice(0, 10);
   const batchHash = hashOpportunityBatch(candidates.map((c) => c.opportunityId));
   const maxToSurface = Math.max(1, Math.min(config.maxCount, candidates.length));
-  const mainAgentToolUse = readToolUseConfig(api);
+  const mainAgentToolUse = readMainAgentToolUse(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'daily_digest',
@@ -134,7 +135,3 @@ export async function handle(
   return true;
 }
 
-function readToolUseConfig(api: OpenClawPluginApi): MainAgentToolUse {
-  const v = api.pluginConfig['mainAgentToolUse'];
-  return v === 'enabled' ? 'enabled' : 'disabled';
-}
