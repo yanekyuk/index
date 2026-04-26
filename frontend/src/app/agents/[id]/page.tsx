@@ -599,16 +599,6 @@ function WizardPromptGrid({
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Optional</span>
         </div>
         <WizardRow
-          prompt="Delivery channel"
-          description="Platform to receive notifications (Telegram, Discord, Slack, etc.)"
-          value="select or skip"
-        />
-        <WizardRow
-          prompt="Delivery target"
-          description="Your user ID or handle on the chosen platform"
-          value="your ID"
-        />
-        <WizardRow
           prompt="Daily digest"
           description="Receive a daily summary of opportunities"
           value="enable / disable"
@@ -621,7 +611,12 @@ function WizardPromptGrid({
         <WizardRow
           prompt="Max per digest"
           description="Maximum number of opportunities included per digest"
-          value="10 (default)"
+          value="20 (default)"
+        />
+        <WizardRow
+          prompt="Main agent tool use during Index Network renders"
+          description="Whether the agent may call MCP tools when rendering results"
+          value={"1. Disabled — agent renders from provided content only (default)\n2. Enabled — agent may call MCP tools to enrich"}
         />
       </div>
     </div>
