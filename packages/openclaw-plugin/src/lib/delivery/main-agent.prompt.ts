@@ -109,9 +109,10 @@ function toolUseClause(mode: MainAgentToolUse): string {
 }
 
 function perTypeInstruction(input: MainAgentPromptInput): string {
-  switch (input.contentType) {
+  const payload = input.payload;
+  switch (payload.contentType) {
     case 'daily_digest': {
-      const max = (input.payload as { maxToSurface: number }).maxToSurface;
+      const max = payload.maxToSurface;
       return [
         `Rank the candidates, pick up to ${max} to surface, render as a numbered digest in`,
         'your voice. The user is scanning at digest time. If none feel worth a digest today,',

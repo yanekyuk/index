@@ -67,9 +67,26 @@ describe('buildMainAgentPrompt', () => {
 
   it('ambient_discovery instruction mentions real-time alert', () => {
     const out = buildMainAgentPrompt({
-      ...baseDigest,
       contentType: 'ambient_discovery',
-      payload: { ...baseDigest.payload as { contentType: 'ambient_discovery' | 'daily_digest'; maxToSurface: number; candidates: unknown[] }, contentType: 'ambient_discovery' },
+      mainAgentToolUse: 'disabled',
+      allowSuppress: true,
+      payload: {
+        contentType: 'ambient_discovery',
+        maxToSurface: 5,
+        candidates: [
+          {
+            opportunityId: 'opp-1',
+            counterpartUserId: 'user-1',
+            headline: 'H1',
+            personalizedSummary: 'S1',
+            suggestedAction: 'A1',
+            narratorRemark: 'N1',
+            profileUrl: 'https://example.com/u/user-1',
+            acceptUrl: 'https://example.com/o/opp-1/accept',
+            skipUrl: 'https://example.com/o/opp-1/skip',
+          },
+        ],
+      },
     });
     expect(out.toLowerCase()).toContain('real-time');
   });
