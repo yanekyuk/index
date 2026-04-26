@@ -88,13 +88,12 @@ export async function handle(
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const batchHash = hashOpportunityBatch(candidates.map((c) => c.opportunityId));
-  const maxToSurface = Math.max(1, Math.min(config.maxCount, candidates.length));
   const mainAgentToolUse = readMainAgentToolUse(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'daily_digest',
     mainAgentToolUse,
-    payload: { contentType: 'daily_digest', maxToSurface, candidates },
+    payload: { contentType: 'daily_digest', candidates },
   });
 
   const dispatch = await dispatchToMainAgent(api, {

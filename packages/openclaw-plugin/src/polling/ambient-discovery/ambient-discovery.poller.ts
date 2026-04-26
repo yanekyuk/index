@@ -106,7 +106,7 @@ export async function handle(
   const prompt = buildMainAgentPrompt({
     contentType: 'ambient_discovery',
     mainAgentToolUse,
-    payload: { contentType: 'ambient_discovery', maxToSurface: candidates.length, candidates },
+    payload: { contentType: 'ambient_discovery', ambientDeliveredToday: null, candidates },
   });
 
   const dispatch = await dispatchToMainAgent(api, {

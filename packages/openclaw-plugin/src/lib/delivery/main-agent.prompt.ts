@@ -39,8 +39,12 @@ export interface OpportunityCandidate {
  */
 export type MainAgentPayload =
   | {
-      contentType: 'daily_digest' | 'ambient_discovery';
-      maxToSurface: number;
+      contentType: 'ambient_discovery';
+      ambientDeliveredToday: number | null;
+      candidates: OpportunityCandidate[];
+    }
+  | {
+      contentType: 'daily_digest';
       candidates: OpportunityCandidate[];
     }
   | {
@@ -104,26 +108,40 @@ function toolUseClause(mode: MainAgentToolUse): string {
   if (mode === 'enabled') {
     return 'You may call Index Network MCP tools to enrich. Stay brief — the user is waiting.';
   }
-  return 'Do not call any tools. Everything you need is in INPUT below.';
+  return 'Do not call enrichment tools. The only tool you may invoke is `confirm_opportunity_delivery` (mandatory — see below).';
 }
 
 function perTypeInstruction(input: MainAgentPromptInput): string {
   const payload = input.payload;
   switch (payload.contentType) {
-    case 'daily_digest': {
-      const max = payload.maxToSurface;
+    case 'daily_digest':
       return [
-        `Rank the candidates and pick up to ${max} to surface. Render as a numbered`,
-        'digest in your voice. The user is scanning at digest time. If none feel',
-        "worth surfacing, send a one-line note saying so — don't omit the message.",
+        'This is the DAILY DIGEST pass. The ambient pass already ran today and surfaced the',
+        "few opportunities worth interrupting in real time; you're now sweeping up everything",
+        'that was passed on. Render every candidate below as a numbered list, in your voice.',
+        '',
+        'For each opportunity you mention in your reply, you MUST first call the MCP tool',
+        "`confirm_opportunity_delivery` with `trigger: 'digest'` and the opportunity's id.",
+        "Do not call confirm for opportunities you don't mention.",
+      ].join('\n');
+    case 'ambient_discovery': {
+      const countLine =
+        payload.ambientDeliveredToday === null
+          ? "Today's ambient count is unknown — lean toward selective."
+          : `You have already sent ${payload.ambientDeliveredToday} ambient message(s) today (target ≤ 3).`;
+      return [
+        'This is the AMBIENT pass — a real-time check, not a digest. Surface only what is worth',
+        'interrupting the user *right now*. Anything you skip will appear in tonight\'s daily digest,',
+        'so be selective; this is the critical filter.',
+        '',
+        countLine,
+        '',
+        'For each opportunity you mention in your reply, you MUST first call the MCP tool',
+        "`confirm_opportunity_delivery` with `trigger: 'ambient'` and the opportunity's id.",
+        "Do not call confirm for opportunities you don't mention. If none qualify, send a",
+        "one-line note saying so — don't omit the message.",
       ].join('\n');
     }
-    case 'ambient_discovery':
-      return [
-        'Real-time alert, not a digest. Surface only the candidates worth interrupting',
-        'for *right now*; render briefly. If none qualify, send a one-line note saying',
-        "so — don't omit the message.",
-      ].join('\n');
     case 'test_message':
       return 'Delivery verification. Render the content below in your voice.';
   }
