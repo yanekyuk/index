@@ -3,23 +3,31 @@
  * gateway's `POST /hooks/agent` endpoint. The endpoint is documented at
  * https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
  *
- * The hook performs three things synchronously from the plugin's view:
- *  - Routes the prompt to the user's default agent (the one they actually
- *    chat with), so persona / voice / channel preferences carry through.
- *  - Runs an isolated turn against the user's main session.
- *  - Delivers the agent's reply to whichever channel the user last used
- *    (`channel: 'last'`).
+ * To deliver to whichever channel the user actually chats on, we discover
+ * the user's most-recently-active chat-bound session from the agent's
+ * `sessions.json` and pass it as `sessionKey`. This lands the hook IN
+ * that session, so the agent's reply routes through the session's bound
+ * channel (Telegram, WhatsApp, Discord, etc.). Without `sessionKey` the
+ * gateway creates an isolated session with no channel binding and the
+ * reply has nowhere to go.
  *
  * Required gateway config (bootstrapped by `openclaw index-network setup`):
  *  - `hooks.enabled = true`
  *  - `hooks.token`   = a non-empty secret distinct from `gateway.auth.token`
  *  - `hooks.path`    = a sub-path, defaulting to `/hooks`
+ *  - `hooks.allowRequestSessionKey = true`
+ *  - `hooks.allowedSessionKeyPrefixes` ⊇ ["agent:main:"]
  *
- * The endpoint returns only `{ status: "sent" }` — the agent's rendered
- * text is delivered to the channel asynchronously and is not available
- * to the plugin synchronously. Callers therefore cannot scrape rendered
- * text; the `confirm-batch` step uses the full set of dispatched IDs.
+ * The endpoint returns only `{ ok: true, runId: ... }` — the agent's
+ * rendered text is delivered to the channel asynchronously and is not
+ * available to the plugin synchronously. Callers therefore cannot scrape
+ * rendered text; the `confirm-batch` step uses the full set of dispatched
+ * IDs.
  */
+
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join as joinPath } from 'node:path';
 
 import type { OpenClawPluginApi } from '../openclaw/plugin-api.js';
 
@@ -44,12 +52,111 @@ export interface DispatchResult {
    *  - `network_error`: any other failure (5xx, fetch threw, parse).
    */
   error?: 'config_error' | 'unauthorized' | 'network_error';
+  /** True when no chat-bound session was found and we fell back to channel:'last'. */
+  unboundFallback?: boolean;
+}
+
+/** Channel prefixes that indicate a real user-chat session. */
+const CHAT_CHANNEL_PREFIXES = [
+  'telegram',
+  'whatsapp',
+  'discord',
+  'slack',
+  'imessage',
+  'sms',
+];
+
+interface SessionsMapEntry {
+  sessionId?: string;
+  lastTo?: string;
+  lastChannel?: string;
+  updatedAt?: number;
+}
+
+/** Routing target extracted from the user's most-recent chat session. */
+interface ChatTarget {
+  /** Session key, e.g. `agent:main:telegram:direct:69340471`. */
+  sessionKey: string;
+  /** Channel id, e.g. `telegram`. Required by `/hooks/agent` to route delivery. */
+  channel: string;
+  /** Recipient identifier, e.g. `telegram:69340471`. */
+  to: string;
+}
+
+/**
+ * Locates the user's most-recently-active chat-bound session by reading
+ * `~/.openclaw/agents/main/sessions/sessions.json` and filtering for
+ * sessions whose `lastTo` starts with a known chat-channel prefix.
+ *
+ * Returns the routing triple `{sessionKey, channel, to}` or `undefined`
+ * when no such session exists. `/hooks/agent` needs all three together
+ * to deliver to the channel — sessionKey alone makes the run "join" the
+ * existing session, but the gateway still consults `channel` and `to`
+ * for the actual delivery target. (Sessions.json's `lastTo` value is
+ * already in `<channel>:<id>` form, so `channel` is the prefix and `to`
+ * is the whole value.)
+ */
+async function findChatTarget(
+  api: OpenClawPluginApi,
+): Promise<ChatTarget | undefined> {
+  const sessionsPath = joinPath(
+    homedir(),
+    '.openclaw',
+    'agents',
+    'main',
+    'sessions',
+    'sessions.json',
+  );
+  let raw: string;
+  try {
+    raw = await readFile(sessionsPath, 'utf-8');
+  } catch (err) {
+    api.logger.debug(
+      `sessions.json not readable at ${sessionsPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+
+  let map: Record<string, SessionsMapEntry>;
+  try {
+    map = JSON.parse(raw) as Record<string, SessionsMapEntry>;
+  } catch (err) {
+    api.logger.warn(
+      `sessions.json parse error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+
+  const candidates = Object.entries(map)
+    .filter(([key, val]) => {
+      // Skip plugin-internal hook/heartbeat sessions and the plugin's own
+      // bookkeeping sessions.
+      if (key.startsWith('agent:main:hook:')) return false;
+      if (key === 'agent:main:main') return false;
+      if (key.startsWith('agent:main:index:')) return false;
+      const lastTo = typeof val.lastTo === 'string' ? val.lastTo : '';
+      const colonIdx = lastTo.indexOf(':');
+      if (colonIdx <= 0) return false;
+      const channel = lastTo.slice(0, colonIdx);
+      return CHAT_CHANNEL_PREFIXES.includes(channel);
+    })
+    .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+  const top = candidates[0];
+  if (!top) return undefined;
+
+  const lastTo = top[1].lastTo as string;
+  const channel = lastTo.slice(0, lastTo.indexOf(':'));
+  return { sessionKey: top[0], channel, to: lastTo };
 }
 
 /**
  * Dispatches `ctx.prompt` to the user's main OpenClaw agent via
- * `POST /hooks/agent` with `deliver: true, channel: 'last'`. The gateway
- * routes the agent's reply to the channel the user last interacted with.
+ * `POST /hooks/agent`. When a chat-bound session is found, the call
+ * targets that session via `sessionKey` + `channel` + `to`; otherwise
+ * it falls back to `channel: 'last'` (which the gateway maps to a fresh
+ * isolated session — reply has nowhere to go, but the failure is
+ * observable rather than silent).
  *
  * @param api - Plugin API. Reads `api.config.gateway.port` and `api.config.hooks.{enabled,token,path}`.
  * @param ctx - Prompt + idempotency key + optional timeout.
@@ -82,7 +189,33 @@ export async function dispatchToMainAgent(
     return { delivered: false, error: 'config_error' };
   }
 
+  const target = await findChatTarget(api);
+  const unboundFallback = !target;
+  if (unboundFallback) {
+    api.logger.info(
+      'No chat-bound session found in sessions.json; falling back to channel:"last". ' +
+        'The reply may land in an isolated session with no channel binding — send a ' +
+        'message to your agent on a chat platform first.',
+    );
+  } else {
+    api.logger.debug(
+      `Dispatching to ${target.channel} (${target.to}) via sessionKey=${target.sessionKey}`,
+    );
+  }
+
   const url = `http://127.0.0.1:${port}${hooksPath}/agent`;
+  const body: Record<string, unknown> = {
+    message: ctx.prompt,
+    wakeMode: 'now',
+    deliver: true,
+  };
+  if (target) {
+    body.sessionKey = target.sessionKey;
+    body.channel = target.channel;
+    body.to = target.to;
+  } else {
+    body.channel = 'last';
+  }
 
   let res: Response;
   try {
@@ -93,19 +226,14 @@ export async function dispatchToMainAgent(
         authorization: `Bearer ${hooksToken}`,
         'idempotency-key': ctx.idempotencyKey,
       },
-      body: JSON.stringify({
-        message: ctx.prompt,
-        wakeMode: 'now',
-        deliver: true,
-        channel: 'last',
-      }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(ctx.timeoutMs ?? 120_000),
     });
   } catch (err) {
     api.logger.warn(
       `${url} threw: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return { delivered: false, error: 'network_error' };
+    return { delivered: false, error: 'network_error', unboundFallback };
   }
 
   if (res.status === 401 || res.status === 403) {
@@ -113,13 +241,13 @@ export async function dispatchToMainAgent(
       `${url} returned ${res.status}: hooks.token rejected. ` +
         'Verify hooks.token in ~/.openclaw/openclaw.json matches what the plugin reads.',
     );
-    return { delivered: false, error: 'unauthorized' };
+    return { delivered: false, error: 'unauthorized', unboundFallback };
   }
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    api.logger.warn(`${url} returned ${res.status}: ${body.slice(0, 200)}`);
-    return { delivered: false, error: 'network_error' };
+    const respBody = await res.text().catch(() => '');
+    api.logger.warn(`${url} returned ${res.status}: ${respBody.slice(0, 200)}`);
+    return { delivered: false, error: 'network_error', unboundFallback };
   }
 
-  return { delivered: true };
+  return { delivered: true, unboundFallback };
 }

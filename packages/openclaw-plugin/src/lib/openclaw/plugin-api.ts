@@ -89,6 +89,8 @@ export interface OpenClawConfigSlice {
     enabled?: boolean;
     path?: string;
     token?: string;
+    allowRequestSessionKey?: boolean;
+    allowedSessionKeyPrefixes?: string[];
   };
   mcp?: {
     servers?: Record<string, {
