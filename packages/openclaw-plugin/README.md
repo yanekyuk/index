@@ -42,9 +42,9 @@ The skill then re-registers the MCP server with an `x-api-key` header so every t
 
 ## Automatic opportunity delivery
 
-Once the plugin is configured with an `apiKey` (which resolves your `agentId`), the plugin polls the Index Network backend every 5 minutes for pending opportunities. When candidates are found, the plugin hands them to your **main OpenClaw agent** via the gateway's `POST /hooks/agent` endpoint with `deliver: true, channel: "last"`. Your agent ranks the candidates, picks what's worth surfacing, and renders the message in its own voice on whichever channel you last chatted on; the gateway routes the reply directly to that channel.
+Once the plugin is configured with an `apiKey` (which resolves your `agentId`), the plugin polls the Index Network backend every 5 minutes for pending opportunities. When candidates are found, the plugin discovers your most-recently-active chat-bound session by reading `~/.openclaw/agents/main/sessions/sessions.json`, then hands the candidates to your **main OpenClaw agent** via the gateway's `POST /hooks/agent` endpoint with `deliver: true` plus the session's `sessionKey`, `channel`, and `to`. Your agent ranks the candidates, picks what's worth surfacing, and renders the message in its own voice; the gateway routes the reply directly to that chat session's channel. If no chat-bound session exists yet (you haven't messaged your agent on a chat platform), delivery falls back to `channel: "last"` and a warning is logged — send a chat message first and the next poll will route correctly.
 
-The setup wizard bootstraps the gateway hooks subsystem automatically — `hooks.enabled=true` and a fresh `hooks.token` are written to your OpenClaw config the first time you run `openclaw index-network setup`. If you already use hooks for other integrations, your existing token is preserved.
+The setup wizard bootstraps the gateway hooks subsystem automatically — `hooks.enabled=true`, a fresh `hooks.token`, `hooks.allowRequestSessionKey=true`, and `hooks.allowedSessionKeyPrefixes` containing `agent:main:` are written to your OpenClaw config the first time you run `openclaw index-network setup`. If you already use hooks for other integrations, your existing token and other allowed prefixes are preserved (`agent:main:` is appended to the list, not substituted).
 
 The hooks endpoint returns only an acknowledgement (`{status: "sent"}`); the plugin does not see what the agent rendered. Once dispatch is acknowledged, every opportunity in the dispatched batch is marked delivered. The agent's editorial decision (which subset to surface) is respected on the channel — but items it chose not to mention this cycle do not roll over. The dedup hash prevents back-to-back redispatch of the same set, so a fresh batch tomorrow will surface anything new.
 
@@ -84,6 +84,8 @@ The plugin requires the OpenClaw `hooks` subsystem because that's the only path 
 | `hooks.enabled` | `true` (flipped from `false` if needed) | Mounts `POST /hooks/*` routes on the gateway |
 | `hooks.token` | random 32-byte hex (or preserved if you already have one) | Bearer token the plugin sends with every dispatch |
 | `hooks.path` | `/hooks` (only set if missing) | Sub-path under which hook routes are mounted |
+| `hooks.allowRequestSessionKey` | `true` (set if not already true) | Lets the plugin pass `sessionKey` per request so dispatches land in the user's chat-bound session |
+| `hooks.allowedSessionKeyPrefixes` | merged with `agent:main:` (existing entries preserved) | Allowlist of prefixes the gateway accepts in `sessionKey` |
 
 `hooks.token` is rejected at OpenClaw load time if it equals `gateway.auth.token`; the wizard refuses to overwrite an existing collision and points you at `openclaw config unset hooks.token` to recover.
 
@@ -127,7 +129,7 @@ Users who want either path redacted can configure OpenClaw's log scrubbing at th
 - `src/lib/delivery/main-agent.prompt.ts` — prompt template passed to the main agent for rendering
 - `src/lib/delivery/post-delivery-confirm.ts` — confirms the dispatched batch via `/opportunities/confirm-batch`
 - `src/lib/delivery/config.ts` — reads the `mainAgentToolUse` knob from plugin config
-- `src/setup/setup.cli.ts` — interactive wizard; bootstraps `hooks.enabled` / `hooks.token` / `hooks.path`
+- `src/setup/setup.cli.ts` — interactive wizard; bootstraps `hooks.enabled` / `hooks.token` / `hooks.path` / `hooks.allowRequestSessionKey` / `hooks.allowedSessionKeyPrefixes`
 - `src/polling/negotiator/negotiation-turn.prompt.ts` — prompt for the silent negotiation-turn subagent
 - `skills/index-network/SKILL.md` — bootstrap skill (generated from the monorepo template)
 

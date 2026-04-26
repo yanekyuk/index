@@ -72,6 +72,17 @@ function getBooleanAt(cfg: Record<string, unknown>, dotPath: string): boolean | 
   return typeof value === 'boolean' ? value : undefined;
 }
 
+/** Read a string array at a dot-path in the cfg snapshot, or return undefined. */
+function getStringArrayAt(
+  cfg: Record<string, unknown>,
+  dotPath: string,
+): string[] | undefined {
+  const value = getRawAt(cfg, dotPath);
+  if (!Array.isArray(value)) return undefined;
+  const filtered = value.filter((v): v is string => typeof v === 'string');
+  return filtered.length === value.length ? filtered : undefined;
+}
+
 function getRawAt(cfg: Record<string, unknown>, dotPath: string): unknown {
   const parts = dotPath.split('.');
   let obj: unknown = cfg;
@@ -179,6 +190,27 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   }
   if (!existingHooksPath) {
     await ctx.configSet('hooks.path', '/hooks');
+  }
+
+  // The dispatcher passes `sessionKey` so /hooks/agent runs land in the user's
+  // existing chat-bound session (instead of a fresh isolated session that has
+  // no channel binding). Both knobs are required: gateway rejects per-request
+  // sessionKey unless allowRequestSessionKey is true and the prefix is allowed.
+  const existingAllowRequestSessionKey = getBooleanAt(
+    ctx.cfg,
+    'hooks.allowRequestSessionKey',
+  );
+  if (existingAllowRequestSessionKey !== true) {
+    await ctx.configSet('hooks.allowRequestSessionKey', true);
+  }
+
+  const REQUIRED_SESSION_KEY_PREFIX = 'agent:main:';
+  const existingPrefixes = getStringArrayAt(ctx.cfg, 'hooks.allowedSessionKeyPrefixes') ?? [];
+  if (!existingPrefixes.includes(REQUIRED_SESSION_KEY_PREFIX)) {
+    await ctx.configSet('hooks.allowedSessionKeyPrefixes', [
+      ...existingPrefixes,
+      REQUIRED_SESSION_KEY_PREFIX,
+    ]);
   }
 
   // --- Register MCP server ---

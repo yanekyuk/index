@@ -480,6 +480,96 @@ describe('setup wizard', () => {
     expect(typeof tokenWrite?.value).toBe('string');
   });
 
+  // --- Hooks session-key bootstrap ---
+
+  test('bootstraps hooks.allowRequestSessionKey=true when unset', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const allowWrite = fake.configWrites.find(
+      (w) => w.path === 'hooks.allowRequestSessionKey',
+    );
+    expect(allowWrite?.value).toBe(true);
+  });
+
+  test('does not rewrite hooks.allowRequestSessionKey when already true', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.hooks = {
+      enabled: true,
+      token: 'existing-token-abc',
+      path: '/hooks',
+      allowRequestSessionKey: true,
+    };
+
+    await setup(fake.ctx);
+
+    const allowWrites = fake.configWrites.filter(
+      (w) => w.path === 'hooks.allowRequestSessionKey',
+    );
+    expect(allowWrites).toHaveLength(0);
+  });
+
+  test('seeds hooks.allowedSessionKeyPrefixes with agent:main: when unset', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+
+    await setup(fake.ctx);
+
+    const prefixesWrite = fake.configWrites.find(
+      (w) => w.path === 'hooks.allowedSessionKeyPrefixes',
+    );
+    expect(prefixesWrite?.value).toEqual(['agent:main:']);
+  });
+
+  test('appends agent:main: to existing hooks.allowedSessionKeyPrefixes, preserving entries', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.hooks = {
+      enabled: true,
+      token: 'tok',
+      path: '/hooks',
+      allowedSessionKeyPrefixes: ['hook:', 'custom:'],
+    };
+
+    await setup(fake.ctx);
+
+    const prefixesWrite = fake.configWrites.find(
+      (w) => w.path === 'hooks.allowedSessionKeyPrefixes',
+    );
+    expect(prefixesWrite?.value).toEqual(['hook:', 'custom:', 'agent:main:']);
+  });
+
+  test('does not rewrite hooks.allowedSessionKeyPrefixes when agent:main: already present', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+    });
+    fake.ctx.cfg.hooks = {
+      enabled: true,
+      token: 'tok',
+      path: '/hooks',
+      allowedSessionKeyPrefixes: ['hook:', 'agent:main:'],
+    };
+
+    await setup(fake.ctx);
+
+    const prefixesWrites = fake.configWrites.filter(
+      (w) => w.path === 'hooks.allowedSessionKeyPrefixes',
+    );
+    expect(prefixesWrites).toHaveLength(0);
+  });
+
   test('re-resolves agentId from API key on re-run, ignoring existing config', async () => {
     const fake = buildFakeCtx({
       existingConfig: { agentId: 'stale-agent-456' },
