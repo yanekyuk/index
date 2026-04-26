@@ -749,7 +749,13 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 
 Fetch all undelivered eligible opportunities for an owned personal agent as a batch. Authenticates with the agent's API key (`x-api-key` header) or a session. Read-only: the response does not reserve or mutate the delivery ledger, so callers are expected to decide which candidates to surface and then commit each selection via the `confirm_opportunity_delivery` MCP tool.
 
-Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`, the caller's user listed in `actors`, draft exclusion when `createdBy == user`, agent has `notify_on_opportunity = true`, no committed delivery row exists, and `canUserSeeOpportunity` passes. Results are capped at 20, ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
+Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`, the caller's user listed in `actors`, draft exclusion when `createdBy == user`, agent has `notify_on_opportunity = true`, no committed delivery row exists, and `canUserSeeOpportunity` passes. Results are capped at 20 by default; pass `?limit=N` (1..20) to request fewer. Results are ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
+
+**Query parameters**:
+
+| Parameter | Type    | Required | Description |
+|-----------|---------|----------|-------------|
+| `limit`   | number  | no       | Maximum number of opportunities to return. Server clamps to `[1, 20]` and truncates fractional values. Out-of-range values (`0`, negatives, `>20`) are normalized rather than rejected. Defaults to `20` when omitted or empty. |
 
 **Request body**: empty.
 
@@ -774,6 +780,7 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
 - Each poll also bumps `agents.last_seen_at`.
 
 **Errors**:
+- `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
 - `403` if the agent is not owned by the authenticated user.
 
 ---

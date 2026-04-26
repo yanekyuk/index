@@ -26,6 +26,10 @@ export function extractSelectedIds(content: string, batchIds: string[]): string[
 /**
  * Confirms delivered opportunities via the batch-confirm backend endpoint.
  * Best-effort — logs warnings on failure but never throws.
+ *
+ * @returns `true` when the backend acknowledged the confirm, `false` on any
+ *          error (network, non-2xx, parse). Callers use this to decide
+ *          whether to advance local state (e.g. dedup hash) or retry next cycle.
  */
 export async function confirmDeliveredBatch(
   opts: {
@@ -35,8 +39,8 @@ export async function confirmDeliveredBatch(
     opportunityIds: string[];
     logger: PluginLogger;
   },
-): Promise<void> {
-  if (!opts.opportunityIds.length) return;
+): Promise<boolean> {
+  if (!opts.opportunityIds.length) return true;
 
   try {
     const res = await fetch(
@@ -54,15 +58,17 @@ export async function confirmDeliveredBatch(
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       opts.logger.warn(`Post-delivery confirm failed: ${res.status} ${text}`);
-      return;
+      return false;
     }
     const result = (await res.json()) as { confirmed: number; alreadyDelivered: number };
     opts.logger.info(
       `Post-delivery confirm: ${result.confirmed} confirmed, ${result.alreadyDelivered} already delivered`,
     );
+    return true;
   } catch (err) {
     opts.logger.warn(
       `Post-delivery confirm errored: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return false;
   }
 }

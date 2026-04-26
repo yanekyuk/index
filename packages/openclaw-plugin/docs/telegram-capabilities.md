@@ -150,29 +150,18 @@ openclaw message send --channel telegram --target @mychat --message "Choose:" \
 }
 ```
 
-## Relevance to Delivery Dispatcher
+## Relevance to Main-Agent Rendering
 
 ### Current Mechanism
 
-The delivery dispatcher (`delivery.dispatcher.ts`) sends messages through OpenClaw's subagent system with `deliver: true`. The subagent `run` API accepts only `message: string` — there is **no `presentation` field** in `SubagentRunOptions`.
-
-### Gap: Subagent Delivery vs. Presentations
-
-The `MessagePresentation` system is available via:
-- `openclaw message send --presentation` (CLI)
-- Channel-specific send actions (JSON payloads)
-
-But **not** via `api.runtime.subagent.run({ deliver: true })`. The subagent system delivers the LLM's text output as a plain message — it cannot attach inline keyboards or structured blocks.
+Index Network notifications (daily digest, ambient discovery, test message) are rendered by the user's **main OpenClaw agent** via `api.runtime.agent.runEmbeddedAgent` (with a `POST /hooks/agent` HTTP fallback). The main agent's reply is delivered as plain text on whichever channel the user currently chats with — no separate dispatcher subagent and no `presentation` field.
 
 ### What Works Today
 
 - **Markdown formatting** — the Telegram gateway converts Markdown to HTML and sends with `parse_mode: "HTML"`. Use `**bold**`, `_italic_`, `[text](url)`. Do NOT output raw HTML tags — the gateway's Markdown→HTML converter escapes them, so `<b>text</b>` renders literally.
 - **Hyperlinks** — `[text](url)` renders as tappable links in Telegram
-- **URL buttons via hyperlinks** — profile links, chat links work as inline text links
+- **URL buttons via hyperlinks** — profile links, accept/skip links work as inline text links. The main-agent prompt explicitly preserves `acceptUrl` and `skipUrl` verbatim.
 
 ### What Requires Changes
 
-- **Inline keyboard buttons** (Start Chat, Skip, etc.) — needs either:
-  1. Extending `SubagentRunOptions` to accept a `presentation` field (OpenClaw SDK change)
-  2. Using `api.runtime.subagent.run` for content generation only, then a separate presentation-aware send mechanism for actual delivery
-  3. Having the subagent output a JSON presentation block that the gateway recognizes and parses
+- **Inline keyboard buttons** (Start Chat, Skip, etc.) — text-only delivery cannot attach Telegram inline keyboards. Reaching that surface would need an OpenClaw SDK change so the main-agent reply pipeline can carry a structured `presentation` payload to the gateway, or a separate presentation-aware send mechanism layered onto today's text path.
