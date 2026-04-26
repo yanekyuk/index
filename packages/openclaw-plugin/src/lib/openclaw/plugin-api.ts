@@ -48,8 +48,42 @@ export interface SubagentRuntime {
   getSessionMessages(options: GetSessionMessagesOptions): Promise<{ messages: SessionMessage[] }>;
 }
 
+export interface RunEmbeddedAgentOptions {
+  sessionId: string;
+  runId: string;
+  sessionFile: string;
+  workspaceDir: string;
+  prompt: string;
+  timeoutMs: number;
+}
+
+export interface RunEmbeddedAgentResult {
+  /** Plain-text reply produced by the agent turn, when available. */
+  text?: string;
+  /** Structured assistant messages, mirroring `getSessionMessages`. */
+  messages?: SessionMessage[];
+  /** Whether the host auto-delivered the reply to the agent's last channel. */
+  delivered?: boolean;
+}
+
+export interface AgentIdentity {
+  id?: string;
+  sessionId?: string;
+  agentDir?: string;
+  workspaceDir?: string;
+}
+
+export interface AgentRuntime {
+  resolveAgentDir(cfg: OpenClawConfigSlice | undefined): string;
+  resolveAgentWorkspaceDir(cfg: OpenClawConfigSlice | undefined): string;
+  resolveAgentIdentity(cfg: OpenClawConfigSlice | undefined): AgentIdentity;
+  resolveAgentTimeoutMs(cfg: OpenClawConfigSlice | undefined): number;
+  runEmbeddedAgent(options: RunEmbeddedAgentOptions): Promise<RunEmbeddedAgentResult>;
+}
+
 export interface PluginRuntime {
   subagent: SubagentRuntime;
+  agent?: AgentRuntime;
 }
 
 export type RouteHandler = (
