@@ -93,7 +93,7 @@ git push <indexnetwork-remote> main
 
 ### Subtrees
 
-The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `scripts/hooks/pre-push` hook detects commits touching each prefix and runs `git subtree push` whenever you push `dev` or `main` to the canonical `indexnetwork/index` repo, regardless of whether that remote is named `origin`, `upstream`, or something else. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`).
+The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). The workflow also exposes `workflow_dispatch` for manual reruns. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
 #### packages/openclaw-plugin/ → indexnetwork/openclaw-plugin
 
