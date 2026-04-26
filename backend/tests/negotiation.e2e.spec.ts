@@ -3,26 +3,22 @@ config({ path: ".env.development" });
 
 import { describe, it, expect } from "bun:test";
 import { NegotiationGraphFactory } from "@indexnetwork/protocol";
-import { NegotiationProposer } from "@indexnetwork/protocol";
-import { NegotiationResponder } from "@indexnetwork/protocol";
-import { ConversationService } from "../src/services/conversation.service";
-import { TaskService } from "../src/services/task.service";
+import type { NegotiationDatabase } from "@indexnetwork/protocol";
+import { conversationDatabaseAdapter } from "../src/adapters/database.adapter";
 
 // Prerequisites: requires DATABASE_URL and OPENROUTER_API_KEY in .env.development
-// Run with: cd protocol && bun test tests/negotiation.e2e.spec.ts
+// Run with: cd backend && bun test tests/negotiation.e2e.spec.ts
+
+const noopDispatcher = {
+  dispatch: async () => ({ handled: false as const, reason: "no_agent" as const }),
+  hasPersonalAgent: async () => false,
+};
 
 describe("Negotiation E2E", () => {
   it("runs a full negotiation with real agents and A2A persistence", async () => {
-    const conversationService = new ConversationService();
-    const taskService = new TaskService();
-    const proposer = new NegotiationProposer();
-    const responder = new NegotiationResponder();
-
     const factory = new NegotiationGraphFactory(
-      conversationService,
-      taskService,
-      proposer,
-      responder,
+      conversationDatabaseAdapter as unknown as NegotiationDatabase,
+      noopDispatcher,
     );
     const graph = factory.createGraph();
 
@@ -37,8 +33,8 @@ describe("Negotiation E2E", () => {
         intents: [{ id: "i2", title: "Seeking PM co-founder", description: "ML engineer looking for product-minded co-founder", confidence: 0.85 }],
         profile: { name: "Bob", bio: "Senior ML engineer with 8 years experience", skills: ["machine learning", "PyTorch"] },
       },
-      indexContext: { indexId: "e2e-index", prompt: "AI startup co-founders" },
-      seedAssessment: { score: 78, reasoning: "Complementary skills", valencyRole: "Peer" },
+      indexContext: { networkId: "e2e-index", prompt: "AI startup co-founders" },
+      seedAssessment: { reasoning: "Complementary skills", valencyRole: "Peer" },
       maxTurns: 4,
     });
 

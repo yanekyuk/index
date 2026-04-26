@@ -16,6 +16,7 @@ import { handleLogin } from "./login.command";
 import { handleProfile } from "./profile.command";
 import { handleIntent } from "./intent.command";
 import { handleOpportunity } from "./opportunity.command";
+import { handleNegotiation } from "./negotiation.command";
 import { handleNetwork } from "./network.command";
 import { handleConversation } from "./conversation.command";
 import { handleContact } from "./contact.command";
@@ -26,7 +27,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.9.5";
+const VERSION = "0.10.0";
 
 const HELP_TEXT = `
 Index CLI v${VERSION}
@@ -60,6 +61,10 @@ Usage:
   index intent link <id> <network-id>  Link a signal to a network
   index intent unlink <id> <network-id> Unlink a signal from a network
   index intent links <id>              Show linked networks for a signal
+  index negotiation list               List your agent's negotiations
+  index negotiation list --limit <n>   Limit results
+  index negotiation list --since <t>   Filter by time (ISO date or 1h, 2d, 1w)
+  index negotiation show <id>          Show negotiation turn-by-turn details (accepts short ID)
   index opportunity list                List your opportunities
   index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
   index opportunity list --limit <n>    Limit results
@@ -95,6 +100,7 @@ Options:
   --archived          Include archived signals (intent list)
   --status <status>   Filter opportunities by status
   --limit <n>         Limit number of results
+  --since <date>      Filter by time (ISO date or duration like 1h, 2d, 1w)
   --json              Output raw JSON instead of formatted text
   --name <name>       Name for contact add
   --gmail             Import source flag for contact import
@@ -270,6 +276,14 @@ async function main(): Promise<void> {
         positionals: args.positionals,
         target: args.target,
         introduce: args.introduce,
+      });
+      return;
+    case "negotiation":
+      await handleNegotiation(client, args.subcommand, {
+        targetId: args.targetId,
+        limit: args.limit,
+        since: args.since,
+        json: args.json,
       });
       return;
     case "network":

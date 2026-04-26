@@ -26,7 +26,7 @@ describe('digestEvaluatorPrompt', () => {
     expect(prompt).toContain('top 5');
   });
 
-  it('includes allowed IDs list', () => {
+  it('does not instruct to call confirm_opportunity_delivery', () => {
     const prompt = digestEvaluatorPrompt(
       [
         {
@@ -37,23 +37,38 @@ describe('digestEvaluatorPrompt', () => {
           suggestedAction: 'A1',
           narratorRemark: '',
         },
-        {
-          opportunityId: 'id-2',
-          userId: 'user-2',
-          headline: 'H2',
-          personalizedSummary: 'S2',
-          suggestedAction: 'A2',
-          narratorRemark: '',
-        },
       ],
       10,
     );
-    expect(prompt).toContain('id-1, id-2');
+    expect(prompt).toContain('Do NOT call confirm_opportunity_delivery');
   });
 
   it('instructs to rank by value not pass/fail', () => {
     const prompt = digestEvaluatorPrompt([], 10);
     expect(prompt).toContain('rank');
     expect(prompt).not.toContain('Reject weak');
+  });
+
+  it('uses structured output format instead of markdown links', () => {
+    const prompt = digestEvaluatorPrompt(
+      [
+        {
+          opportunityId: 'opp-1',
+          userId: 'user-1',
+          headline: 'H1',
+          personalizedSummary: 'S1',
+          suggestedAction: 'A1',
+          narratorRemark: '',
+          profileUrl: 'https://example.com/u/user-1',
+          acceptUrl: 'https://example.com/opportunities/opp-1/accept',
+          skipUrl: 'https://example.com/opportunities/opp-1/skip',
+        },
+      ],
+      10,
+    );
+    expect(prompt).toContain('opportunityId: <id from candidate data>');
+    expect(prompt).toContain('profileUrl: <exact profileUrl from candidate data>');
+    expect(prompt).not.toContain('[Name](profileUrl)');
+    expect(prompt).not.toContain('[Connect');
   });
 });

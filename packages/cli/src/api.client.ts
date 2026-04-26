@@ -21,6 +21,8 @@ import type {
   AddMemberResult,
   Conversation,
   ConversationMessage,
+  Negotiation,
+  NegotiationListOptions,
   ToolResult,
 } from "./types";
 
@@ -46,6 +48,11 @@ export type {
   Conversation,
   MessagePart,
   ConversationMessage,
+  Negotiation,
+  NegotiationListOptions,
+  NegotiationSpeaker,
+  NegotiationTurn,
+  NegotiationOutcome,
   ToolResult,
 } from "./types";
 
@@ -400,6 +407,30 @@ export class ApiClient {
     }
 
     return res;
+  }
+
+  // ── Negotiation methods ─────────────────────────────────────────
+
+  /**
+   * List negotiations for the authenticated user.
+   *
+   * @param opts - Optional filters (limit, offset).
+   * @returns Array of negotiation objects.
+   * @throws Error on auth failure or network error.
+   */
+  async listNegotiations(opts?: NegotiationListOptions): Promise<Negotiation[]> {
+    const me = await this.getMe();
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.offset) params.set("offset", String(opts.offset));
+    if (opts?.since) params.set("since", opts.since);
+    const qs = params.toString();
+    const path = qs
+      ? `/api/users/${me.id}/negotiations?${qs}`
+      : `/api/users/${me.id}/negotiations`;
+    const res = await this.get(path);
+    const body = (await res.json()) as { negotiations: Negotiation[] };
+    return body.negotiations;
   }
 
   // ── Tool methods ────────────────────────────────────────────────

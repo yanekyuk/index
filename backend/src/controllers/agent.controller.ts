@@ -11,10 +11,9 @@ import {
   ConflictError,
   UnauthorizedError,
 } from '../services/negotiation-polling.service';
-import { OpportunityDeliveryService } from '../services/opportunity-delivery.service';
+import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 
 const agentTestMessageService = new AgentTestMessageService();
-const opportunityDeliveryService = new OpportunityDeliveryService();
 
 const logger = log.controller.from('agent');
 
@@ -64,6 +63,10 @@ const confirmTestMessageDeliveredSchema = z.object({
 
 const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
+});
+
+const batchConfirmDeliveredSchema = z.object({
+  opportunityIds: z.array(z.string().uuid()).min(1).max(50),
 });
 
 const respondNegotiationSchema = z.object({
@@ -534,6 +537,35 @@ export class AgentController {
       await agentService.touchLastSeen(agentId);
       const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId);
       return Response.json({ opportunities });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/opportunities/confirm-batch')
+  @UseGuards(AuthOrApiKeyGuard)
+  async confirmBatchDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    const body = await parseBody(req, batchConfirmDeliveredSchema);
+    if (body instanceof Response) {
+      return body;
+    }
+
+    try {
+      await agentService.getById(agentId, user.id);
+      const results = await Promise.all(
+        body.opportunityIds.map((id) =>
+          opportunityDeliveryService.commitDelivery(id, user.id, agentId),
+        ),
+      );
+      return Response.json({
+        confirmed: results.filter((r) => r === 'confirmed').length,
+        alreadyDelivered: results.filter((r) => r === 'already_delivered').length,
+      });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }

@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { and, eq } from "drizzle-orm";
 import { AgentDatabaseAdapter } from "../src/adapters/agent.database.adapter.js";
-import { db } from "../src/lib/drizzle/drizzle.js";
+import db from "../src/lib/drizzle/drizzle.js";
 import * as schema from "../src/schemas/database.schema.js";
 
 // This is an integration test — requires DATABASE_URL in environment.

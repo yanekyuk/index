@@ -65,21 +65,21 @@ describe('AgentDispatcherImpl.dispatch', () => {
   });
 
   it('returns waiting and enqueues timeout when personal agent exists (long timeout)', async () => {
-    agents = [makeAgent()];
+    agents = [makeAgent({ lastSeenAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
     expect(timeoutEnqueued).toBe(true);
   });
 
-  it('returns timeout for short-timeout calls (chat path)', async () => {
+  it('returns timeout when personal agent exists but is stale', async () => {
     agents = [makeAgent()];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 30_000 });
     expect(res).toEqual({ handled: false, reason: 'timeout' });
     expect(timeoutEnqueued).toBe(false);
   });
 
-  it('does not require transports — any personal agent triggers waiting', async () => {
-    agents = [makeAgent({ transports: [] })];
+  it('does not require transports — any fresh personal agent triggers waiting', async () => {
+    agents = [makeAgent({ transports: [], lastSeenAt: new Date() })];
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res).toEqual({ handled: false, reason: 'waiting', resumeToken: 'n-1' });
   });

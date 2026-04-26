@@ -3,7 +3,7 @@
  * Postgres implementations; no dependency on lib/protocol.
  */
 
-import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc } from 'drizzle-orm';
+import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm';
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
@@ -1003,6 +1003,33 @@ export class ChatDatabaseAdapter {
   async softDeleteGhost(userId: string): Promise<boolean> {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.softDeleteGhost(userId);
+  }
+
+  /**
+   * Find an existing user that shares any of the given social handles with the specified ghost.
+   * Delegates to ProfileDatabaseAdapter.
+   * @param userId - The ghost user ID to exclude from results
+   * @param socials - Social handles to match against
+   * @returns The matching user's ID, or null if no match found
+   */
+  async findDuplicateUser(
+    userId: string,
+    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+  ): Promise<{ id: string } | null> {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.findDuplicateUser(userId, socials);
+  }
+
+  /**
+   * Merge a ghost user (source) into a target user.
+   * Re-points all data from source to target, cleans up ghost-only records, and soft-deletes source.
+   * Delegates to ProfileDatabaseAdapter.
+   * @param sourceId - The ghost user to merge away (must be an active ghost)
+   * @param targetId - The user to merge into
+   */
+  async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.mergeGhostUser(sourceId, targetId);
   }
 
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
@@ -3563,6 +3590,226 @@ export class ProfileDatabaseAdapter {
 
     return true;
   }
+
+  /**
+   * Find an existing user that shares any of the given social handles with the specified ghost.
+   * Case-insensitive exact match on linkedin, github, and x handles.
+   * Excludes the ghost itself and soft-deleted users.
+   * Prefers real users over ghosts; among ghosts, picks the oldest by created_at.
+   * @param userId - The ghost user ID to exclude from results
+   * @param socials - Social handles to match against
+   * @returns The matching user's ID, or null if no match found
+   */
+  async findDuplicateUser(
+    userId: string,
+    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+  ): Promise<{ id: string } | null> {
+    const handles: { field: string; value: string }[] = [];
+    if (socials.linkedin) handles.push({ field: 'linkedin', value: socials.linkedin.toLowerCase() });
+    if (socials.github) handles.push({ field: 'github', value: socials.github.toLowerCase() });
+    if (socials.x) handles.push({ field: 'x', value: socials.x.toLowerCase() });
+
+    if (handles.length === 0) return null;
+
+    const conditions = handles.map(
+      (h) => sql`LOWER(${schema.users.socials}->>'${sql.raw(h.field)}') = ${h.value}`,
+    );
+
+    const results = await db
+      .select({ id: schema.users.id, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
+      .from(schema.users)
+      .where(
+        and(
+          sql`(${sql.join(conditions, sql` OR `)})`,
+          not(eq(schema.users.id, userId)),
+          isNull(schema.users.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.users.isGhost), asc(schema.users.createdAt))
+      .limit(1);
+
+    return results[0] ? { id: results[0].id } : null;
+  }
+
+  /**
+   * Merge a ghost user (source) into a target user.
+   * Re-points all FK references, deletes ghost-only records, and soft-deletes the source.
+   * Runs entirely within a single database transaction.
+   * @param sourceId - The ghost user to merge away
+   * @param targetId - The target user to absorb the ghost's data
+   */
+  async mergeGhostUser(sourceId: string, targetId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Guard: only active ghost users may be merged away
+      const [source] = await tx
+        .select({ isGhost: schema.users.isGhost })
+        .from(schema.users)
+        .where(and(eq(schema.users.id, sourceId), isNull(schema.users.deletedAt)))
+        .limit(1);
+      if (!source?.isGhost) {
+        throw new Error(`mergeGhostUser: sourceId ${sourceId} is not an active ghost user`);
+      }
+
+      // ── 1. Delete ghost-only records (unique constraints prevent re-pointing) ──
+
+      await tx.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, sourceId));
+      await tx.delete(schema.userNotificationSettings).where(eq(schema.userNotificationSettings.userId, sourceId));
+      await tx.delete(schema.sessions).where(eq(schema.sessions.userId, sourceId));
+      await tx.delete(schema.accounts).where(eq(schema.accounts.userId, sourceId));
+      await tx.delete(schema.apikeys).where(eq(schema.apikeys.userId, sourceId));
+      await tx.delete(schema.agentPermissions).where(eq(schema.agentPermissions.userId, sourceId));
+      await tx.delete(schema.agents).where(eq(schema.agents.ownerId, sourceId));
+
+      // Delete ghost's HyDE profile documents
+      await tx.delete(schema.hydeDocuments).where(
+        and(
+          eq(schema.hydeDocuments.sourceType, 'profile'),
+          eq(schema.hydeDocuments.sourceId, sourceId),
+        ),
+      );
+
+      // ── 2. Re-point simple FK references ──
+
+      await tx.update(schema.intents)
+        .set({ userId: targetId })
+        .where(eq(schema.intents.userId, sourceId));
+
+      await tx.update(schema.files)
+        .set({ userId: targetId })
+        .where(eq(schema.files.userId, sourceId));
+
+      await tx.update(schema.links)
+        .set({ userId: targetId })
+        .where(eq(schema.links.userId, sourceId));
+
+      // ── 3. Re-point network_members (composite PK: skip if target already member) ──
+
+      const ghostMemberships = await tx.select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .where(and(eq(schema.networkMembers.userId, sourceId), isNull(schema.networkMembers.deletedAt)));
+
+      const targetMemberships = await tx.select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .where(and(eq(schema.networkMembers.userId, targetId), isNull(schema.networkMembers.deletedAt)));
+      const targetNetworkIds = new Set(targetMemberships.map(m => m.networkId));
+
+      for (const gm of ghostMemberships) {
+        if (targetNetworkIds.has(gm.networkId)) {
+          // Target already in this network — soft-delete ghost's membership
+          await tx.update(schema.networkMembers)
+            .set({ deletedAt: new Date() })
+            .where(and(
+              eq(schema.networkMembers.networkId, gm.networkId),
+              eq(schema.networkMembers.userId, sourceId),
+            ));
+        } else {
+          // Re-point ghost's membership to target
+          await tx.update(schema.networkMembers)
+            .set({ userId: targetId })
+            .where(and(
+              eq(schema.networkMembers.networkId, gm.networkId),
+              eq(schema.networkMembers.userId, sourceId),
+            ));
+        }
+      }
+
+      // ── 4. Re-point opportunity_deliveries (conditional unique: skip conflicts) ──
+
+      const ghostDeliveries = await tx.select({
+        id: schema.opportunityDeliveries.id,
+        opportunityId: schema.opportunityDeliveries.opportunityId,
+        channel: schema.opportunityDeliveries.channel,
+        deliveredAtStatus: schema.opportunityDeliveries.deliveredAtStatus,
+        deliveredAt: schema.opportunityDeliveries.deliveredAt,
+      })
+        .from(schema.opportunityDeliveries)
+        .where(eq(schema.opportunityDeliveries.userId, sourceId));
+
+      const targetDeliveries = await tx.select({
+        opportunityId: schema.opportunityDeliveries.opportunityId,
+        channel: schema.opportunityDeliveries.channel,
+        deliveredAtStatus: schema.opportunityDeliveries.deliveredAtStatus,
+      })
+        .from(schema.opportunityDeliveries)
+        .where(and(
+          eq(schema.opportunityDeliveries.userId, targetId),
+          sql`${schema.opportunityDeliveries.deliveredAt} IS NOT NULL`,
+        ));
+
+      const targetDeliveryKeys = new Set(
+        targetDeliveries.map(d => `${d.opportunityId}:${d.channel}:${d.deliveredAtStatus}`),
+      );
+
+      for (const gd of ghostDeliveries) {
+        const wouldConflict = gd.deliveredAt !== null &&
+          targetDeliveryKeys.has(`${gd.opportunityId}:${gd.channel}:${gd.deliveredAtStatus}`);
+        if (wouldConflict) {
+          await tx.delete(schema.opportunityDeliveries).where(eq(schema.opportunityDeliveries.id, gd.id));
+        } else {
+          await tx.update(schema.opportunityDeliveries)
+            .set({ userId: targetId })
+            .where(eq(schema.opportunityDeliveries.id, gd.id));
+        }
+      }
+
+      // ── 5. Re-point conversation_participants (composite PK: skip if target already in conversation) ──
+
+      await tx.execute(sql`
+        UPDATE conversation_participants
+        SET participant_id = ${targetId}
+        WHERE participant_id = ${sourceId}
+          AND participant_type = 'user'
+          AND conversation_id NOT IN (
+            SELECT conversation_id FROM conversation_participants WHERE participant_id = ${targetId}
+          )
+      `);
+      // Delete remaining ghost participants (where target already in conversation)
+      await tx.execute(sql`
+        DELETE FROM conversation_participants
+        WHERE participant_id = ${sourceId} AND participant_type = 'user'
+      `);
+
+      // ── 6. Re-point messages ──
+
+      await tx.execute(sql`
+        UPDATE messages SET sender_id = ${targetId}
+        WHERE sender_id = ${sourceId} AND role = 'user'
+      `);
+
+      // ── 7. Re-point opportunity actors JSONB ──
+
+      const affectedOpps = await tx.execute(sql`
+        SELECT id, actors, detection FROM opportunities
+        WHERE actors::text LIKE ${'%' + sourceId + '%'}
+           OR detection::text LIKE ${'%' + sourceId + '%'}
+      `) as unknown as { id: string; actors: unknown; detection: unknown }[];
+
+      for (const row of affectedOpps) {
+        const actors = (Array.isArray(row.actors) ? row.actors : []) as { userId: string; [k: string]: unknown }[];
+        const updatedActors = actors.map(a =>
+          a.userId === sourceId ? { ...a, userId: targetId } : a,
+        );
+
+        const detection = (row.detection ?? {}) as { createdBy?: string; [k: string]: unknown };
+        const updatedDetection = detection.createdBy === sourceId
+          ? { ...detection, createdBy: targetId }
+          : detection;
+
+        await tx.execute(sql`
+          UPDATE opportunities
+          SET actors = ${JSON.stringify(updatedActors)}::jsonb,
+              detection = ${JSON.stringify(updatedDetection)}::jsonb
+          WHERE id = ${row.id}
+        `);
+      }
+
+      // ── 8. Soft-delete the ghost user ──
+
+      await tx.update(schema.users)
+        .set({ deletedAt: new Date() })
+        .where(eq(schema.users.id, sourceId));
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3702,13 +3949,17 @@ export class OpportunityDatabaseAdapter {
       )
     )`;
     const conditions = [visibilityGuard];
-    // Draft visibility: without conversationId exclude all draft; with conversationId include draft only for that session
-    if (options?.conversationId == null) {
-      conditions.push(sql`${opportunities.status} != 'draft'`);
-    } else {
-      conditions.push(
-        sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
-      );
+    // Draft visibility: when explicit statuses are requested, the caller decides;
+    // otherwise exclude drafts unless a conversationId scopes them to one session.
+    const hasExplicitStatuses = (options?.statuses?.length ?? 0) > 0 || !!options?.status;
+    if (!hasExplicitStatuses) {
+      if (options?.conversationId == null) {
+        conditions.push(sql`${opportunities.status} != 'draft'`);
+      } else {
+        conditions.push(
+          sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
+        );
+      }
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
@@ -6361,7 +6612,7 @@ export class ConversationDatabaseAdapter {
    */
   async getNegotiationsByUser(
     userId: string,
-    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress' },
+    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'has_opportunity' | 'no_opportunity' | 'in_progress'; since?: Date },
   ): Promise<Array<Task & { artifact: Artifact | null }>> {
     const limit = opts?.limit ?? 10;
     const offset = opts?.offset ?? 0;
@@ -6396,6 +6647,13 @@ export class ConversationDatabaseAdapter {
           ? and(isNull(schema.artifacts.id), inArray(schema.tasks.state, ['submitted', 'working', 'input_required']))
           : undefined;
 
+    const sinceFilter = opts?.since
+      ? sql`${schema.tasks.createdAt} >= ${opts.since.toISOString()}`
+      : undefined;
+
+    const allFilters = [userFilter, resultFilter, sinceFilter].filter(Boolean);
+    const combinedFilter = allFilters.length > 1 ? and(...allFilters) : allFilters[0];
+
     const rows = await db
       .select({
         task: schema.tasks,
@@ -6409,7 +6667,7 @@ export class ConversationDatabaseAdapter {
           eq(schema.artifacts.name, 'negotiation-outcome'),
         ),
       )
-      .where(resultFilter ? and(userFilter, resultFilter) : userFilter)
+      .where(combinedFilter)
       .orderBy(desc(schema.tasks.createdAt))
       .limit(limit)
       .offset(offset);

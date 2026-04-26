@@ -210,10 +210,10 @@ describe("ToolController Integration", () => {
 
     // ── Intent (CLI: intent update, link, unlink, links) ─────────
 
-    test("update_intent with intentId + newDescription (CLI: intent update)", async () => {
+    test("update_intent with intentId + description (CLI: intent update)", async () => {
       const { status, data } = await invokeTool("update_intent", {
         intentId: "00000000-0000-0000-0000-000000000000",
-        newDescription: "Updated description",
+        description: "Updated description",
       });
       // Tool should accept the query shape (not 400/404 on schema)
       expect(status).toBe(200);
@@ -266,7 +266,7 @@ describe("ToolController Integration", () => {
     }, 120_000);
 
     test("create_opportunities with partyUserIds + entities (CLI: discover --introduce)", async () => {
-      const { status, data } = await invokeTool("create_opportunities", {
+      const { data } = await invokeTool("create_opportunities", {
         partyUserIds: [testUserId, testUserBId],
         entities: [
           {

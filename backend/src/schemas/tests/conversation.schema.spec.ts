@@ -20,7 +20,7 @@ describe('conversation schema', () => {
     expect(participantTypeEnum.enumValues).toEqual(['user', 'agent']);
     expect(messageRoleEnum.enumValues).toEqual(['user', 'agent']);
     expect(taskStateEnum.enumValues).toEqual([
-      'submitted', 'working', 'input_required', 'completed', 'failed', 'canceled', 'rejected', 'auth_required', 'waiting_for_agent',
+      'submitted', 'working', 'input_required', 'completed', 'failed', 'canceled', 'rejected', 'auth_required', 'waiting_for_agent', 'claimed',
     ]);
   });
 });

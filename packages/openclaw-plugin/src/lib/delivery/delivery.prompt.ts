@@ -10,16 +10,28 @@ export function buildDispatcherPrompt(
   channel: DeliveryChannel,
   contentType: DeliveryContentType,
   content: string,
-  frontendUrl?: string,
+  previewShieldUrl?: string,
 ): string {
   const lines = [
     'You are delivering a message to the user via their active OpenClaw gateway.',
     'Always deliver the content below — do not skip or suppress it.',
+    'IMPORTANT: Do NOT call any tools — not to look up profiles, confirm deliveries, or read data.',
+    'Everything you need is in the CONTENT block below. Format it and output it as text.',
   ];
+
+  if (channel === 'telegram' && previewShieldUrl) {
+    lines.push(
+      '',
+      `LINK PREVIEW SHIELD: Your output MUST begin with exactly this text (copy verbatim):`,
+      `[​](${previewShieldUrl})`,
+      'This invisible link captures Telegram\'s link preview so that action URLs below are not previewed.',
+      'Place it on its own line before the intro text. Do not omit or modify it.',
+    );
+  }
 
   lines.push(
     '',
-    channelStyleBlock(channel, frontendUrl),
+    channelStyleBlock(channel),
     '',
     contentTypeContextBlock(contentType),
     '',
@@ -31,26 +43,23 @@ export function buildDispatcherPrompt(
   return lines.join('\n');
 }
 
-function channelStyleBlock(channel: DeliveryChannel, frontendUrl?: string): string {
+function channelStyleBlock(channel: DeliveryChannel): string {
   if (channel === 'telegram') {
-    const lines = [
+    return [
       'CHANNEL: Telegram (Markdown — the gateway converts to HTML automatically)',
       'Format rules:',
-      '- Use **bold** for opportunity headlines.',
+      '- Use **bold** for headlines.',
       '- Keep messages concise and chat-friendly. No markdown tables.',
       '- Use [text](url) for hyperlinks — they render as tappable links in Telegram.',
       '- Do NOT use raw HTML tags — they will be escaped and shown literally.',
-    ];
-    if (frontendUrl) {
-      lines.push(
-        `- Base URL for links: ${frontendUrl}`,
-        '- For each opportunity that includes a userId, add these links:',
-        `  • [View Profile](${frontendUrl}/u/{userId}) — replace {userId} with the actual user ID`,
-        `  • [Start Chat ›](${frontendUrl}/u/{userId}/chat) — replace {userId} with the actual user ID`,
-        '- Place links on their own line after the opportunity summary.',
-      );
-    }
-    return lines.join('\n');
+      '',
+      'URL embedding rules:',
+      '- The CONTENT block contains structured opportunity data with URLs.',
+      '- Link the person\'s name to their profileUrl: e.g. [Myles](profileUrl)',
+      '- Weave accept/skip into the text naturally: e.g. "[Connect](acceptUrl) · [Skip](skipUrl)"',
+      '- Do NOT add separate link sections, raw URLs, or title-style "(url)" annotations.',
+      '- Use the exact URLs from the structured data — do not modify or construct URLs.',
+    ].join('\n');
   }
   return `CHANNEL: ${channel}`;
 }
@@ -60,22 +69,24 @@ function contentTypeContextBlock(contentType: DeliveryContentType): string {
     case 'ambient_discovery':
       return [
         'CONTENT TYPE: Real-time opportunity alert.',
-        'Surface only signal-rich matches. For each opportunity include the headline,',
-        'a one-sentence reason it\'s relevant, and the profile/chat links.',
-        'Keep it to 2-3 lines per opportunity max.',
+        'Start with a one-sentence intro that makes clear this is a real-time alert, e.g. "⚡ A new connection just surfaced."',
+        'The content contains structured opportunity blocks with name, headline, summary, and URLs.',
+        'For each opportunity, compose a concise message (2-3 lines max) weaving the URLs',
+        'into natural text per the URL embedding rules above.',
       ].join('\n');
     case 'daily_digest':
       return [
         'CONTENT TYPE: Daily digest of ranked opportunities.',
-        'Present as a numbered list. For each entry: headline, one-sentence summary,',
-        'and profile/chat links. Add a brief intro line (e.g. "Here are today\'s top opportunities:").',
+        'Start with a one-sentence intro that makes clear this is a daily digest, e.g. "📋 Your daily digest is ready."',
+        'The content contains structured opportunity blocks with name, headline, summary, and URLs.',
+        'For each entry compose a concise message weaving the URLs',
+        'into natural text per the URL embedding rules above. Use a numbered list.',
       ].join('\n');
     case 'test_message':
       return [
         'CONTENT TYPE: Delivery verification message.',
         'Format the content using all the channel formatting rules above (bold headlines,',
         'markdown links, etc.) so the user can verify that rich formatting renders correctly.',
-        'If the content mentions a user or profile, include sample profile/chat links.',
       ].join('\n');
     case 'negotiation_accept':
       return 'CONTENT TYPE: Negotiation outcome notification — one short natural sentence.';

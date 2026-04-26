@@ -94,33 +94,19 @@ describe('dispatchDelivery', () => {
     expect(call.message).toContain('New match found.');
   });
 
-  test('prompt includes frontendUrl in channel style block when provided', async () => {
-    const api = makeApi({ runId: 'run-frontend-url' });
+  test('prompt includes URL embedding rules for semantic link placement', async () => {
+    const api = makeApi({ runId: 'run-url-embed' });
 
     await dispatchDelivery(api, {
       contentType: 'ambient_discovery',
-      content: 'New match found.',
-      idempotencyKey: 'idem-frontend',
-      frontendUrl: 'https://dev.index.network',
+      content: '---\nopportunityId: opp-1\nname: Alice\nprofileUrl: https://dev.index.network/u/abc123\n---',
+      idempotencyKey: 'idem-url-embed',
     });
 
     const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('https://dev.index.network');
-    expect(call.message).toContain('[View Profile](https://dev.index.network/u/{userId})');
-    expect(call.message).toContain('[Start Chat ›](https://dev.index.network/u/{userId}/chat)');
-  });
-
-  test('prompt includes temporal awareness instructions', async () => {
-    const api = makeApi({ runId: 'run-temporal' });
-
-    await dispatchDelivery(api, {
-      contentType: 'ambient_discovery',
-      content: 'New match.',
-      idempotencyKey: 'idem-temporal',
-    });
-
-    const call = (api.runtime.subagent.run as ReturnType<typeof mock>).mock.calls[0][0];
-    expect(call.message).toContain('conversation history');
+    expect(call.message).toContain('URL embedding rules');
+    expect(call.message).toContain('Link the person\'s name to their profileUrl');
+    expect(call.message).toContain('Do NOT add separate link sections');
   });
 
   test('passes model string from configGet to subagent', async () => {

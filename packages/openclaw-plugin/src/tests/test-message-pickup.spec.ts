@@ -47,7 +47,6 @@ function buildFakeApi(): FakeApi {
 const BASE_URL = 'http://localhost:3001';
 const AGENT_ID = 'agent-123';
 const API_KEY = 'test-api-key';
-const FRONTEND_URL = 'http://localhost:5173';
 
 describe('handleTestMessagePickup', () => {
   let originalFetch: typeof global.fetch;
@@ -68,7 +67,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -99,7 +98,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(true);
 
@@ -125,7 +124,7 @@ describe('handleTestMessagePickup', () => {
     }) as unknown as typeof fetch;
 
     const fake = buildFakeApi();
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(false);
     expect(fake.subagentCalls).toHaveLength(0);
@@ -149,7 +148,7 @@ describe('handleTestMessagePickup', () => {
 
     const fake = buildFakeApi();
     // Should not throw
-    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY, frontendUrl: FRONTEND_URL });
+    const result = await handleTestMessagePickup(fake.api, { baseUrl: BASE_URL, agentId: AGENT_ID, apiKey: API_KEY });
 
     expect(result).toBe(true);
     expect(fake.subagentCalls).toHaveLength(1);
