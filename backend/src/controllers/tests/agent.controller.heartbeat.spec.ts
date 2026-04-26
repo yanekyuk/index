@@ -123,7 +123,7 @@ function makeParams(id: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 describe('AgentController pickup endpoints heartbeat', () => {
-  let controller: AgentController;
+  let controller: InstanceType<typeof AgentController>;
 
   beforeEach(() => {
     controller = makeController();
@@ -204,7 +204,7 @@ describe('AgentController pickup endpoints heartbeat', () => {
 // ---------------------------------------------------------------------------
 
 describe('AgentController getPendingOpportunities ?limit parameter', () => {
-  let controller: AgentController;
+  let controller: InstanceType<typeof AgentController>;
 
   beforeEach(() => {
     controller = makeController();
