@@ -33,13 +33,17 @@ let lastOpportunityBatchHash: string | null = null;
  * the agent didn't surface this cycle do not roll over. The dedup hash
  * prevents back-to-back redispatch of the same set.
  *
- * @returns `true` when a dispatch landed, `false` when nothing was
- *          eligible, the batch was unchanged, or dispatch failed.
+ * @returns
+ *   - `'dispatched'` — a dispatch landed (or dispatched but confirm failed; either way, backend was reachable and content moved).
+ *   - `'empty'` — backend reached, but nothing to dispatch (no opportunities, all filtered out, or batch unchanged since last cycle). This is a healthy idle state, not a failure.
+ *   - `'error'` — the backend was unreachable or returned an error, OR dispatch to the main agent failed. The scheduler should back off only on this case.
  */
+export type AmbientDiscoveryOutcome = 'dispatched' | 'empty' | 'error';
+
 export async function handle(
   api: OpenClawPluginApi,
   config: AmbientDiscoveryConfig,
-): Promise<boolean> {
+): Promise<AmbientDiscoveryOutcome> {
   const pendingUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/pending?limit=${PENDING_LIMIT}`;
 
   let res: Response;
@@ -51,13 +55,13 @@ export async function handle(
     });
   } catch (err) {
     api.logger.warn(`Ambient discovery fetch errored: ${err instanceof Error ? err.message : String(err)}`);
-    return false;
+    return 'error';
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     api.logger.warn(`Ambient discovery fetch failed: ${res.status} ${text}`);
-    return false;
+    return 'error';
   }
 
   const body = (await res.json()) as {
@@ -70,7 +74,7 @@ export async function handle(
 
   if (!body.opportunities.length) {
     api.logger.info('Ambient discovery: no pending opportunities');
-    return false;
+    return 'empty';
   }
 
   const candidates = body.opportunities
@@ -87,14 +91,14 @@ export async function handle(
       skipUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/skip`,
     }));
 
-  if (!candidates.length) return false;
+  if (!candidates.length) return 'empty';
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const batchHash = hashOpportunityBatch(candidates.map((c) => c.opportunityId));
 
   if (batchHash === lastOpportunityBatchHash) {
     api.logger.info('Opportunity batch unchanged since last poll — skipping main-agent dispatch.');
-    return false;
+    return 'empty';
   }
 
   const mainAgentToolUse = readMainAgentToolUse(api);
@@ -111,7 +115,7 @@ export async function handle(
   });
 
   if (!dispatch.delivered) {
-    return false;
+    return 'error';
   }
 
   const batchIds = candidates.map((c) => c.opportunityId);
@@ -127,7 +131,7 @@ export async function handle(
     api.logger.warn(
       'Ambient discovery: confirm failed; leaving dedup hash unchanged so the batch retries next cycle.',
     );
-    return true;
+    return 'dispatched';
   }
 
   lastOpportunityBatchHash = batchHash;
@@ -137,7 +141,7 @@ export async function handle(
     { agentId: config.agentId },
   );
 
-  return true;
+  return 'dispatched';
 }
 
 /** Reset module-level state. Exposed for tests only. */

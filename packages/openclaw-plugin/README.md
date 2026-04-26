@@ -105,7 +105,7 @@ The digest ranks all pending opportunities by relevance and passes the top N to 
 
 - **Duplicate registration guard** — if OpenClaw calls `register()` more than once per process, only the first call takes effect.
 - **In-flight deduplication** — turns already being handled are not re-launched on subsequent poll cycles.
-- **Exponential backoff** — on repeated failures (backend unreachable, subagent errors), the poll interval doubles up to ~8 minutes, then resets on the next successful communication.
+- **Exponential backoff** — on real errors (backend unreachable, dispatch failure), the ambient poll interval doubles up to a cap (~80 minutes), then resets on the next successful communication. "No pending opportunities" is a healthy idle state and does NOT trigger backoff — the poller stays at the 5-minute base interval so newly-surfaced opportunities aren't delayed.
 - **Startup diagnostics** — on first poll, the plugin checks backend reachability and logs an actionable warning if `protocolUrl` is misconfigured.
 
 ### Model used for rendering

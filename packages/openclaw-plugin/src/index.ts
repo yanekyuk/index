@@ -188,8 +188,11 @@ export function register(api: OpenClawPluginApi): void {
     match: 'exact',
     handler: async (_req, res) => {
       try {
-        const result = await ambientDiscoveryPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
-        if (!result) {
+        const outcome = await ambientDiscoveryPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
+        // Back off only on real errors (backend unreachable / dispatch failed).
+        // 'empty' is a healthy idle state — keep polling at base interval so
+        // newly-surfaced opportunities aren't delayed by stale backoff.
+        if (outcome === 'error') {
           ambientDiscoveryScheduler.increaseBackoff(api.logger);
         } else {
           ambientDiscoveryScheduler.resetBackoff();
