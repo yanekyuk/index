@@ -473,6 +473,19 @@ export class ProfileGraphFactory {
                 await this.database.updateUser(state.userId, updatePayload);
               }
 
+              // Post-enrichment dedup: check if this ghost matches an existing user
+              if (user.isGhost) {
+                const duplicate = await this.database.findDuplicateUser(state.userId, socials);
+                if (duplicate) {
+                  logger.info("Post-enrichment dedup: merging ghost into existing user", {
+                    ghostId: state.userId,
+                    targetId: duplicate.id,
+                  });
+                  await this.database.mergeGhostUser(state.userId, duplicate.id);
+                  return { error: `Merged as duplicate of user ${duplicate.id}` };
+                }
+              }
+
               return {
                 prePopulatedProfile: {
                   identity: enrichment!.identity,
