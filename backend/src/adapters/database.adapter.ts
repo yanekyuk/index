@@ -3,7 +3,7 @@
  * Postgres implementations; no dependency on lib/protocol.
  */
 
-import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc } from 'drizzle-orm';
+import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm';
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
@@ -1003,6 +1003,21 @@ export class ChatDatabaseAdapter {
   async softDeleteGhost(userId: string): Promise<boolean> {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.softDeleteGhost(userId);
+  }
+
+  /**
+   * Find an existing user that shares any of the given social handles with the specified ghost.
+   * Delegates to ProfileDatabaseAdapter.
+   * @param userId - The ghost user ID to exclude from results
+   * @param socials - Social handles to match against
+   * @returns The matching user's ID, or null if no match found
+   */
+  async findDuplicateUser(
+    userId: string,
+    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+  ): Promise<{ id: string } | null> {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.findDuplicateUser(userId, socials);
   }
 
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
@@ -3562,6 +3577,46 @@ export class ProfileDatabaseAdapter {
       .where(eq(schema.users.id, userId));
 
     return true;
+  }
+
+  /**
+   * Find an existing user that shares any of the given social handles with the specified ghost.
+   * Case-insensitive exact match on linkedin, github, and x handles.
+   * Excludes the ghost itself and soft-deleted users.
+   * Prefers real users over ghosts; among ghosts, picks the oldest by created_at.
+   * @param userId - The ghost user ID to exclude from results
+   * @param socials - Social handles to match against
+   * @returns The matching user's ID, or null if no match found
+   */
+  async findDuplicateUser(
+    userId: string,
+    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+  ): Promise<{ id: string } | null> {
+    const handles: { field: string; value: string }[] = [];
+    if (socials.linkedin) handles.push({ field: 'linkedin', value: socials.linkedin.toLowerCase() });
+    if (socials.github) handles.push({ field: 'github', value: socials.github.toLowerCase() });
+    if (socials.x) handles.push({ field: 'x', value: socials.x.toLowerCase() });
+
+    if (handles.length === 0) return null;
+
+    const conditions = handles.map(
+      (h) => sql`LOWER(${schema.users.socials}->>'${sql.raw(h.field)}') = ${h.value}`,
+    );
+
+    const results = await db
+      .select({ id: schema.users.id, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
+      .from(schema.users)
+      .where(
+        and(
+          sql`(${sql.join(conditions, sql` OR `)})`,
+          not(eq(schema.users.id, userId)),
+          isNull(schema.users.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.users.isGhost), asc(schema.users.createdAt))
+      .limit(1);
+
+    return results[0] ? { id: results[0].id } : null;
   }
 }
 
