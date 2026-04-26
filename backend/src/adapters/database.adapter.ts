@@ -3452,6 +3452,7 @@ export class ProfileDatabaseAdapter {
       if (data.socials.x !== undefined) merged.x = data.socials.x;
       if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
       if (data.socials.github !== undefined) merged.github = data.socials.github;
+      if (data.socials.telegram !== undefined) merged.telegram = data.socials.telegram;
       if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
       updateFields.socials = merged;
     }
