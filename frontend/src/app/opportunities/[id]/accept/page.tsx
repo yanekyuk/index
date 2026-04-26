@@ -23,7 +23,7 @@ export default function AcceptOpportunityPage() {
       try {
         const result = await opportunitiesService.startChat(id!);
         if (!cancelled) {
-          navigate(`/chat/${result.conversationId}`, { replace: true });
+          navigate(`/u/${result.counterpartUserId}/chat`, { replace: true });
         }
       } catch (err: unknown) {
         if (cancelled) return;
