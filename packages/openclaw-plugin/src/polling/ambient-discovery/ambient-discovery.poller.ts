@@ -2,7 +2,6 @@ import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
-import { confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 
 export interface AmbientDiscoveryConfig {
@@ -21,24 +20,62 @@ let lastOpportunityBatchHash: string | null = null;
  * Handles one ambient discovery poll cycle. Single-pass:
  *  1. GET /opportunities/pending?limit=10
  *  2. Hash the batch; skip if identical to last successful dispatch (dedup).
- *  3. Build the ambient-discovery prompt and hand it to the user's main
+ *  3. Fetch today's ambient delivery count from GET /opportunities/delivery-stats.
+ *  4. Build the ambient-discovery prompt and hand it to the user's main
  *     OpenClaw agent via `dispatchToMainAgent` (POST /hooks/agent →
  *     user's last channel).
- *  4. On dispatch success, confirm the entire batch via /confirm-batch
- *     and advance the dedup hash.
+ *  5. On dispatch success, advance the dedup hash. The agent confirms
+ *     individual opportunities via `confirm_opportunity_delivery` MCP tool.
  *
- * Trade-off: the agent decides which subset to surface, but the plugin
- * cannot see what was rendered (the gateway delivers asynchronously).
- * We therefore confirm every candidate in the dispatched batch — items
- * the agent didn't surface this cycle do not roll over. The dedup hash
- * prevents back-to-back redispatch of the same set.
+ * The agent decides which subset to surface and confirms only what it
+ * actually mentions. The dedup hash prevents back-to-back redispatch of
+ * the same set.
  *
  * @returns
- *   - `'dispatched'` — a dispatch landed (or dispatched but confirm failed; either way, backend was reachable and content moved).
+ *   - `'dispatched'` — a dispatch landed successfully.
  *   - `'empty'` — backend reached, but nothing to dispatch (no opportunities, all filtered out, or batch unchanged since last cycle). This is a healthy idle state, not a failure.
  *   - `'error'` — the backend was unreachable or returned an error, OR dispatch to the main agent failed. The scheduler should back off only on this case.
  */
 export type AmbientDiscoveryOutcome = 'dispatched' | 'empty' | 'error';
+
+/**
+ * Compute start-of-today in the user's local timezone, expressed as a UTC ISO string.
+ */
+function midnightLocalIso(now: Date = new Date()): string {
+  const local = new Date(now);
+  local.setHours(0, 0, 0, 0);
+  return local.toISOString();
+}
+
+/**
+ * Fetch today's ambient delivery count. Best-effort: returns null on any failure
+ * (the prompt will then tell the agent the count is unknown).
+ */
+async function fetchAmbientDeliveredToday(
+  api: OpenClawPluginApi,
+  config: AmbientDiscoveryConfig,
+): Promise<number | null> {
+  const since = encodeURIComponent(midnightLocalIso());
+  const url = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/delivery-stats?since=${since}`;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'x-api-key': config.apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      api.logger.warn(`Ambient stats fetch failed: ${res.status}`);
+      return null;
+    }
+    const body = (await res.json()) as { ambient?: number };
+    return typeof body.ambient === 'number' ? body.ambient : null;
+  } catch (err) {
+    api.logger.warn(
+      `Ambient stats fetch errored: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
 
 export async function handle(
   api: OpenClawPluginApi,
@@ -101,12 +138,13 @@ export async function handle(
     return 'empty';
   }
 
+  const ambientDeliveredToday = await fetchAmbientDeliveredToday(api, config);
   const mainAgentToolUse = readMainAgentToolUse(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'ambient_discovery',
     mainAgentToolUse,
-    payload: { contentType: 'ambient_discovery', ambientDeliveredToday: null, candidates },
+    payload: { contentType: 'ambient_discovery', ambientDeliveredToday, candidates },
   });
 
   const dispatch = await dispatchToMainAgent(api, {
@@ -118,27 +156,11 @@ export async function handle(
     return 'error';
   }
 
-  const batchIds = candidates.map((c) => c.opportunityId);
-  const confirmed = await confirmDeliveredBatch({
-    baseUrl: config.baseUrl,
-    agentId: config.agentId,
-    apiKey: config.apiKey,
-    opportunityIds: batchIds,
-    logger: api.logger,
-  });
-
-  if (!confirmed) {
-    api.logger.warn(
-      'Ambient discovery: confirm failed; leaving dedup hash unchanged so the batch retries next cycle.',
-    );
-    return 'dispatched';
-  }
-
   lastOpportunityBatchHash = batchHash;
 
   api.logger.info(
-    `Ambient discovery dispatched and confirmed: ${batchIds.length} candidate(s)`,
-    { agentId: config.agentId },
+    `Ambient discovery dispatched: ${candidates.length} candidate(s); agent will confirm individually`,
+    { agentId: config.agentId, ambientDeliveredToday },
   );
 
   return 'dispatched';
