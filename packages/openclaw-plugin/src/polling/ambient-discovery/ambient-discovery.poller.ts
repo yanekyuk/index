@@ -169,6 +169,15 @@ export async function handle(
     return false;
   }
 
+  const batchIds = body.opportunities.map((o) => o.opportunityId);
+  const selectedIds = extractSelectedIds(content, batchIds);
+
+  if (selectedIds.length === 0) {
+    api.logger.debug('Opportunity evaluator selected no opportunities — skipping delivery.');
+    lastOpportunityBatchHash = batchHash;
+    return false;
+  }
+
   // Phase 2: dispatch to user via delivery dispatcher.
   // Idempotency key uses the eval runId so a new eval run busts the cache.
   const dispatchResult = await dispatchDelivery(api, {
@@ -203,8 +212,6 @@ export async function handle(
   );
 
   // Phase 3: confirm selected opportunities after successful delivery.
-  const batchIds = body.opportunities.map((o) => o.opportunityId);
-  const selectedIds = extractSelectedIds(content, batchIds);
   await confirmDeliveredBatch({
     baseUrl: config.baseUrl,
     agentId: config.agentId,
