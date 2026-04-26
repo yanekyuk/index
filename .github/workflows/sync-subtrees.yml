@@ -11,6 +11,7 @@ name: Sync subtrees
 on:
   push:
     branches: [dev, main]
+  workflow_dispatch:  # Manual re-run, e.g. after fixing CI auth
 
 concurrency:
   # Serialize per-branch so two pushes can't race on the same subtree branch.
