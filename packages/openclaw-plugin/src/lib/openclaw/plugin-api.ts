@@ -48,42 +48,8 @@ export interface SubagentRuntime {
   getSessionMessages(options: GetSessionMessagesOptions): Promise<{ messages: SessionMessage[] }>;
 }
 
-export interface RunEmbeddedAgentOptions {
-  sessionId: string;
-  runId: string;
-  sessionFile: string;
-  workspaceDir: string;
-  prompt: string;
-  timeoutMs: number;
-}
-
-export interface RunEmbeddedAgentResult {
-  /** Plain-text reply produced by the agent turn, when available. */
-  text?: string;
-  /** Structured assistant messages, mirroring `getSessionMessages`. */
-  messages?: SessionMessage[];
-  /** Whether the host auto-delivered the reply to the agent's last channel. */
-  delivered?: boolean;
-}
-
-export interface AgentIdentity {
-  id?: string;
-  sessionId?: string;
-  agentDir?: string;
-  workspaceDir?: string;
-}
-
-export interface AgentRuntime {
-  resolveAgentDir(cfg: OpenClawConfigSlice | undefined): string;
-  resolveAgentWorkspaceDir(cfg: OpenClawConfigSlice | undefined): string;
-  resolveAgentIdentity(cfg: OpenClawConfigSlice | undefined): AgentIdentity;
-  resolveAgentTimeoutMs(cfg: OpenClawConfigSlice | undefined): number;
-  runEmbeddedAgent(options: RunEmbeddedAgentOptions): Promise<RunEmbeddedAgentResult>;
-}
-
 export interface PluginRuntime {
   subagent: SubagentRuntime;
-  agent?: AgentRuntime;
 }
 
 export type RouteHandler = (
@@ -100,8 +66,12 @@ export interface RouteOptions {
 }
 
 /**
- * Narrow slice of OpenClawConfig that the plugin reads at register time.
+ * Narrow slice of OpenClawConfig that the plugin reads at runtime.
  * Matches the shape exposed by `api.config` per the OpenClaw plugin SDK.
+ *
+ * Only the fields the plugin actively reads are typed here. The real
+ * OpenClawConfig has many more fields; treating this as a strict subset
+ * keeps the plugin loosely coupled to the SDK's evolving surface.
  */
 export interface OpenClawConfigSlice {
   gateway?: {
@@ -109,6 +79,16 @@ export interface OpenClawConfigSlice {
     auth?: {
       token?: string;
     };
+  };
+  /**
+   * Hooks subsystem. The plugin requires `hooks.enabled=true` and a
+   * non-empty `hooks.token` to dispatch via `POST /hooks/agent`. Setup
+   * wizard bootstraps both. See `lib/delivery/main-agent.dispatcher.ts`.
+   */
+  hooks?: {
+    enabled?: boolean;
+    path?: string;
+    token?: string;
   };
   mcp?: {
     servers?: Record<string, {

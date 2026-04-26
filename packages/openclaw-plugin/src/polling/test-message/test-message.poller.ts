@@ -11,12 +11,14 @@ export interface TestMessageConfig {
 
 /**
  * Handles one test-message pickup cycle. Test messages are delivery
- * verification — `allowSuppress: false` means the prompt does NOT include
- * a NO_REPLY clause. If the agent emits NO_REPLY anyway, the plugin logs
- * an error and lets the 60 s reservation expire so the backend retries.
+ * verification: pick up a reservation, dispatch via main agent (which
+ * the gateway delivers to the user's last channel), and confirm.
+ *
+ * If dispatch fails the reservation is allowed to expire so the backend
+ * can retry on the next cycle.
  *
  * @returns `true` when a test message was rendered and confirmed,
- *          `false` when nothing was pending or delivery failed.
+ *          `false` when nothing was pending or dispatch/pickup failed.
  */
 export async function handle(
   api: OpenClawPluginApi,
@@ -43,38 +45,25 @@ export async function handle(
     reservationToken: string;
   };
 
-  // 2. Dispatch via main agent. allowSuppress=false: no NO_REPLY clause.
+  // 2. Dispatch via main agent.
   const mainAgentToolUse = readMainAgentToolUse(api);
   const prompt = buildMainAgentPrompt({
     contentType: 'test_message',
     mainAgentToolUse,
-    allowSuppress: false,
     payload: { contentType: 'test_message', content: reservation.content },
   });
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
     idempotencyKey: `index:delivery:test:${reservation.id}:${reservation.reservationToken}`,
-    allowSuppress: false,
   });
 
-  if (dispatch.error === 'network_error') {
+  if (!dispatch.delivered) {
     api.logger.warn('Test-message dispatch failed; reservation will expire.');
     return false;
   }
 
-  // 3. Detect agent ignoring no-suppress instruction. The dispatcher already
-  // sets `suppressedByNoReply` (via shapeResult) whenever the reply is the
-  // bare NO_REPLY token, so we don't need a second detection pass here.
-  if (dispatch.suppressedByNoReply) {
-    api.logger.error(
-      'Test-message: agent emitted NO_REPLY despite prompt forbidding suppression. ' +
-        'Reservation will expire and backend will retry.',
-    );
-    return false;
-  }
-
-  // 4. Confirm.
+  // 3. Confirm.
   const confirmUrl = `${config.baseUrl}/api/agents/${config.agentId}/test-messages/${reservation.id}/delivered`;
   await fetch(confirmUrl, {
     method: 'POST',

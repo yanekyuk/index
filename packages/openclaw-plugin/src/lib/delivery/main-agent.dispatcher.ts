@@ -1,204 +1,125 @@
 /**
- * Drives the user's main OpenClaw agent to render a notification, returning
- * the rendered text and whether the agent suppressed delivery via NO_REPLY.
+ * Dispatches a render prompt to the user's main OpenClaw agent via the
+ * gateway's `POST /hooks/agent` endpoint. The endpoint is documented at
+ * https://github.com/openclaw/openclaw/blob/main/docs/gateway/configuration-reference.md
  *
- * Tries the in-process SDK first (`api.runtime.agent.runEmbeddedAgent`) and
- * falls back to the gateway HTTP hook (`POST /hooks/agent`) when the SDK
- * isn't available or the call rejects. Both paths produce the same return
- * shape so callers can stay primitive-agnostic.
+ * The hook performs three things synchronously from the plugin's view:
+ *  - Routes the prompt to the user's default agent (the one they actually
+ *    chat with), so persona / voice / channel preferences carry through.
+ *  - Runs an isolated turn against the user's main session.
+ *  - Delivers the agent's reply to whichever channel the user last used
+ *    (`channel: 'last'`).
+ *
+ * Required gateway config (bootstrapped by `openclaw index-network setup`):
+ *  - `hooks.enabled = true`
+ *  - `hooks.token`   = a non-empty secret distinct from `gateway.auth.token`
+ *  - `hooks.path`    = a sub-path, defaulting to `/hooks`
+ *
+ * The endpoint returns only `{ status: "sent" }` — the agent's rendered
+ * text is delivered to the channel asynchronously and is not available
+ * to the plugin synchronously. Callers therefore cannot scrape rendered
+ * text; the `confirm-batch` step uses the full set of dispatched IDs.
  */
 
 import type { OpenClawPluginApi } from '../openclaw/plugin-api.js';
 
 /** Context required to dispatch a prompt to the main agent. */
 export interface DispatchContext {
+  /** The fully-rendered prompt to hand to the agent. */
   prompt: string;
+  /** Idempotency key sent as the `idempotency-key` header. */
   idempotencyKey: string;
-  /**
-   * When true the prompt's caller has included a NO_REPLY clause; the helper
-   * still inspects every reply for the token. When false the caller should
-   * not have included the clause (used for test-message verification).
-   */
-  allowSuppress: boolean;
-  /** Optional override for the embedded-agent timeout (ms). */
+  /** Optional per-call timeout. Defaults to 120 seconds. */
   timeoutMs?: number;
 }
 
-/** Result returned by `dispatchToMainAgent`. */
+/** Outcome of `dispatchToMainAgent`. */
 export interface DispatchResult {
-  /** Rendered reply, or `null` when both paths failed. */
-  deliveredText: string | null;
+  /** True when the gateway acknowledged the dispatch (HTTP 2xx). */
+  delivered: boolean;
   /**
-   * True when the agent's reply began with a NO_REPLY token, or was empty.
-   * The caller MUST skip Phase 3 confirms when this is true.
+   * Set when delivery failed in a way callers should react to:
+   *  - `config_error`: missing gateway port or hooks.token → setup not run.
+   *  - `unauthorized`: hooks.token rejected (401/403) → token mismatch.
+   *  - `network_error`: any other failure (5xx, fetch threw, parse).
    */
-  suppressedByNoReply: boolean;
-  /**
-   * `'network_error'` when both SDK and hooks failed, used by callers to
-   * signal scheduler backoff. Undefined on success or suppression.
-   */
-  error?: 'network_error';
-}
-
-const NO_REPLY_PATTERN = /^NO[_\s-]?REPLY\.?\s*$/i;
-
-/**
- * Returns true when the agent reply is exactly the NO_REPLY token (case-
- * insensitive, surrounding whitespace and an optional trailing period
- * tolerated). Empty or nullish input returns false — empty replies are
- * handled separately as implicit suppression.
- *
- * The whole-string anchor avoids false positives on legitimate replies that
- * happen to start with "no reply" (e.g. "No reply yet from Bob — but...").
- *
- * @param text - Raw reply text from the agent, or null/undefined.
- */
-export function detectNoReply(text: string | null | undefined): boolean {
-  if (!text) return false;
-  return NO_REPLY_PATTERN.test(text.trim());
+  error?: 'config_error' | 'unauthorized' | 'network_error';
 }
 
 /**
- * Sends `ctx.prompt` to the user's main agent and returns the rendered reply.
+ * Dispatches `ctx.prompt` to the user's main OpenClaw agent via
+ * `POST /hooks/agent` with `deliver: true, channel: 'last'`. The gateway
+ * routes the agent's reply to the channel the user last interacted with.
  *
- * Tries `api.runtime.agent.runEmbeddedAgent` first; on throw or when the
- * runtime is unavailable, falls back to `POST /hooks/agent` over loopback.
- * When both paths fail, returns `{ deliveredText: null, error: 'network_error' }`.
- *
- * @param api - OpenClaw plugin API instance.
- * @param ctx - Dispatch context carrying the prompt and idempotency key.
- * @returns A `DispatchResult` with `deliveredText` and `suppressedByNoReply`.
+ * @param api - Plugin API. Reads `api.config.gateway.port` and `api.config.hooks.{enabled,token,path}`.
+ * @param ctx - Prompt + idempotency key + optional timeout.
+ * @returns A `DispatchResult`. On `error`, `delivered` is `false`.
  */
 export async function dispatchToMainAgent(
   api: OpenClawPluginApi,
   ctx: DispatchContext,
 ): Promise<DispatchResult> {
-  const sdkResult = await trySdk(api, ctx);
-  if (sdkResult.outcome === 'ok') return sdkResult.value;
-
-  const hooksResult = await tryHooks(api, ctx);
-  if (hooksResult.outcome === 'ok') return hooksResult.value;
-
-  api.logger.warn('Main-agent dispatch failed via both SDK and hooks.');
-  return { deliveredText: null, suppressedByNoReply: false, error: 'network_error' };
-}
-
-type Outcome<T> = { outcome: 'ok'; value: T } | { outcome: 'unavailable' | 'error' };
-
-async function trySdk(
-  api: OpenClawPluginApi,
-  ctx: DispatchContext,
-): Promise<Outcome<DispatchResult>> {
-  const agent = api.runtime.agent;
-  if (!agent || typeof agent.runEmbeddedAgent !== 'function') {
-    return { outcome: 'unavailable' };
-  }
-  try {
-    const identity = agent.resolveAgentIdentity(api.config);
-    const sessionId = identity.sessionId ?? identity.id ?? 'main';
-    const agentDir = agent.resolveAgentDir(api.config).replace(/\/$/, '');
-    const sessionFile = `${agentDir}/sessions/${sessionId}.jsonl`;
-    const workspaceDir = agent.resolveAgentWorkspaceDir(api.config);
-    const timeoutMs = ctx.timeoutMs ?? agent.resolveAgentTimeoutMs(api.config);
-
-    // We pass `ctx.idempotencyKey` as both the SDK `runId` and (in the hooks
-    // fallback below) the `idempotency-key` header. SDK semantics for a
-    // duplicate `runId` are runtime-dependent — most OpenClaw builds treat it
-    // as "already-completed → return cached result", which matches the HTTP
-    // header contract closely enough that callers can stay primitive-agnostic.
-    // Timeout intentionally diverges between paths: the SDK uses the
-    // config-resolved per-agent timeout (so user agent-timeout overrides
-    // apply); the hooks fallback uses a 120 s default because the gateway
-    // handles its own per-request budget independently.
-    const result = await agent.runEmbeddedAgent({
-      sessionId,
-      runId: ctx.idempotencyKey,
-      sessionFile,
-      workspaceDir,
-      prompt: ctx.prompt,
-      timeoutMs,
-    });
-
-    const text = extractReplyText(result);
-    return { outcome: 'ok', value: shapeResult(text) };
-  } catch (err) {
-    api.logger.info(
-      `runEmbeddedAgent unavailable or threw: ${err instanceof Error ? err.message : String(err)} — falling back to /hooks/agent.`,
-    );
-    return { outcome: 'error' };
-  }
-}
-
-async function tryHooks(
-  api: OpenClawPluginApi,
-  ctx: DispatchContext,
-): Promise<Outcome<DispatchResult>> {
   const port = api.config?.gateway?.port;
-  const token = api.config?.gateway?.auth?.token;
+  const hooks = api.config?.hooks;
+  const hooksEnabled = hooks?.enabled === true;
+  const hooksToken = typeof hooks?.token === 'string' ? hooks.token : '';
+  const hooksPath = (typeof hooks?.path === 'string' && hooks.path
+    ? hooks.path
+    : '/hooks'
+  ).replace(/\/+$/, '');
+
   if (!port) {
-    api.logger.warn('Cannot fall back to /hooks/agent: gateway port not in config.');
-    return { outcome: 'unavailable' };
+    api.logger.warn(
+      'Cannot dispatch to main agent: gateway.port is missing from api.config.',
+    );
+    return { delivered: false, error: 'config_error' };
+  }
+  if (!hooksEnabled || !hooksToken) {
+    api.logger.warn(
+      'Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset. ' +
+        'Run `openclaw index-network setup` to bootstrap hooks.',
+    );
+    return { delivered: false, error: 'config_error' };
   }
 
+  const url = `http://127.0.0.1:${port}${hooksPath}/agent`;
+
+  let res: Response;
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/hooks/agent`, {
+    res = await fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        authorization: `Bearer ${hooksToken}`,
         'idempotency-key': ctx.idempotencyKey,
       },
       body: JSON.stringify({
         message: ctx.prompt,
-        agentId: 'main',
         wakeMode: 'now',
         deliver: true,
         channel: 'last',
       }),
       signal: AbortSignal.timeout(ctx.timeoutMs ?? 120_000),
     });
-
-    if (!res.ok) {
-      api.logger.warn(`/hooks/agent returned ${res.status}.`);
-      return { outcome: 'error' };
-    }
-
-    const body = (await res.json().catch(() => ({}))) as { text?: string };
-    const text = typeof body?.text === 'string' ? body.text : '';
-    return { outcome: 'ok', value: shapeResult(text) };
   } catch (err) {
     api.logger.warn(
-      `/hooks/agent threw: ${err instanceof Error ? err.message : String(err)}.`,
+      `${url} threw: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return { outcome: 'error' };
+    return { delivered: false, error: 'network_error' };
   }
-}
 
-function extractReplyText(result: {
-  text?: string;
-  messages?: Array<{ role: string; content: unknown }>;
-}): string {
-  if (typeof result.text === 'string') return result.text;
-  const last = result.messages?.filter((m) => m.role === 'assistant').at(-1);
-  if (!last) return '';
-  if (typeof last.content === 'string') return last.content;
-  if (Array.isArray(last.content)) {
-    return (last.content as Array<{ type?: string; text?: string }>)
-      .filter((b) => b?.type === 'text')
-      .map((b) => b?.text ?? '')
-      .join('\n')
-      .trim();
+  if (res.status === 401 || res.status === 403) {
+    api.logger.warn(
+      `${url} returned ${res.status}: hooks.token rejected. ` +
+        'Verify hooks.token in ~/.openclaw/openclaw.json matches what the plugin reads.',
+    );
+    return { delivered: false, error: 'unauthorized' };
   }
-  return '';
-}
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    api.logger.warn(`${url} returned ${res.status}: ${body.slice(0, 200)}`);
+    return { delivered: false, error: 'network_error' };
+  }
 
-function shapeResult(rawText: string): DispatchResult {
-  const trimmed = rawText.trim();
-  if (!trimmed) {
-    return { deliveredText: '', suppressedByNoReply: true };
-  }
-  if (detectNoReply(trimmed)) {
-    return { deliveredText: trimmed, suppressedByNoReply: true };
-  }
-  return { deliveredText: trimmed, suppressedByNoReply: false };
+  return { delivered: true };
 }

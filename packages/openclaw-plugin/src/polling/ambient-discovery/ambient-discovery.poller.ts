@@ -2,7 +2,7 @@ import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
-import { extractSelectedIds, confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
+import { confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 
 export interface AmbientDiscoveryConfig {
@@ -20,14 +20,21 @@ let lastOpportunityBatchHash: string | null = null;
 /**
  * Handles one ambient discovery poll cycle. Single-pass:
  *  1. GET /opportunities/pending?limit=10
- *  2. Hash the batch; skip if identical to last dispatch (dedup).
- *  3. Build the ambient-discovery prompt and hand it to the user's main OpenClaw
- *     agent via dispatchToMainAgent (SDK first, /hooks/agent fallback).
- *  4. If the agent didn't suppress via NO_REPLY, scrape opportunity IDs from
- *     the rendered text and confirm the batch.
+ *  2. Hash the batch; skip if identical to last successful dispatch (dedup).
+ *  3. Build the ambient-discovery prompt and hand it to the user's main
+ *     OpenClaw agent via `dispatchToMainAgent` (POST /hooks/agent →
+ *     user's last channel).
+ *  4. On dispatch success, confirm the entire batch via /confirm-batch
+ *     and advance the dedup hash.
  *
- * @returns `true` when a dispatch was attempted (delivered or suppressed),
- *          `false` when nothing was eligible or the batch was unchanged.
+ * Trade-off: the agent decides which subset to surface, but the plugin
+ * cannot see what was rendered (the gateway delivers asynchronously).
+ * We therefore confirm every candidate in the dispatched batch — items
+ * the agent didn't surface this cycle do not roll over. The dedup hash
+ * prevents back-to-back redispatch of the same set.
+ *
+ * @returns `true` when a dispatch landed, `false` when nothing was
+ *          eligible, the batch was unchanged, or dispatch failed.
  */
 export async function handle(
   api: OpenClawPluginApi,
@@ -95,51 +102,24 @@ export async function handle(
   const prompt = buildMainAgentPrompt({
     contentType: 'ambient_discovery',
     mainAgentToolUse,
-    allowSuppress: true,
     payload: { contentType: 'ambient_discovery', maxToSurface: candidates.length, candidates },
   });
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
     idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
-    allowSuppress: true,
   });
 
-  if (dispatch.error === 'network_error') {
+  if (!dispatch.delivered) {
     return false;
   }
 
-  // The dedup hash advances when there is no further work to do for this batch —
-  // either the agent chose to suppress, the rendered text was empty/unparseable,
-  // or a confirm round-trip succeeded. On confirm failure we leave the hash
-  // unchanged so the next cycle retries the same batch instead of going quiet.
-  // Note: this state is module-level and resets on plugin reload.
-  if (dispatch.suppressedByNoReply) {
-    api.logger.info('Ambient discovery: agent suppressed via NO_REPLY.');
-    lastOpportunityBatchHash = batchHash;
-    return true;
-  }
-
-  if (!dispatch.deliveredText) {
-    api.logger.debug('Ambient discovery: empty rendered text.');
-    lastOpportunityBatchHash = batchHash;
-    return true;
-  }
-
   const batchIds = candidates.map((c) => c.opportunityId);
-  const selectedIds = extractSelectedIds(dispatch.deliveredText, batchIds);
-
-  if (selectedIds.length === 0) {
-    api.logger.debug('Ambient discovery: rendered text has no recognizable IDs.');
-    lastOpportunityBatchHash = batchHash;
-    return true;
-  }
-
   const confirmed = await confirmDeliveredBatch({
     baseUrl: config.baseUrl,
     agentId: config.agentId,
     apiKey: config.apiKey,
-    opportunityIds: selectedIds,
+    opportunityIds: batchIds,
     logger: api.logger,
   });
 
@@ -153,7 +133,7 @@ export async function handle(
   lastOpportunityBatchHash = batchHash;
 
   api.logger.info(
-    `Ambient discovery dispatched: ${candidates.length} candidate(s); ${selectedIds.length} confirmed`,
+    `Ambient discovery dispatched and confirmed: ${batchIds.length} candidate(s)`,
     { agentId: config.agentId },
   );
 

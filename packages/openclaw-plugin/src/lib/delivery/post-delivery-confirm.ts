@@ -1,28 +1,5 @@
 import type { PluginLogger } from '../openclaw/plugin-api.js';
 
-const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-
-/**
- * Extracts opportunity IDs from evaluator output by matching UUIDs
- * and filtering against the known batch.
- *
- * @param content - Evaluator text output containing opportunityId references.
- * @param batchIds - The full list of opportunity IDs in the evaluated batch.
- * @returns Opportunity IDs that appear in both the content and the batch.
- */
-export function extractSelectedIds(content: string, batchIds: string[]): string[] {
-  const batchSet = new Set(batchIds.map((id) => id.toLowerCase()));
-  const found = content.match(UUID_RE) ?? [];
-  const unique = new Set<string>();
-  for (const id of found) {
-    const lower = id.toLowerCase();
-    if (batchSet.has(lower) && !unique.has(lower)) {
-      unique.add(lower);
-    }
-  }
-  return [...unique];
-}
-
 /**
  * Confirms delivered opportunities via the batch-confirm backend endpoint.
  * Best-effort — logs warnings on failure but never throws.

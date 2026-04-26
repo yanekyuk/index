@@ -3,6 +3,11 @@
  * Index Network notification. The shared skeleton is composed from clauses,
  * with the per-content-type instruction selected last. The `INPUT` block holds
  * the structured payload as JSON; the agent reads it directly.
+ *
+ * The agent's reply is delivered to the user's last-active channel by the
+ * gateway (see `main-agent.dispatcher.ts`). The plugin does not see the
+ * rendered text, so prompts must avoid ask-then-suppress idioms — anything
+ * the agent says reaches the user.
  */
 
 /** Controls whether the agent is allowed to invoke MCP tools during rendering. */
@@ -49,8 +54,6 @@ export interface MainAgentPromptInput {
   contentType: MainAgentContentType;
   /** Whether the agent may call MCP tools while rendering. */
   mainAgentToolUse: MainAgentToolUse;
-  /** When true, the `NO_REPLY` suppression clause is included. */
-  allowSuppress: boolean;
   /** The structured payload that will be embedded as JSON in the INPUT block. */
   payload: MainAgentPayload;
 }
@@ -70,22 +73,15 @@ export function buildMainAgentPrompt(input: MainAgentPromptInput): string {
     toolUseClause(input.mainAgentToolUse),
     '',
     URL_PRESERVATION_CLAUSE,
-  ];
-
-  if (input.allowSuppress) {
-    lines.push('', NO_REPLY_CLAUSE);
-  }
-
-  lines.push('', perTypeInstruction(input));
-
-  lines.push(
+    '',
+    perTypeInstruction(input),
     '',
     INPUT_AS_DATA_CLAUSE,
     '',
     '===== INPUT =====',
     JSON.stringify(input.payload, null, 2),
     '===== END INPUT =====',
-  );
+  ];
 
   return lines.join('\n');
 }
@@ -104,12 +100,6 @@ const URL_PRESERVATION_CLAUSE = [
   'output its data without an action link.',
 ].join('\n');
 
-const NO_REPLY_CLAUSE = [
-  'If this is a poor moment — user is mid-conversation on something else, has asked for',
-  'quiet, or this feels mistimed — output exactly `NO_REPLY` as your entire reply. The',
-  'runtime will suppress delivery; the items will roll over.',
-].join('\n');
-
 function toolUseClause(mode: MainAgentToolUse): string {
   if (mode === 'enabled') {
     return 'You may call Index Network MCP tools to enrich. Stay brief — the user is waiting.';
@@ -123,17 +113,18 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
     case 'daily_digest': {
       const max = payload.maxToSurface;
       return [
-        `Rank the candidates, pick up to ${max} to surface, render as a numbered digest in`,
-        'your voice. The user is scanning at digest time. If none feel worth a digest today,',
-        'NO_REPLY.',
+        `Rank the candidates and pick up to ${max} to surface. Render as a numbered`,
+        'digest in your voice. The user is scanning at digest time. If none feel',
+        "worth surfacing, send a one-line note saying so — don't omit the message.",
       ].join('\n');
     }
     case 'ambient_discovery':
       return [
-        'Real-time alert, not a digest. Surface only candidates worth interrupting for *right',
-        'now*. If none qualify, NO_REPLY. Otherwise render briefly.',
+        'Real-time alert, not a digest. Surface only the candidates worth interrupting',
+        'for *right now*; render briefly. If none qualify, send a one-line note saying',
+        "so — don't omit the message.",
       ].join('\n');
     case 'test_message':
-      return 'Delivery verification. Render the content below in your voice. Do not suppress.';
+      return 'Delivery verification. Render the content below in your voice.';
   }
 }
