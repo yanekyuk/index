@@ -107,6 +107,19 @@ export interface OpportunityDetailResponse {
   introducedBy?: { id: string; name: string; avatar?: string | null };
 }
 
+/** Single opportunity entry returned by GET /opportunities/chat-context. */
+export interface ChatContextOpportunity {
+  opportunityId: string;
+  headline: string;
+  personalizedSummary: string;
+  narratorRemark: string;
+  introducerName: string | null;
+  peerName: string;
+  peerAvatar: string | null;
+  /** ISO-8601 acceptance time (from opportunities.updatedAt). May be null for legacy rows. */
+  acceptedAt: string | null;
+}
+
 const HOME_VIEW_RECENT_CACHE_TTL_MS = 1500;
 const homeViewInFlight = new Map<string, Promise<HomeViewResponse>>();
 const homeViewRecent = new Map<string, { data: HomeViewResponse; timestamp: number }>();
@@ -208,5 +221,19 @@ export const createOpportunitiesService = (
       counterpartUserId: string;
       opportunity: { id: string; status: OpportunityStatus };
     }>(`/opportunities/${opportunityId}/start-chat`, {});
+  },
+
+  /**
+   * Fetch accepted opportunities shared between the authenticated user and
+   * a peer. Used as inline context inside the h2h chat window.
+   * Wraps GET /opportunities/chat-context?peerUserId=:id.
+   */
+  getChatContext: async (
+    peerUserId: string,
+  ): Promise<ChatContextOpportunity[]> => {
+    const res = await api.get<{ opportunities: ChatContextOpportunity[] }>(
+      `/opportunities/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`,
+    );
+    return res.opportunities ?? [];
   },
 });
