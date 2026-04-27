@@ -966,7 +966,7 @@ export class ChatDatabaseAdapter {
 
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
+    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
   ) {
     // Delegate to ProfileDatabaseAdapter which has the merge logic
     const profileAdapter = new ProfileDatabaseAdapter();
