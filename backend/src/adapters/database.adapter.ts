@@ -966,7 +966,7 @@ export class ChatDatabaseAdapter {
 
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
+    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
   ) {
     // Delegate to ProfileDatabaseAdapter which has the merge logic
     const profileAdapter = new ProfileDatabaseAdapter();
@@ -3432,8 +3432,8 @@ export class ProfileDatabaseAdapter {
    */
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
-  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
+    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
+  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
     // Load current user to merge socials
     const current = await this.getUser(userId);
     if (!current) return null;
@@ -3452,6 +3452,7 @@ export class ProfileDatabaseAdapter {
       if (data.socials.x !== undefined) merged.x = data.socials.x;
       if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
       if (data.socials.github !== undefined) merged.github = data.socials.github;
+      if (data.socials.telegram !== undefined) merged.telegram = data.socials.telegram;
       if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
       updateFields.socials = merged;
     }
@@ -3475,7 +3476,7 @@ export class ProfileDatabaseAdapter {
       intro: updated.intro,
       avatar: updated.avatar,
       location: updated.location,
-      socials: updated.socials as { x?: string; linkedin?: string; github?: string; websites?: string[] } | null,
+      socials: updated.socials as { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null,
       onboarding: (updated as { onboarding?: unknown }).onboarding as OnboardingState | null,
     };
   }

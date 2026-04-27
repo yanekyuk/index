@@ -26,6 +26,7 @@ export interface UserSocials {
   x?: string;
   linkedin?: string;
   github?: string;
+  telegram?: string;
   websites?: string[];
 }
 
