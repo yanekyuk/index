@@ -55,6 +55,22 @@ describe('buildMainAgentPrompt — ambient_discovery', () => {
     });
     expect(out.toLowerCase()).toContain('unknown');
   });
+
+  it('instructs the agent to stay silent when nothing qualifies (no "nothing here" message)', () => {
+    // Regression: the prompt previously told the agent "If none qualify, send
+    // a one-line note saying so" — which produced "Nothing here feels worth
+    // interrupting you for…" notifications, themselves an interruption. The
+    // ambient pass must be silent when it filters everything out; whatever it
+    // skips will appear in tonight's digest.
+    const out = buildMainAgentPrompt({
+      contentType: 'ambient_discovery',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 0, candidates: [cand] },
+    });
+    expect(out.replace(/\s+/g, ' ')).toContain('produce no output at all');
+    expect(out).not.toContain('one-line note');
+    expect(out).not.toContain("don't omit the message");
+  });
 });
 
 describe('buildMainAgentPrompt — daily_digest', () => {
