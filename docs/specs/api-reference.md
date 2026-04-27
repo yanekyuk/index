@@ -783,6 +783,36 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
 - `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
 - `403` if the agent is not owned by the authenticated user.
 
+### GET /api/agents/:id/opportunities/delivery-stats
+
+Return committed delivery counts for an owned personal agent since a given timestamp, grouped by trigger type.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID.
+
+**Query params**:
+
+| Parameter | Type   | Required | Description |
+|-----------|--------|----------|-------------|
+| `since`   | string | yes      | ISO 8601 timestamp; counts deliveries with `delivered_at >= since`. |
+
+**Response 200**:
+```json
+{ "ambient": 2, "digest": 1 }
+```
+
+- `ambient` — number of committed deliveries with `trigger = "ambient"` since the given timestamp.
+- `digest` — number of committed deliveries with `trigger = "digest"` since the given timestamp.
+
+**Response 400**: `{ "error": "..." }` when `since` is missing or cannot be parsed as a valid ISO 8601 date.
+
+**Errors**:
+- `403` if the agent is not owned by the authenticated user.
+
+**Used by**: the OpenClaw plugin's ambient discovery poller, which calls this endpoint before each cycle to feed today's committed delivery count into the agent's prompt for soft self-restraint against a ≤3/day target.
+
 ---
 
 ## Conversation
