@@ -10,22 +10,43 @@ npm install -g @indexnetwork/cli
 
 ## Quick Start
 
+Index helps you find the right people—and helps the right people find you—based on what you are actually trying to do, not just a profile headline. The value is grounded intros: suggestions come from communities you share (syndicates, founder groups, firm networks), not from spraying the open web. 
+
+The flow below is one complete story—shape a room, invite people, publish what you need, run discovery inside that context, watch broker negotiations, then accept a match.
+
 ```bash
-# Authenticate (opens browser)
 index login
+index profile
 
-# Chat with the AI agent (interactive REPL)
-index conversation
+# 1. Create a network scoped to a specific domain
+index network create "AI Privacy Research" --prompt "Researchers working on privacy-preserving ML"
 
-# One-shot message
-index conversation "What opportunities do I have?"
+# 2. Invite collaborators
+index network invite <network-id> alice@example.com
+index network invite <network-id> bob@example.com
 
-# Browse your signals
-index intent list
+# 3. Create signals that describe what you are looking for
+index intent create "Looking for someone experienced in federated learning"
+index intent create "Need a collaborator for differential privacy benchmarks"
 
-# Review pending opportunities
-index opportunity list
+# 4. Link your signals to the network so discovery can find them
+index intent link <intent-id-1> <network-id>
+index intent link <intent-id-2> <network-id>
+
+# 5. Discovery across the network (no fixed counterpart—who fits depends on members and signals)
+index opportunity discover "federated learning collaboration"
+
+# 6. Check what the broker agents negotiated
+index negotiation list --since 1h
+index negotiation show <negotiation-id>
+
+# 7. Review the resulting opportunity and accept
+index opportunity list --status pending
+index opportunity show <opportunity-id>
+index opportunity accept <opportunity-id>
 ```
+
+Words you will see elsewhere in this doc: **network** = a community you are in; **intent** = your “what I am looking for” post; **opportunity** = a suggested introduction between you and someone else.
 
 ## Commands
 
@@ -113,6 +134,18 @@ index opportunity discover --introduce <a> <b>  # Introduce two users
 
 Status values: `pending`, `accepted`, `rejected`, `expired`.
 
+### `index negotiation`
+
+Inspect agent negotiations — the autonomous turn-by-turn exchanges between broker agents that evaluate whether an opportunity exists.
+
+```bash
+index negotiation list                     # List your agent's negotiations
+index negotiation list --limit 10          # Limit results
+index negotiation list --since 1d          # Negotiations from the last 24 hours
+index negotiation list --since 2026-04-01  # Since a specific date
+index negotiation show <id>               # Show turn-by-turn details (accepts short ID)
+```
+
 ### `index network`
 
 Manage networks (communities). List, create, join, leave, and invite members.
@@ -161,23 +194,19 @@ index sync --json                      # Output to stdout as JSON
 
 ## Examples: Opportunity Discovery
 
-The `opportunity discover` command supports multiple modes for creating connections.
+The `opportunity discover` command supports multiple modes for creating connections. Each mode can be combined with flags to customize the discovery.
 
-### Scenario 1: Search-based discovery
+### Search-based discovery
 
 Find people whose intents match a search query. The protocol runs HyDE-powered semantic search across your networks.
 
 ```bash
-# Find collaborators for a project
 index opportunity discover "looking for an AI engineer with privacy expertise"
-
-# Scope discovery to a specific network
-index opportunity discover "need a React developer" --target <network-id>
 ```
 
-### Scenario 2: Direct connection
+### Targeted discovery
 
-Propose an opportunity with a specific person. Use when you already know who you want to connect with.
+Scope discovery to a specific user. Use when you already know who you want to connect with.
 
 ```bash
 # First, find the user
@@ -187,7 +216,7 @@ index profile search "Jane Smith"
 index opportunity discover "collaborate on open-source LLM tooling" --target <user-id>
 ```
 
-### Scenario 3: Introduction
+### Introduction
 
 Introduce two people you think should connect. You become the introducer — both parties see you as the connector. The CLI automatically finds shared networks, gathers profiles and intents, then creates the introduction.
 
@@ -199,7 +228,22 @@ index opportunity discover --introduce <user-id-a> <user-id-b>
 index opportunity discover --introduce <user-id-a> <user-id-b> "both working on privacy-preserving ML"
 ```
 
-### Scenario 4: Review and act
+### Complex social flows
+
+Use this when you want to propose an opportunity outright instead of running discovery: pick the community (`--network`), list each person (`--party`, two or more), and when it matters, tie a person to one of their signals with `userId:intentId` on that line and add why it fits (`--reason`). Here Alice and Bob carry explicit signals; Carol does not. This command is not in the CLI yet; it is the shape we intend to ship.
+
+```bash
+index opportunity create \
+  --network <network-id> \
+  --party <alice-id>:<alice-intent-id> \
+  --party <bob-id>:<bob-intent-id> \
+  --party <carol-id> \
+  --reason "Alice, Bob, and Carol are all working on federated learning from different angles" \
+  --category "collaboration" \
+  --confidence 0.9
+```
+
+### Review and act
 
 After discovery creates draft opportunities, review and accept/reject them.
 
@@ -219,25 +263,28 @@ index opportunity reject <id>
 
 ## Options
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--api-url <url>` | | Override API server (default: `https://protocol.index.network`) |
-| `--app-url <url>` | | Override app URL for login (default: `https://index.network`) |
-| `--token <token>` | `-t` | Provide bearer token directly |
-| `--session <id>` | `-s` | Resume a specific chat session |
-| `--archived` | | Include archived signals (intent list) |
-| `--status <status>` | | Filter opportunities by status |
-| `--limit <n>` | | Limit number of results |
-| `--prompt <text>` | `-p` | Network description (for `network create`) |
-| `--title <text>` | | Network title (for `network update`) |
-| `--name <name>` | | Display name (for `contact add`) |
-| `--gmail` | | Import from Gmail (for `contact import`) |
-| `--target <id>` | | Target user ID (for `opportunity discover`) |
-| `--introduce <id>` | | Introduce two users (for `opportunity discover`) |
-| `--objective <text>` | | Focus objective (for `scrape`) |
-| `--json` | | Output raw JSON to stdout |
-| `--help` | `-h` | Show help |
-| `--version` | `-v` | Show version |
+
+| Flag                 | Short | Description                                                     |
+| -------------------- | ----- | --------------------------------------------------------------- |
+| `--api-url <url>`    |       | Override API server (default: `https://protocol.index.network`) |
+| `--app-url <url>`    |       | Override app URL for login (default: `https://index.network`)   |
+| `--token <token>`    | `-t`  | Provide bearer token directly                                   |
+| `--session <id>`     | `-s`  | Resume a specific chat session                                  |
+| `--archived`         |       | Include archived signals (intent list)                          |
+| `--status <status>`  |       | Filter opportunities by status                                  |
+| `--limit <n>`        |       | Limit number of results                                         |
+| `--since <date>`     |       | Filter by time: ISO date or duration like `1h`, `2d`, `1w`      |
+| `--prompt <text>`    | `-p`  | Network description (for `network create`)                      |
+| `--title <text>`     |       | Network title (for `network update`)                            |
+| `--name <name>`      |       | Display name (for `contact add`)                                |
+| `--gmail`            |       | Import from Gmail (for `contact import`)                        |
+| `--target <id>`      |       | Target user ID (for `opportunity discover`)                     |
+| `--introduce <id>`   |       | Introduce two users (for `opportunity discover`)                |
+| `--objective <text>` |       | Focus objective (for `scrape`)                                  |
+| `--json`             |       | Output raw JSON to stdout                                       |
+| `--help`             | `-h`  | Show help                                                       |
+| `--version`          | `-v`  | Show version                                                    |
+
 
 ## Development
 
@@ -258,33 +305,3 @@ bun test
 bun scripts/publish.ts --dry-run
 ```
 
-### Project Structure
-
-```
-cli/
-  bin/
-    index.cjs                  Bin shim (resolves platform binary or JS fallback)
-  npm/
-    {os}-{arch}/               Platform-specific packages with precompiled binaries
-  scripts/
-    build.ts                   Cross-compilation build script
-    publish.ts                 npm publish orchestration
-  src/
-    main.ts                    Entry point, command routing
-    login.command.ts           OAuth flow with local callback server
-    conversation.command.ts    H2A agent chat + H2H messaging + SSE stream parser
-    profile.command.ts         Profile subcommand handlers
-    intent.command.ts          Intent (signal) subcommand handlers
-    opportunity.command.ts     Opportunity subcommand handlers
-    network.command.ts         Network subcommand handlers
-    contact.command.ts         Contact subcommand handlers
-    scrape.command.ts          URL scraping command handler
-    sync.command.ts            Context sync command handler
-    onboarding.command.ts      Onboarding command handler
-    output/                    Terminal formatting, colors, markdown renderer
-    api.client.ts              Typed HTTP client for the protocol API
-    auth.store.ts              Credential persistence (~/.index/credentials.json)
-    args.parser.ts             CLI argument parser
-    sse.parser.ts              Server-Sent Events parser
-    types.ts                   Shared type definitions
-```
