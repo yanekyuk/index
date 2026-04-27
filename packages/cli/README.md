@@ -70,6 +70,69 @@ Clear stored credentials.
 index logout
 ```
 
+### `index intent`
+
+Manage your signals (intents). Create signals from natural language, list active signals, view details, and archive signals you no longer need.
+
+```bash
+index intent list                           # List active signals
+index intent list --archived                # Include archived signals
+index intent list --limit 5                 # Limit to 5 results
+index intent show <id>                      # Show full signal details
+index intent create "Looking for a CTO"     # Create from natural language
+index intent update <id> "revised text"     # Update a signal (runs full pipeline)
+index intent archive <id>                   # Archive a signal
+index intent link <id> <network-id>         # Link a signal to a network
+index intent unlink <id> <network-id>       # Unlink a signal from a network
+index intent links <id>                     # List networks linked to a signal
+```
+
+### `index negotiation`
+
+Inspect agent negotiations — the autonomous turn-by-turn exchanges between broker agents that evaluate whether an opportunity exists.
+
+```bash
+index negotiation list                     # List your agent's negotiations
+index negotiation list --limit 10          # Limit results
+index negotiation list --since 1d          # Negotiations from the last 24 hours
+index negotiation list --since 2026-04-01  # Since a specific date
+index negotiation show <id>               # Show turn-by-turn details (accepts short ID)
+```
+
+### `index opportunity`
+
+Browse and manage discovered opportunities.
+
+```bash
+index opportunity list                     # List all opportunities
+index opportunity list --status pending    # Filter by status
+index opportunity list --limit 5           # Limit results
+index opportunity show <id>                # Show full details
+index opportunity accept <id>              # Accept an opportunity
+index opportunity reject <id>              # Reject an opportunity
+index opportunity discover "query"         # Discover opportunities by search
+index opportunity discover --target <id>   # Discover with a specific user
+index opportunity discover --introduce <a> <b>  # Introduce two users
+```
+
+Status values: `pending`, `accepted`, `rejected`, `expired`.
+
+### `index network`
+
+Manage networks (communities). List, create, join, leave, and invite members.
+
+```bash
+index network list                     # List your networks
+index network create "My Network"      # Create a network
+index network create "AI" --prompt "AI researchers"  # Create with description
+index network show <id>                # Show details and members
+index network update <id> --title "New Name"  # Update a network
+index network delete <id>              # Delete a network
+index network join <id>                # Join a public network
+index network leave <id>               # Leave a network
+index network invite <id> user@email   # Invite a user by email
+```
+
 ### `index conversation`
 
 Unified conversation command for AI agent chat and human-to-human messaging. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
@@ -97,69 +160,6 @@ index profile sync                  # Regenerate your profile
 index profile search <query>        # Search profiles by name or keyword
 index profile create                # Generate profile from social links
 index profile update <details>      # Update profile details
-```
-
-### `index intent`
-
-Manage your signals (intents). Create signals from natural language, list active signals, view details, and archive signals you no longer need.
-
-```bash
-index intent list                           # List active signals
-index intent list --archived                # Include archived signals
-index intent list --limit 5                 # Limit to 5 results
-index intent show <id>                      # Show full signal details
-index intent create "Looking for a CTO"     # Create from natural language
-index intent update <id> "revised text"     # Update a signal (runs full pipeline)
-index intent archive <id>                   # Archive a signal
-index intent link <id> <network-id>         # Link a signal to a network
-index intent unlink <id> <network-id>       # Unlink a signal from a network
-index intent links <id>                     # List networks linked to a signal
-```
-
-### `index opportunity`
-
-Browse and manage discovered opportunities.
-
-```bash
-index opportunity list                     # List all opportunities
-index opportunity list --status pending    # Filter by status
-index opportunity list --limit 5           # Limit results
-index opportunity show <id>                # Show full details
-index opportunity accept <id>              # Accept an opportunity
-index opportunity reject <id>              # Reject an opportunity
-index opportunity discover "query"         # Discover opportunities by search
-index opportunity discover --target <id>   # Discover with a specific user
-index opportunity discover --introduce <a> <b>  # Introduce two users
-```
-
-Status values: `pending`, `accepted`, `rejected`, `expired`.
-
-### `index negotiation`
-
-Inspect agent negotiations — the autonomous turn-by-turn exchanges between broker agents that evaluate whether an opportunity exists.
-
-```bash
-index negotiation list                     # List your agent's negotiations
-index negotiation list --limit 10          # Limit results
-index negotiation list --since 1d          # Negotiations from the last 24 hours
-index negotiation list --since 2026-04-01  # Since a specific date
-index negotiation show <id>               # Show turn-by-turn details (accepts short ID)
-```
-
-### `index network`
-
-Manage networks (communities). List, create, join, leave, and invite members.
-
-```bash
-index network list                     # List your networks
-index network create "My Network"      # Create a network
-index network create "AI" --prompt "AI researchers"  # Create with description
-index network show <id>                # Show details and members
-index network update <id> --title "New Name"  # Update a network
-index network delete <id>              # Delete a network
-index network join <id>                # Join a public network
-index network leave <id>               # Leave a network
-index network invite <id> user@email   # Invite a user by email
 ```
 
 ### `index contact`
