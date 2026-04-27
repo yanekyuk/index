@@ -73,17 +73,21 @@ describe('dispatchToMainAgent', () => {
     }) as unknown as typeof fetch;
   }
 
-  it('targets the most recent chat-bound session via sessionKey + channel + to', async () => {
+  it('targets the most recent chat-bound session via origin.to + origin.provider (production schema)', async () => {
+    // Mirrors a real ~/.openclaw/agents/main/sessions/sessions.json — chat
+    // info lives under `origin`, not at the top level. This is the schema
+    // the running gateway writes; reading top-level `lastTo` would miss
+    // every real Telegram session and fall back to channel:"last".
     writeSessions({
       'agent:main:telegram:direct:69340471': {
         sessionId: 'sess-tg',
-        lastTo: 'telegram:69340471',
+        origin: { provider: 'telegram', surface: 'telegram', to: 'telegram:69340471' },
         updatedAt: 1000,
       },
       'agent:main:hook:abc-123': {
         // plugin-internal — should be skipped even if newer
         sessionId: 'sess-hook',
-        lastTo: 'telegram:69340471',
+        origin: { provider: 'telegram', surface: 'telegram', to: 'telegram:69340471' },
         updatedAt: 9999,
       },
       'agent:main:main': {
@@ -111,18 +115,54 @@ describe('dispatchToMainAgent', () => {
     expect(body.to).toBe('telegram:69340471');
   });
 
+  it('falls back to top-level lastTo when origin is missing (legacy schema)', async () => {
+    // Older sessions written before OpenClaw moved chat info under
+    // `origin` may still carry a top-level `lastTo`. Keep the fallback so
+    // we don't regress users mid-upgrade.
+    writeSessions({
+      'agent:main:telegram:direct:42': {
+        sessionId: 'sess-tg-legacy',
+        lastTo: 'telegram:42',
+        updatedAt: 1000,
+      },
+    });
+    mockOk();
+    await dispatchToMainAgent(mockApi, ctx);
+    const body = JSON.parse(captured[0].init?.body as string) as Record<string, unknown>;
+    expect(body.sessionKey).toBe('agent:main:telegram:direct:42');
+    expect(body.channel).toBe('telegram');
+    expect(body.to).toBe('telegram:42');
+  });
+
+  it('prefers origin over legacy lastTo when both are present', async () => {
+    // If a session entry happens to carry both, the current schema
+    // (origin) is authoritative. This pins the precedence so a future
+    // refactor can't accidentally invert it.
+    writeSessions({
+      'agent:main:telegram:direct:1': {
+        origin: { provider: 'telegram', surface: 'telegram', to: 'telegram:from-origin' },
+        lastTo: 'telegram:from-lastTo',
+        updatedAt: 1000,
+      },
+    });
+    mockOk();
+    await dispatchToMainAgent(mockApi, ctx);
+    const body = JSON.parse(captured[0].init?.body as string) as Record<string, unknown>;
+    expect(body.to).toBe('telegram:from-origin');
+  });
+
   it('picks most-recently-updated chat session when multiple exist', async () => {
     writeSessions({
       'agent:main:telegram:direct:111': {
-        lastTo: 'telegram:111',
+        origin: { provider: 'telegram', to: 'telegram:111' },
         updatedAt: 100,
       },
       'agent:main:whatsapp:direct:222': {
-        lastTo: 'whatsapp:222',
+        origin: { provider: 'whatsapp', to: 'whatsapp:222' },
         updatedAt: 500,
       },
       'agent:main:discord:dm:333': {
-        lastTo: 'discord:333',
+        origin: { provider: 'discord', to: 'discord:333' },
         updatedAt: 250,
       },
     });

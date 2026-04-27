@@ -72,6 +72,11 @@ interface SessionsMapEntry {
   lastTo?: string;
   lastChannel?: string;
   updatedAt?: number;
+  origin?: {
+    to?: string;
+    provider?: string;
+    surface?: string;
+  };
 }
 
 /** Routing target extracted from the user's most-recent chat session. */
@@ -85,17 +90,39 @@ interface ChatTarget {
 }
 
 /**
+ * Extracts the routing pair from a sessions.json entry. Prefers the
+ * current OpenClaw schema where chat info lives under `origin.to` and
+ * `origin.provider`/`origin.surface`. Falls back to a top-level `lastTo`
+ * of the form `<channel>:<id>` for legacy entries that still carry it.
+ */
+function readChannelTo(val: SessionsMapEntry): { channel: string; to: string } | undefined {
+  const originTo = typeof val.origin?.to === 'string' ? val.origin.to : '';
+  const originChannel =
+    (typeof val.origin?.provider === 'string' && val.origin.provider) ||
+    (typeof val.origin?.surface === 'string' && val.origin.surface) ||
+    '';
+  if (originTo && originChannel) {
+    return { channel: originChannel, to: originTo };
+  }
+  const lastTo = typeof val.lastTo === 'string' ? val.lastTo : '';
+  const colonIdx = lastTo.indexOf(':');
+  if (colonIdx > 0) {
+    return { channel: lastTo.slice(0, colonIdx), to: lastTo };
+  }
+  return undefined;
+}
+
+/**
  * Locates the user's most-recently-active chat-bound session by reading
  * `~/.openclaw/agents/main/sessions/sessions.json` and filtering for
- * sessions whose `lastTo` starts with a known chat-channel prefix.
+ * sessions whose channel (from `origin.provider` / `origin.surface`,
+ * with `lastTo` as legacy fallback) is a known chat-channel prefix.
  *
  * Returns the routing triple `{sessionKey, channel, to}` or `undefined`
  * when no such session exists. `/hooks/agent` needs all three together
  * to deliver to the channel — sessionKey alone makes the run "join" the
  * existing session, but the gateway still consults `channel` and `to`
- * for the actual delivery target. (Sessions.json's `lastTo` value is
- * already in `<channel>:<id>` form, so `channel` is the prefix and `to`
- * is the whole value.)
+ * for the actual delivery target.
  */
 async function findChatTarget(
   api: OpenClawPluginApi,
@@ -135,20 +162,17 @@ async function findChatTarget(
       if (key.startsWith('agent:main:hook:')) return false;
       if (key === 'agent:main:main') return false;
       if (key.startsWith('agent:main:index:')) return false;
-      const lastTo = typeof val.lastTo === 'string' ? val.lastTo : '';
-      const colonIdx = lastTo.indexOf(':');
-      if (colonIdx <= 0) return false;
-      const channel = lastTo.slice(0, colonIdx);
-      return CHAT_CHANNEL_PREFIXES.includes(channel);
+      const target = readChannelTo(val);
+      return target !== undefined && CHAT_CHANNEL_PREFIXES.includes(target.channel);
     })
     .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 
   const top = candidates[0];
   if (!top) return undefined;
 
-  const lastTo = top[1].lastTo as string;
-  const channel = lastTo.slice(0, lastTo.indexOf(':'));
-  return { sessionKey: top[0], channel, to: lastTo };
+  const target = readChannelTo(top[1]);
+  if (!target) return undefined;
+  return { sessionKey: top[0], channel: target.channel, to: target.to };
 }
 
 /**
