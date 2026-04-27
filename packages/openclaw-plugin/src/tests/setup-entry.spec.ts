@@ -309,7 +309,7 @@ describe('setup wizard', () => {
 
   // --- Digest config ---
 
-  test('writes digest config with default time and count when not overridden', async () => {
+  test('writes digest config with default time when not overridden', async () => {
     const fake = buildFakeCtx({
       promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
@@ -320,32 +320,17 @@ describe('setup wizard', () => {
     const paths = fake.configWrites.map((w) => w.path);
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestEnabled');
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestTime');
-    expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestMaxCount');
 
     expect(fake.configWrites.find((w) => w.path.endsWith('digestEnabled'))?.value).toBe('true');
     expect(fake.configWrites.find((w) => w.path.endsWith('digestTime'))?.value).toBe('08:00');
-    expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('20');
   });
 
-  test('digestMaxCount default is 20', async () => {
-    const fake = buildFakeCtx({
-      promptResponses: { 'API key': 'key-456' },
-      selectResponses: { 'Daily digest': 'true' },
-    });
-
-    await setup(fake.ctx);
-
-    const digestMaxPrompt = fake.promptCalls.find((p) => p.label === 'Max opportunities per digest');
-    expect(digestMaxPrompt?.opts?.default).toBe('20');
-  });
-
-  test('writes custom digest time and count when provided', async () => {
+  test('writes custom digest time when provided', async () => {
     const fake = buildFakeCtx({
       promptResponses: {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
         'Digest time (HH:MM, 24-hour local time)': '09:30',
-        'Max opportunities per digest': '5',
       },
       selectResponses: { 'Daily digest': 'true' },
     });
@@ -353,10 +338,9 @@ describe('setup wizard', () => {
     await setup(fake.ctx);
 
     expect(fake.configWrites.find((w) => w.path.endsWith('digestTime'))?.value).toBe('09:30');
-    expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('5');
   });
 
-  test('skips digest time and count prompts when digest is disabled', async () => {
+  test('skips digest time prompt when digest is disabled', async () => {
     const fake = buildFakeCtx({
       promptResponses: {
         'Agent ID': 'agent-123',
@@ -371,12 +355,11 @@ describe('setup wizard', () => {
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestEnabled');
     expect(fake.configWrites.find((w) => w.path.endsWith('digestEnabled'))?.value).toBe('false');
     expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestTime');
-    expect(paths).not.toContain('plugins.entries.indexnetwork-openclaw-plugin.config.digestMaxCount');
   });
 
   test('uses existing digest config as defaults when re-running setup', async () => {
     const fake = buildFakeCtx({
-      existingConfig: { digestEnabled: 'true', digestTime: '07:00', digestMaxCount: '3' },
+      existingConfig: { digestEnabled: 'true', digestTime: '07:00' },
       promptResponses: {
         'Agent ID': 'agent-123',
         'API key': 'key-456',
@@ -393,11 +376,7 @@ describe('setup wizard', () => {
     const digestTimePrompt = fake.promptCalls.find((p) => p.label === 'Digest time (HH:MM, 24-hour local time)');
     expect(digestTimePrompt?.opts?.default).toBe('07:00');
 
-    const digestMaxPrompt = fake.promptCalls.find((p) => p.label === 'Max opportunities per digest');
-    expect(digestMaxPrompt?.opts?.default).toBe('3');
-
     expect(fake.configWrites.find((w) => w.path.endsWith('digestTime'))?.value).toBe('07:00');
-    expect(fake.configWrites.find((w) => w.path.endsWith('digestMaxCount'))?.value).toBe('3');
   });
 
   // --- Hooks bootstrap ---
