@@ -138,8 +138,10 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         '',
         'For each opportunity you mention in your reply, you MUST first call the MCP tool',
         "`confirm_opportunity_delivery` with `trigger: 'ambient'` and the opportunity's id.",
-        "Do not call confirm for opportunities you don't mention. If none qualify, send a",
-        "one-line note saying so — don't omit the message.",
+        "Do not call confirm for opportunities you don't mention. If none qualify, produce no",
+        'output at all — no text, no acknowledgement, no "nothing for now" note. Telling the user',
+        'there is nothing worth interrupting them for is itself an interruption. Whatever you',
+        "skip will appear in tonight's digest.",
       ].join('\n');
     }
     case 'test_message':
