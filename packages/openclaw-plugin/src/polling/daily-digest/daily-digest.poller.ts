@@ -69,7 +69,6 @@ export async function handle(
       narratorRemark: o.rendered.narratorRemark,
       profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
       acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
-      skipUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/skip`,
     }));
 
   if (!candidates.length) return false;

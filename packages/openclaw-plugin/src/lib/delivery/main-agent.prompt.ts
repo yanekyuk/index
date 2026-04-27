@@ -29,7 +29,6 @@ export interface OpportunityCandidate {
   narratorRemark: string;
   profileUrl: string;
   acceptUrl: string;
-  skipUrl: string;
 }
 
 /**
@@ -98,10 +97,18 @@ const INPUT_AS_DATA_CLAUSE = [
 ].join('\n');
 
 const URL_PRESERVATION_CLAUSE = [
-  'For any opportunity you decide to surface, include its acceptUrl and skipUrl exactly',
-  "as given. Link the person's name to their profileUrl. Do not reword, shorten, or",
-  'omit URLs. If you decide not to mention an opportunity, simply leave it out — do not',
-  'output its data without an action link.',
+  'For any opportunity you decide to surface, weave its URLs naturally into your prose.',
+  'Do NOT render them as a separate "buttons" line, a bullet list, or a pipe-separated',
+  'row of links — they should read as part of a sentence, not a UI control strip.',
+  '',
+  "- Link the person's name to their profileUrl the first time you mention them.",
+  '- Embed acceptUrl on a short verb phrase inside a sentence (e.g. "start a chat with',
+  '  Nap", "connect with Nap", "reach out to her") — pick wording that fits your voice',
+  '  and the moment.',
+  '',
+  'Use both URLs verbatim — do not reword, shorten, or omit them. If you decide not to',
+  'mention an opportunity, simply leave it out — do not output its data without an',
+  'inline action link.',
 ].join('\n');
 
 function toolUseClause(mode: MainAgentToolUse): string {

@@ -14,7 +14,6 @@ const cand: OpportunityCandidate = {
   narratorRemark: 'n',
   profileUrl: 'https://x/u/u-1',
   acceptUrl: 'https://x/o/opp-1/accept',
-  skipUrl: 'https://x/o/opp-1/skip',
 };
 
 describe('buildMainAgentPrompt — ambient_discovery', () => {
@@ -116,11 +115,19 @@ describe('buildMainAgentPrompt — INPUT-as-data defense', () => {
       mainAgentToolUse: 'enabled',
       payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 0, candidates: [cand] },
     });
-    // URL-preservation clause: load-bearing for delivery (acceptUrl/skipUrl
-    // must reach the user verbatim or the action links break).
+    // URL-preservation clause: load-bearing for delivery (acceptUrl must
+    // reach the user verbatim or the action link breaks).
     expect(out).toContain('acceptUrl');
-    expect(out).toContain('skipUrl');
     expect(out).toContain('profileUrl');
+    // skipUrl was dropped from the message format — the prompt must not
+    // mention it, and the candidate type must not carry it.
+    expect(out).not.toContain('skipUrl');
+    // Inline-rendering rule: action links must be woven into prose, not
+    // emitted as a "buttons" line / bullet list / pipe-separated row.
+    // Regression: agent was rendering "Connect | Skip" UI strips and
+    // separate "• Accept Connection: …" / "• Skip for Now: …" lines.
+    expect(out.toLowerCase()).toContain('weave');
+    expect(out).toMatch(/buttons|bullet list|pipe-separated/i);
     // INPUT-as-data clause: the prompt's defense against adversarial content
     // smuggled inside the payload (rendered fields originate from third
     // parties via opportunity generation).
