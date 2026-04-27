@@ -51,36 +51,45 @@ Reuse the centered-divider pattern already used in `ChatView.tsx` for the >5-min
 
 #### Backend
 
-Extend the response of `GET /conversations/:id/messages` (controller: `conversation.controller.ts:100-138`):
+The endpoint already exists and is unused by the frontend: `GET /opportunities/chat-context?peerUserId=:id` (controller: `opportunity.controller.ts:69`, service: `opportunity.service.ts:719`). It returns:
 
 ```json
 {
-  "messages": [...],
-  "acceptedOpportunities": [
+  "opportunities": [
     {
       "opportunityId": "uuid",
-      "acceptedAt": "ISO-8601",
       "headline": "string",
-      "summary": "string"
+      "personalizedSummary": "string",
+      "narratorRemark": "",
+      "introducerName": "string | null",
+      "peerName": "string",
+      "peerAvatar": "string | null",
+      "acceptedAt": "ISO-8601 | null"
     }
   ]
 }
 ```
 
-Scoping query: opportunities where `status='accepted'` AND `id` appears in `tasks.metadata->>'opportunityId'` for some task with `taskId.conversationId = :id`. Sorted by `updatedAt` ascending.
+The service (`OpportunityService.getChatContext`) already:
+- Filters `getAcceptedOpportunitiesBetweenActors(userId, peerUserId)` — accepted opportunities between the two users.
+- Excludes opportunities where either chat participant is the introducer.
+- Runs an LLM presenter explicitly tuned for "shown inside an active chat between the two parties."
+- Caches per `(opportunityId, viewerUserId)` in Redis with `CHAT_CACHE_TTL`.
+- Sets `acceptedAt = opp.updatedAt.toISOString()`.
 
-`headline` and `summary` come from `OpportunityService.getChatContext` (`opportunity.service.ts:760`), which already runs an LLM presenter explicitly tuned for "shown inside an active chat between the two parties."
+Because there is exactly one h2h chat per pair of users, "accepted opportunities between this pair" is equivalent to "accepted opportunities that drove this conversation" — no need for a join through `tasks.metadata.opportunityId`. The existing query is the right scope.
 
-`acceptedAt` is `opportunities.updatedAt`.
+**No backend changes required.**
 
 #### Frontend
 
 In `ChatView.tsx`:
 
-1. `getMessages` service (`frontend/src/services/conversation.ts:44`) updated to return both `messages` and `acceptedOpportunities`.
-2. Build a unified timeline array `Array<{ type: 'message' | 'opportunity', at: string, ... }>` and sort by `at`.
-3. Map over the unified array, rendering either a message bubble or an opportunity divider chip.
-4. The existing `showTimestamp` logic keys off the previous **timeline item**, not the previous message — so an opportunity divider suppresses a redundant timestamp divider in the same slot.
+1. Add a typed client method to `frontend/src/services/opportunities.ts` for `GET /opportunities/chat-context?peerUserId=:id`.
+2. In `ChatView`, fetch chat context on mount when `userId` is known, store the resulting opportunity list in local state, and refetch when `userId` changes.
+3. Build a unified timeline array `Array<{ type: 'message' | 'opportunity', at: string, ... }>` and sort by `at`. Skip opportunities with no `acceptedAt`.
+4. Map over the unified array, rendering either a message bubble or an opportunity divider.
+5. The existing `showTimestamp` logic keys off the previous **timeline item**, not the previous message — so an opportunity divider suppresses a redundant timestamp divider in the same slot.
 
 A small new component `OpportunityDivider.tsx` lives next to `ChatView.tsx` and handles the chip rendering, inline expansion state, and grouped "+N more" case.
 
