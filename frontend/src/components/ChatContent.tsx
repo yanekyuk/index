@@ -736,11 +736,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             };
           });
           refreshConversations();
-          if (result.conversationId) {
-            navigate(`/chat/${result.conversationId}`);
-          } else {
-            navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
-          }
+          // Always route to the h2h chat page (`/u/:peer/chat` renders `ChatView`).
+          // `/chat/:id` routes to the A2A NegotiationDetailPage and does not show
+          // the in-chat opportunity context.
+          navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
         } catch (error) {
           showError(error instanceof Error ? error.message : "Failed to start chat");
         } finally {
@@ -801,11 +800,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         const result = await opportunitiesService.startChat(opportunityId);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
         refreshConversations();
-        if (result.conversationId) {
-          navigate(`/chat/${result.conversationId}`);
-        } else {
-          navigate(`/u/${counterpartUserId}/chat`);
-        }
+        // Always route to the h2h chat page (`/u/:peer/chat`). `/chat/:id`
+        // is the A2A negotiation route and does not render the in-chat
+        // opportunity context.
+        navigate(`/u/${result.counterpartUserId ?? counterpartUserId}/chat`);
       } catch (error) {
         showError(error instanceof Error ? error.message : "Failed to start chat");
       } finally {

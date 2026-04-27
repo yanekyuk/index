@@ -265,7 +265,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
           <div className="space-y-4">
             {messagesLoading ? (
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
-            ) : messages.length === 0 && !contextLoading ? (
+            ) : messages.length === 0 && !contextLoading && acceptedOpportunities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 {isGhost ? (
                   <>
@@ -301,6 +301,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
                     <OpportunityDivider
                       key={`opp-${item.opportunities[0].opportunityId}`}
                       opportunities={item.opportunities}
+                      defaultExpanded={messages.length === 0}
                     />
                   );
                 }

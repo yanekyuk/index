@@ -7,6 +7,8 @@ import type { ChatContextOpportunity } from '@/services/opportunities';
 interface OpportunityDividerProps {
   /** One or more opportunities accepted in the same time slot (already grouped upstream). */
   opportunities: ChatContextOpportunity[];
+  /** When true, the inline summary panel is visible on first render (used in empty chats so the context is immediately legible). Defaults to false. */
+  defaultExpanded?: boolean;
 }
 
 const HEADLINE_MAX = 60;
@@ -21,8 +23,8 @@ const truncate = (s: string, max: number): string =>
  * opportunities were accepted in the same time slot, shows the earliest
  * headline plus a "+N more" affordance and lists all of them on expansion.
  */
-export default function OpportunityDivider({ opportunities }: OpportunityDividerProps) {
-  const [expanded, setExpanded] = useState(false);
+export default function OpportunityDivider({ opportunities, defaultExpanded = false }: OpportunityDividerProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const panelId = useId();
   if (opportunities.length === 0) return null;
   const [first, ...rest] = opportunities;
