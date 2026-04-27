@@ -1,0 +1,85 @@
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { ChatContextOpportunity } from '@/services/opportunities';
+
+interface OpportunityDividerProps {
+  /** One or more opportunities accepted in the same time slot (already grouped upstream). */
+  opportunities: ChatContextOpportunity[];
+}
+
+const HEADLINE_MAX = 60;
+
+const formatDate = (iso: string): string => {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  if (isToday) return 'Today';
+  if (isYesterday) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const truncate = (s: string, max: number): string =>
+  s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
+
+/**
+ * Centered divider chip rendered between messages to mark the moment a shared
+ * opportunity was accepted. Click toggles inline expansion showing the
+ * personalized summary and a link to the opportunity detail. When multiple
+ * opportunities were accepted in the same time slot, shows the earliest
+ * headline plus a "+N more" affordance and lists all of them on expansion.
+ */
+export default function OpportunityDivider({ opportunities }: OpportunityDividerProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [first, ...rest] = opportunities;
+  const extra = rest.length;
+  const headline = truncate(first.headline, HEADLINE_MAX);
+  const date = first.acceptedAt ? formatDate(first.acceptedAt) : '';
+
+  return (
+    <div className="my-4">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className={cn(
+          'w-full flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wider',
+          'hover:text-gray-600 transition-colors',
+        )}
+      >
+        <span className="flex-1 h-px bg-gray-200" />
+        <span className="flex items-center gap-1.5 normal-case tracking-normal">
+          <Check className="w-3.5 h-3.5" />
+          <span>Accepted &ldquo;{headline}&rdquo;</span>
+          {extra > 0 && (
+            <span className="text-gray-400">+{extra} more</span>
+          )}
+          <span className="text-gray-400">&middot; {date}</span>
+        </span>
+        <span className="flex-1 h-px bg-gray-200" />
+      </button>
+
+      {expanded && (
+        <div className="mt-3 mx-auto max-w-md text-xs text-gray-600 space-y-2">
+          {opportunities.map((opp) => (
+            <div key={opp.opportunityId} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              <p className="font-medium text-gray-700">{opp.headline}</p>
+              {opp.personalizedSummary && (
+                <p className="mt-1 text-gray-500">{opp.personalizedSummary}</p>
+              )}
+              <Link
+                to={`/opportunities/${opp.opportunityId}`}
+                className="inline-block mt-1.5 text-gray-500 hover:text-gray-800 underline"
+              >
+                View opportunity
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
