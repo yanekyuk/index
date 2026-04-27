@@ -91,6 +91,24 @@ describe('buildMainAgentPrompt — daily_digest', () => {
     expect(out).toContain('confirm_opportunity_delivery');
     expect(out).toContain("'digest'");
   });
+
+  it('subordinates the numbered-list shape to the URL-rendering rule per item', () => {
+    // Regression: the digest's "Render every candidate as a numbered list"
+    // instruction conflicted with the URL clause's "no bullet list" rule
+    // and let the agent emit "• Accept Connection: …" / "• Skip for Now: …"
+    // sub-rows inside numbered items. The per-type instruction now names
+    // the exact bad shapes inside each item — pin those tokens so a future
+    // edit cannot quietly drop them.
+    const out = buildMainAgentPrompt({
+      contentType: 'daily_digest',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'daily_digest', candidates: [cand] },
+    });
+    const clauseRegion = out.split('===== INPUT =====')[0];
+    expect(clauseRegion).toContain('sub-bullets');
+    expect(clauseRegion).toContain('action strips');
+    expect(clauseRegion).toContain('separate link rows');
+  });
 });
 
 describe('buildMainAgentPrompt — toolUseClause wording', () => {
@@ -129,6 +147,12 @@ describe('buildMainAgentPrompt — INPUT-as-data defense', () => {
     // the candidate type should mention it.
     expect(clauseRegion).not.toContain('skipUrl');
 
+    // Normalize whitespace once for assertions that span line breaks —
+    // the clause is built by joining short string literals with `\n`, so
+    // a harmless line re-flow could split the prohibition phrase across
+    // lines and defeat a single-line regex.
+    const normalizedClause = clauseRegion.replace(/\s+/g, ' ');
+
     // Inline-rendering rule (positive): URLs must be in prose / inline /
     // part of a sentence. Regex covers the conceptual vocabulary so harmless
     // copy-edits ("weave"→"thread"→"embed") don't fail the test.
@@ -139,9 +163,18 @@ describe('buildMainAgentPrompt — INPUT-as-data defense', () => {
     // ("Render them as a buttons line") would still satisfy the regex.
     // Regression: agent was rendering "Connect | Skip" UI strips and
     // separate "• Accept Connection: …" / "• Skip for Now: …" lines.
-    expect(clauseRegion).toMatch(/Do NOT render[^\n]*"buttons"/);
+    expect(normalizedClause).toMatch(/Do NOT render[^"]*"buttons"/);
     expect(clauseRegion).toContain('bullet list');
     expect(clauseRegion).toContain('pipe-separated');
+    // Markdown table is also explicitly prohibited — pin it so a future
+    // edit cannot drop the prohibition without the test noticing.
+    expect(clauseRegion).toContain('markdown table');
+
+    // Strip-URLs principle: the source itself calls this "the real rule".
+    // Pin it so a copy-edit that softens the wording fails loudly. The
+    // principle is what prevents a clever model from finding a "compliant"
+    // bad shape that satisfies the enumerated prohibitions.
+    expect(normalizedClause.toLowerCase()).toMatch(/strip every url/);
 
     // INPUT-as-data clause and fences (full output, since the fence itself
     // is what we're locating).
