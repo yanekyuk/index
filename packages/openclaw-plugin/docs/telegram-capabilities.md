@@ -160,7 +160,7 @@ Index Network notifications (daily digest, ambient discovery, test message) are 
 
 - **Markdown formatting** — the Telegram gateway converts Markdown to HTML and sends with `parse_mode: "HTML"`. Use `**bold**`, `_italic_`, `[text](url)`. Do NOT output raw HTML tags — the gateway's Markdown→HTML converter escapes them, so `<b>text</b>` renders literally.
 - **Hyperlinks** — `[text](url)` renders as tappable links in Telegram
-- **URL buttons via hyperlinks** — profile links, accept/skip links work as inline text links. The main-agent prompt explicitly preserves `acceptUrl` and `skipUrl` verbatim.
+- **URL hyperlinks** — profile and accept links are embedded as inline text links woven into the agent's prose. The main-agent prompt requires `profileUrl` on the person's name and `acceptUrl` on a short verb phrase, both verbatim, and forbids "buttons" / bullet / pipe-separated rendering. The skip URL is no longer surfaced in chat-channel messages.
 
 ### What Requires Changes
 

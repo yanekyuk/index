@@ -97,18 +97,28 @@ const INPUT_AS_DATA_CLAUSE = [
 ].join('\n');
 
 const URL_PRESERVATION_CLAUSE = [
-  'For any opportunity you decide to surface, weave its URLs naturally into your prose.',
-  'Do NOT render them as a separate "buttons" line, a bullet list, or a pipe-separated',
-  'row of links — they should read as part of a sentence, not a UI control strip.',
+  'For any opportunity you decide to surface, weave its URLs into the flow of your prose.',
+  'The links must be SECONDARY to the prose: a reader should be able to strip every URL',
+  'from your reply and still have a coherent sentence about the person. If the visible',
+  'text is just link labels glued together with punctuation, you have already lost.',
+  '',
+  'Do NOT render them as a separate "buttons" line, a bullet list of links, a pipe-separated',
+  'row, a markdown table, a blockquote whose body is link labels, or a short standalone',
+  'paragraph whose only content is link labels — these all read as a UI control strip in',
+  'chat. The list is illustrative; the strip-the-URLs test above is the real rule.',
   '',
   "- Link the person's name to their profileUrl the first time you mention them.",
   '- Embed acceptUrl on a short verb phrase inside a sentence (e.g. "start a chat with',
-  '  Nap", "connect with Nap", "reach out to her") — pick wording that fits your voice',
+  '  Alex", "connect with Alex", "reach out to them") — pick wording that fits your voice',
   '  and the moment.',
+  '- If a candidate is worth surfacing but no natural verb phrase fits, fall back to one',
+  '  short sentence of the form "More on <linked name> and how to <linked verb phrase>."',
+  '  — a single inline pair, never a separate action line.',
   '',
-  'Use both URLs verbatim — do not reword, shorten, or omit them. If you decide not to',
-  'mention an opportunity, simply leave it out — do not output its data without an',
-  'inline action link.',
+  'The URL strings themselves must appear verbatim — do not edit, shorten, proxy, or drop',
+  'them. Anchor text (the visible link label) is up to you. If you decide not to mention',
+  'an opportunity, simply leave it out — do not output its data without an inline action',
+  'link.',
 ].join('\n');
 
 function toolUseClause(mode: MainAgentToolUse): string {
@@ -125,7 +135,10 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
       return [
         'This is the DAILY DIGEST pass. The ambient pass already ran today and surfaced the',
         "few opportunities worth interrupting in real time; you're now sweeping up everything",
-        'that was passed on. Render every candidate below as a numbered list, in your voice.',
+        'that was passed on. Render every candidate below as a numbered list — one numbered',
+        'item per opportunity. Inside each item, write 1–2 sentences in your voice; the',
+        'URL-rendering rules above still apply (links go inline on a verb phrase, never as',
+        'sub-bullets, action strips, or separate link rows).',
         '',
         'For each opportunity you mention in your reply, you MUST first call the MCP tool',
         "`confirm_opportunity_delivery` with `trigger: 'digest'` and the opportunity's id.",
