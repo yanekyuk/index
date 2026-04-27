@@ -18,4 +18,18 @@ export function formatDate(date: string | Date | number): string {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+/**
+ * Format an ISO timestamp as a relative day label suitable for chat dividers:
+ * "Today", "Yesterday", or a short month-day string like "Apr 27".
+ */
+export function formatChatDayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 } 

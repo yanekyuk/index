@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatChatDayLabel } from '@/lib/utils';
 import type { ChatContextOpportunity } from '@/services/opportunities';
 
 interface OpportunityDividerProps {
@@ -10,18 +10,6 @@ interface OpportunityDividerProps {
 }
 
 const HEADLINE_MAX = 60;
-
-const formatDate = (iso: string): string => {
-  const d = new Date(iso);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const isYesterday = d.toDateString() === yesterday.toDateString();
-  if (isToday) return 'Today';
-  if (isYesterday) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-};
 
 const truncate = (s: string, max: number): string =>
   s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
@@ -35,24 +23,28 @@ const truncate = (s: string, max: number): string =>
  */
 export default function OpportunityDivider({ opportunities }: OpportunityDividerProps) {
   const [expanded, setExpanded] = useState(false);
+  const panelId = useId();
+  if (opportunities.length === 0) return null;
   const [first, ...rest] = opportunities;
   const extra = rest.length;
   const headline = truncate(first.headline, HEADLINE_MAX);
-  const date = first.acceptedAt ? formatDate(first.acceptedAt) : '';
+  const date = first.acceptedAt ? formatChatDayLabel(first.acceptedAt) : '';
 
   return (
     <div className="my-4">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
         className={cn(
-          'w-full flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wider',
+          'w-full flex items-center gap-2 text-xs text-gray-400',
           'hover:text-gray-600 transition-colors',
         )}
       >
         <span className="flex-1 h-px bg-gray-200" />
         <span className="flex items-center gap-1.5 normal-case tracking-normal">
-          <Check className="w-3.5 h-3.5" />
+          <Check className="w-3.5 h-3.5" aria-hidden="true" />
           <span>Accepted &ldquo;{headline}&rdquo;</span>
           {extra > 0 && (
             <span className="text-gray-400">+{extra} more</span>
@@ -63,7 +55,7 @@ export default function OpportunityDivider({ opportunities }: OpportunityDivider
       </button>
 
       {expanded && (
-        <div className="mt-3 mx-auto max-w-md text-xs text-gray-600 space-y-2">
+        <div id={panelId} className="mt-3 mx-auto max-w-md text-xs text-gray-600 space-y-2">
           {opportunities.map((opp) => (
             <div key={opp.opportunityId} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
               <p className="font-medium text-gray-700">{opp.headline}</p>
