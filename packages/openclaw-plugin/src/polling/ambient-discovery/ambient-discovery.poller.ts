@@ -39,7 +39,12 @@ let lastOpportunityBatchHash: string | null = null;
 export type AmbientDiscoveryOutcome = 'dispatched' | 'empty' | 'error';
 
 /**
- * Compute start-of-today in the user's local timezone, expressed as a UTC ISO string.
+ * Compute start-of-today in the **OpenClaw host's** local timezone, expressed
+ * as a UTC ISO string. The plugin is intended to run on the user's own
+ * machine, so host-local matches user-local in practice; deployments where
+ * the host runs a different TZ from the user (e.g. UTC server, user in PT)
+ * will see the "today" boundary shift by the offset. DST transitions are
+ * handled by the platform's `setHours` semantics.
  */
 function midnightLocalIso(now: Date = new Date()): string {
   const local = new Date(now);
@@ -49,7 +54,9 @@ function midnightLocalIso(now: Date = new Date()): string {
 
 /**
  * Fetch today's ambient delivery count. Best-effort: returns null on any failure
- * (the prompt will then tell the agent the count is unknown).
+ * (the prompt will then tell the agent the count is unknown). Auth failures
+ * (401/403) are logged at error level since they indicate a misconfigured key
+ * that will keep the soft cap permanently disabled until fixed.
  */
 async function fetchAmbientDeliveredToday(
   api: OpenClawPluginApi,
@@ -64,15 +71,22 @@ async function fetchAmbientDeliveredToday(
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
-      api.logger.warn(`Ambient stats fetch failed: ${res.status}`);
+      const detail = { url, status: res.status, agentId: config.agentId };
+      if (res.status === 401 || res.status === 403) {
+        api.logger.error('Ambient stats fetch unauthorized — soft cap disabled', detail);
+      } else {
+        api.logger.warn('Ambient stats fetch failed', detail);
+      }
       return null;
     }
-    const body = (await res.json()) as { ambient?: number };
-    return typeof body.ambient === 'number' ? body.ambient : null;
+    const body = (await res.json()) as { ambient?: unknown };
+    return Number.isFinite(body.ambient) ? (body.ambient as number) : null;
   } catch (err) {
-    api.logger.warn(
-      `Ambient stats fetch errored: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    api.logger.warn('Ambient stats fetch errored', {
+      url,
+      agentId: config.agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -91,13 +105,22 @@ export async function handle(
       signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
-    api.logger.warn(`Ambient discovery fetch errored: ${err instanceof Error ? err.message : String(err)}`);
+    api.logger.warn('Ambient discovery fetch errored', {
+      url: pendingUrl,
+      agentId: config.agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return 'error';
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    api.logger.warn(`Ambient discovery fetch failed: ${res.status} ${text}`);
+    const detail = { url: pendingUrl, status: res.status, body: text, agentId: config.agentId };
+    if (res.status === 401 || res.status === 403) {
+      api.logger.error('Ambient discovery fetch unauthorized', detail);
+    } else {
+      api.logger.warn('Ambient discovery fetch failed', detail);
+    }
     return 'error';
   }
 
