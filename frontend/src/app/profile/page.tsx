@@ -32,6 +32,7 @@ export default function ProfilePage() {
   const [socialX, setSocialX] = useState("");
   const [socialLinkedin, setSocialLinkedin] = useState("");
   const [socialGithub, setSocialGithub] = useState("");
+  const [socialTelegram, setSocialTelegram] = useState("");
   const [websites, setWebsites] = useState<string[]>([]);
   const [notificationPreferences, setNotificationPreferences] = useState({
     connectionUpdates: true,
@@ -63,6 +64,7 @@ export default function ProfilePage() {
     setSocialX(u.socials?.x || "");
     setSocialLinkedin(u.socials?.linkedin || "");
     setSocialGithub(u.socials?.github || "");
+    setSocialTelegram(u.socials?.telegram || "");
     setWebsites(u.socials?.websites || []);
     setNotificationPreferences(
       u.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true }
@@ -74,6 +76,7 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     resetForm(user);
   }, [user, resetForm]);
 
@@ -114,6 +117,7 @@ export default function ProfilePage() {
         ...(socialX && { x: socialX }),
         ...(socialLinkedin && { linkedin: socialLinkedin }),
         ...(socialGithub && { github: socialGithub }),
+        ...(socialTelegram && { telegram: socialTelegram }),
         ...(websites.length > 0 && { websites: websites.filter((w) => w) }),
       };
 
@@ -338,6 +342,7 @@ export default function ProfilePage() {
                 { prefix: "x.com/", value: socialX, onChange: (v: string) => { setSocialX(v); mark(); } },
                 { prefix: "linkedin.com/in/", value: socialLinkedin, onChange: (v: string) => { setSocialLinkedin(v); mark(); } },
                 { prefix: "github.com/", value: socialGithub, onChange: (v: string) => { setSocialGithub(v); mark(); } },
+                { prefix: "t.me/", value: socialTelegram, onChange: (v: string) => { setSocialTelegram(v); mark(); } },
               ].map(({ prefix, value, onChange }) => (
                 <div key={prefix} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
                   <span className="px-3 py-2 bg-gray-50 text-gray-400 font-ibm-plex-mono text-xs border-r border-gray-200 whitespace-nowrap select-none">
