@@ -20,9 +20,10 @@
  *
  * The endpoint returns only `{ ok: true, runId: ... }` — the agent's
  * rendered text is delivered to the channel asynchronously and is not
- * available to the plugin synchronously. Callers therefore cannot scrape
- * rendered text; the `confirm-batch` step uses the full set of dispatched
- * IDs.
+ * available to the plugin synchronously. The agent calls
+ * `confirm_opportunity_delivery(opportunityId, trigger)` via MCP for each
+ * opportunity it actually mentions in its reply; the plugin does not
+ * perform any post-dispatch confirmation.
  */
 
 import { readFile } from 'node:fs/promises';
