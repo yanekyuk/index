@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, ArrowUp, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
@@ -6,11 +6,11 @@ import GhostBadge from '@/components/GhostBadge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn, formatChatDayLabel } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-import { createOpportunitiesService, type ChatContextOpportunity } from '@/services/opportunities';
+import { useOpportunities } from '@/contexts/APIContext';
+import type { ChatContextOpportunity } from '@/services/opportunities';
 import { buildChatTimeline } from './timeline';
 import OpportunityDivider from './OpportunityDivider';
 
@@ -32,6 +32,7 @@ interface ChatViewProps {
 
 export default function ChatView({ userId, userName, userAvatar, isGhost = false, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack }: ChatViewProps) {
   const { user } = useAuthContext();
+  const opportunitiesService = useOpportunities();
   const {
     messages: allMessages,
     sendMessage: conversationSend,
@@ -48,6 +49,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   const [contextLoading, setContextLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -60,31 +62,33 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       setConversationId(null);
       setMessagesLoading(true);
       setContextLoading(true);
+      setAcceptedOpportunities([]);
       hasAutoSentRef.current = false;
       hasFiredFirstMessageRef.current = false;
     }
   }, [userId]);
 
-  const messages = conversationId ? (allMessages.get(conversationId) || []) : [];
-
-  const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
+  const messages = useMemo(
+    () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
+    [conversationId, allMessages],
+  );
 
   useEffect(() => {
     if (!userId) return;
-    let cancelled = false;
-    const opportunities = createOpportunitiesService(apiClient as unknown as ReturnType<typeof import('@/lib/api').useAuthenticatedAPI>);
-    opportunities
-      .getChatContext(userId)
+    const controller = new AbortController();
+    opportunitiesService
+      .getChatContext(userId, { signal: controller.signal })
       .then((list) => {
-        if (!cancelled) setAcceptedOpportunities(list);
+        if (!controller.signal.aborted) setAcceptedOpportunities(list);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
         console.error('[ChatView] Failed to load chat context:', err);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [userId]);
+  }, [userId, opportunitiesService]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -221,6 +225,11 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     return new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
+  const timeline = useMemo(
+    () => buildChatTimeline(messages, acceptedOpportunities),
+    [messages, acceptedOpportunities],
+  );
+
   return (
     <>
       {/* Header */}
@@ -286,9 +295,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
               </div>
             )}
 
-            {(() => {
-              const timeline = buildChatTimeline(messages, acceptedOpportunities);
-              return timeline.map((item, index) => {
+            {timeline.map((item, index) => {
                 const prev = timeline[index - 1];
                 const showTimestamp =
                   item.type === 'message' &&
@@ -338,8 +345,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
                     </div>
                   </div>
                 );
-              });
-            })()}
+            })}
             <div ref={messagesEndRef} />
           </div>
         </ContentContainer>

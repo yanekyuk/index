@@ -230,9 +230,11 @@ export const createOpportunitiesService = (
    */
   getChatContext: async (
     peerUserId: string,
+    options?: { signal?: AbortSignal },
   ): Promise<ChatContextOpportunity[]> => {
     const res = await api.get<{ opportunities: ChatContextOpportunity[] }>(
       `/opportunities/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`,
+      options,
     );
     return res.opportunities ?? [];
   },
