@@ -65,10 +65,6 @@ const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
-const batchConfirmDeliveredSchema = z.object({
-  opportunityIds: z.array(z.string().uuid()).min(1).max(50),
-});
-
 const respondNegotiationSchema = z.object({
   action: z.enum(['propose', 'accept', 'reject', 'counter', 'question']),
   message: z.string().nullable().optional(),
@@ -575,30 +571,29 @@ export class AgentController {
     }
   }
 
-  @Post('/:id/opportunities/confirm-batch')
+  @Get('/:id/opportunities/delivery-stats')
   @UseGuards(AuthOrApiKeyGuard)
-  async confirmBatchDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async getDeliveryStats(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
       return jsonError('Agent ID is required', 400);
     }
 
-    const body = await parseBody(req, batchConfirmDeliveredSchema);
-    if (body instanceof Response) {
-      return body;
+    const url = new URL(req.url);
+    const sinceParam = url.searchParams.get('since');
+    if (!sinceParam) {
+      return jsonError('since query parameter is required (ISO 8601)', 400);
+    }
+    const since = new Date(sinceParam);
+    if (Number.isNaN(since.getTime())) {
+      return jsonError('since must be a valid ISO 8601 timestamp', 400);
     }
 
     try {
       await agentService.getById(agentId, user.id);
-      const results = await Promise.all(
-        body.opportunityIds.map((id) =>
-          opportunityDeliveryService.commitDelivery(id, user.id, agentId),
-        ),
-      );
-      return Response.json({
-        confirmed: results.filter((r) => r === 'confirmed').length,
-        alreadyDelivered: results.filter((r) => r === 'already_delivered').length,
-      });
+      await agentService.touchLastSeen(agentId);
+      const counts = await opportunityDeliveryService.countDeliveriesSince(agentId, since);
+      return Response.json(counts);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }

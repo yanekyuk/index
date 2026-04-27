@@ -14,9 +14,8 @@
  *   2. API key
  *   3. Daily digest (enabled/disabled)
  *   4. Digest time (if enabled)
- *   5. Max opportunities per digest (if enabled)
- *   6. Main agent tool use during Index Network renders
- *   7. MCP server registration
+ *   5. Main agent tool use during Index Network renders
+ *   6. MCP server registration
  *
  * MIRROR: The Index Network agents page renders a copyable preview of
  * this same wizard for users who run setup outside an LLM. When you
@@ -146,11 +145,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
       default: existing('digestTime') || '08:00',
     });
     await ctx.configSet(`${configPrefix}.digestTime`, digestTime);
-
-    const digestMaxCount = await ctx.prompt('Max opportunities per digest', {
-      default: existing('digestMaxCount') || '20',
-    });
-    await ctx.configSet(`${configPrefix}.digestMaxCount`, digestMaxCount);
   }
 
   // --- Main agent tool use ---

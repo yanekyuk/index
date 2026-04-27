@@ -46,7 +46,7 @@ Once the plugin is configured with an `apiKey` (which resolves your `agentId`), 
 
 The setup wizard bootstraps the gateway hooks subsystem automatically — `hooks.enabled=true`, a fresh `hooks.token`, `hooks.allowRequestSessionKey=true`, and `hooks.allowedSessionKeyPrefixes` containing `agent:main:` are written to your OpenClaw config the first time you run `openclaw index-network setup`. If you already use hooks for other integrations, your existing token and other allowed prefixes are preserved (`agent:main:` is appended to the list, not substituted).
 
-The hooks endpoint returns only an acknowledgement (`{status: "sent"}`); the plugin does not see what the agent rendered. Once dispatch is acknowledged, every opportunity in the dispatched batch is marked delivered. The agent's editorial decision (which subset to surface) is respected on the channel — but items it chose not to mention this cycle do not roll over. The dedup hash prevents back-to-back redispatch of the same set, so a fresh batch tomorrow will surface anything new.
+The hooks endpoint returns only an acknowledgement (`{status: "sent"}`); the plugin does not see what the agent rendered. After the agent processes the batch, it calls `confirm_opportunity_delivery(opportunityId, trigger)` via MCP for each opportunity it actually mentions — only those confirmed calls commit a delivery record. Items the agent chose not to surface are not marked delivered and remain eligible for future cycles. The dedup hash prevents back-to-back redispatch of the same set within a cycle.
 
 ## Automatic negotiations (alpha)
 
@@ -97,9 +97,8 @@ In addition to real-time polling every 5 minutes, the plugin sends a daily diges
 |------------|---------|-------------|
 | `digestEnabled` | `"true"` | Set to `"false"` to disable daily digest |
 | `digestTime` | `"08:00"` | Time to send digest in HH:MM format (24-hour, local timezone) |
-| `digestMaxCount` | `20` | Maximum opportunities to include in digest |
 
-The digest ranks all pending opportunities by relevance and passes the top N to your agent. Once the gateway acknowledges the dispatch, every candidate in the batch is marked delivered (the plugin does not see what the agent surfaced).
+The digest ranks all pending opportunities by relevance and passes them to your agent. The agent decides which to surface and calls `confirm_opportunity_delivery(opportunityId, trigger)` via MCP for each one it mentions; the plugin does not perform any post-dispatch confirmation.
 
 ### Resilience
 
@@ -127,7 +126,6 @@ Users who want either path redacted can configure OpenClaw's log scrubbing at th
 - `src/index.ts` — plugin entry point: registers poll route and background polling loop
 - `src/lib/delivery/main-agent.dispatcher.ts` — POSTs to `/hooks/agent` so the gateway routes to the user's last channel
 - `src/lib/delivery/main-agent.prompt.ts` — prompt template passed to the main agent for rendering
-- `src/lib/delivery/post-delivery-confirm.ts` — confirms the dispatched batch via `/opportunities/confirm-batch`
 - `src/lib/delivery/config.ts` — reads the `mainAgentToolUse` knob from plugin config
 - `src/setup/setup.cli.ts` — interactive wizard; bootstraps `hooks.enabled` / `hooks.token` / `hooks.path` / `hooks.allowRequestSessionKey` / `hooks.allowedSessionKeyPrefixes`
 - `src/polling/negotiator/negotiation-turn.prompt.ts` — prompt for the silent negotiation-turn subagent

@@ -2,7 +2,6 @@ import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
-import { confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 
 export interface DailyDigestConfig {
@@ -10,28 +9,17 @@ export interface DailyDigestConfig {
   agentId: string;
   apiKey: string;
   frontendUrl: string;
-  maxCount: number;
 }
 
 const PENDING_LIMIT = 20;
 
 /**
- * Handles one daily digest cycle. Single-pass:
- *  1. GET /opportunities/pending?limit=20
- *  2. Build the digest prompt and hand it to the user's main OpenClaw agent
- *     via `dispatchToMainAgent` (POST /hooks/agent → user's last channel).
- *  3. On dispatch success, confirm the entire batch via /confirm-batch.
+ * Daily digest cycle. Fetches everything still pending (i.e. everything the
+ * ambient pass passed on), dispatches the prompt, and returns. The agent
+ * confirms each opportunity it surfaces via `confirm_opportunity_delivery`
+ * (trigger='digest'); the plugin does not call any confirm endpoint.
  *
- * Trade-off: the agent decides which subset to surface, but the plugin
- * cannot see what was rendered (the gateway delivers asynchronously and
- * returns only `{status: "sent"}`). We therefore confirm every candidate
- * in the batch on success — items the agent didn't surface this cycle do
- * not roll over. The dedup hash prevents back-to-back redispatch of the
- * same set, so this matches the user's effective experience: "the digest
- * already saw these; show new ones tomorrow".
- *
- * @returns `true` when a digest was attempted (delivered or empty),
- *          `false` when nothing was eligible or dispatch failed.
+ * @returns true on successful dispatch, false on empty or error.
  */
 export async function handle(
   api: OpenClawPluginApi,
@@ -88,13 +76,12 @@ export async function handle(
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const batchHash = hashOpportunityBatch(candidates.map((c) => c.opportunityId));
-  const maxToSurface = Math.max(1, Math.min(config.maxCount, candidates.length));
   const mainAgentToolUse = readMainAgentToolUse(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'daily_digest',
     mainAgentToolUse,
-    payload: { contentType: 'daily_digest', maxToSurface, candidates },
+    payload: { contentType: 'daily_digest', candidates },
   });
 
   const dispatch = await dispatchToMainAgent(api, {
@@ -106,24 +93,8 @@ export async function handle(
     return false;
   }
 
-  const batchIds = candidates.map((c) => c.opportunityId);
-  const confirmed = await confirmDeliveredBatch({
-    baseUrl: config.baseUrl,
-    agentId: config.agentId,
-    apiKey: config.apiKey,
-    opportunityIds: batchIds,
-    logger: api.logger,
-  });
-
-  if (!confirmed) {
-    api.logger.warn(
-      'Daily digest: confirm failed; the agent already received the dispatch but the ledger was not updated.',
-    );
-    return true;
-  }
-
   api.logger.info(
-    `Daily digest dispatched and confirmed: ${batchIds.length} candidate(s)`,
+    `Daily digest dispatched: ${candidates.length} candidate(s); agent will confirm individually`,
     { agentId: config.agentId },
   );
 

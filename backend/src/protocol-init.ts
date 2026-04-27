@@ -76,8 +76,8 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
       agentService.grantDefaultSystemPermissions(userId),
     agentDispatcher,
     deliveryLedger: {
-      confirmOpportunityDelivery: ({ opportunityId, userId, agentId }) =>
-        opportunityDeliveryService.commitDelivery(opportunityId, userId, agentId),
+      confirmOpportunityDelivery: ({ opportunityId, userId, agentId, trigger }) =>
+        opportunityDeliveryService.commitDelivery(opportunityId, userId, agentId, trigger),
     },
     negotiationTimeoutQueue,
     queueNegotiateExisting: (opportunityId, userId) =>
