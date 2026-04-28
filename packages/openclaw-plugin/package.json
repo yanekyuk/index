@@ -19,6 +19,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc -p src/tests/tsconfig.json",
     "test": "bun test src/tests",
     "test:watch": "bun test --watch src/tests",
     "prepublishOnly": "bun run build"
