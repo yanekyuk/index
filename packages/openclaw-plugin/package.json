@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/openclaw-plugin",
-  "version": "0.22.0",
+  "version": "0.22.1",
   "description": "Index Network — OpenClaw plugin. Find the right people and let them find you.",
   "license": "MIT",
   "private": false,
@@ -31,8 +31,7 @@
     "typescript": "^5.5.0"
   },
   "openclaw": {
-    "extensions": ["./src/index.ts"],
-    "runtimeExtensions": ["./dist/index.js"],
+    "extensions": ["./dist/index.js"],
     "compat": {
       "openclaw": ">=0.1.0"
     }
