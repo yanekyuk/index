@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Bot } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, Library, History, Network, Bot } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -328,8 +328,8 @@ export default function Sidebar() {
                   }`}
                   onClick={() => { setUserDropdownOpen(false); navigate('/profile'); }}
                 >
-                  <UserIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  Profile
+                  <Settings className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  Settings
                 </button>
               </div>
 

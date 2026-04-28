@@ -161,7 +161,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "/settings",
-        element: <Navigate to="/agents" replace />,
+        element: <Navigate to="/profile" replace />,
       },
       {
         path: "*",

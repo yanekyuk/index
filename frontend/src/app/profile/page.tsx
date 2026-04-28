@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { Link } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
@@ -15,9 +15,18 @@ import { Button } from "@/components/ui/button";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { SaveBarProvider } from "@/contexts/SaveBarContext";
+import AgentApiKeysSection from "@/components/settings/AgentApiKeysSection";
+
+const SETTINGS_TABS = ["profile", "notifications", "api-keys"] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+function isSettingsTab(v: string | null): v is SettingsTab {
+  return v !== null && (SETTINGS_TABS as readonly string[]).includes(v);
+}
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
   const { success, error } = useNotifications();
@@ -39,7 +48,17 @@ export default function ProfilePage() {
     weeklyNewsletter: true,
   });
 
-  const [activeTab, setActiveTab] = useState<"settings" | "notifications">("settings");
+  const tabParam = searchParams.get("tab");
+  const activeTab: SettingsTab = isSettingsTab(tabParam) ? tabParam : "profile";
+
+  const setActiveTab = (v: string) => {
+    if (!isSettingsTab(v)) return;
+    if (v === "profile") {
+      setSearchParams({}, { replace: true });
+    } else {
+      setSearchParams({ tab: v }, { replace: true });
+    }
+  };
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [generatingIntro, setGeneratingIntro] = useState(false);
@@ -76,7 +95,6 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     resetForm(user);
   }, [user, resetForm]);
 
@@ -190,25 +208,31 @@ export default function ProfilePage() {
       <ClientLayout>
         <div className="px-6 lg:px-8 py-8">
         <ContentContainer>
-          <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Profile</h1>
+          <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Settings</h1>
 
-          <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-            <Tabs.List className="flex border-b border-gray-200 mb-8">
+          <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
+            <Tabs.List className="flex flex-wrap gap-x-1 border-b border-gray-200 mb-8">
               <Tabs.Trigger
-                value="settings"
+                value="profile"
                 className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
               >
-                Settings
+                Profile Settings
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="notifications"
                 className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
               >
-                Notifications
+                Notification Settings
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="api-keys"
+                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+              >
+                API Keys
               </Tabs.Trigger>
             </Tabs.List>
 
-            <Tabs.Content value="settings">
+            <Tabs.Content value="profile">
           <div className="space-y-10">
 
             {/* Identity header */}
@@ -416,68 +440,75 @@ export default function ProfilePage() {
           </div>
             </Tabs.Content>
 
+            <Tabs.Content value="api-keys">
+              <AgentApiKeysSection />
+            </Tabs.Content>
+
             <Tabs.Content value="notifications">
-              <div className="space-y-6">
-                {/* Timezone */}
-                <div>
-                  <label htmlFor="timezone" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
-                    Timezone
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="timezone"
-                      value={timezone}
-                      onChange={(e) => { setTimezone(e.target.value); mark(); }}
-                      className="flex h-10 w-full rounded-sm border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 appearance-none cursor-pointer"
-                    >
-                      {Intl.supportedValuesOf("timeZone").map((tz) => (
-                        <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-                      ))}
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="m6 9 6 6 6-6" />
-                      </svg>
+              <div className="space-y-10">
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                    Notifications
+                  </p>
+                  <div>
+                    <label htmlFor="timezone" className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">
+                      Timezone
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="timezone"
+                        value={timezone}
+                        onChange={(e) => { setTimezone(e.target.value); mark(); }}
+                        className="flex h-10 w-full rounded-sm border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 appearance-none cursor-pointer"
+                      >
+                        {Intl.supportedValuesOf("timeZone").map((tz) => (
+                          <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Email notifications */}
-                <div className="space-y-2.5 border-t border-gray-100 pt-6">
-                  <p className="text-sm text-gray-600 mb-4">
-                    Choose which emails you'd like to receive.
-                  </p>
-                {[
-                  {
-                    key: "connectionUpdates" as const,
-                    label: "Connection Updates",
-                    description: "Email when someone connects with you",
-                  },
-                  {
-                    key: "weeklyNewsletter" as const,
-                    label: "Weekly Newsletter",
-                    description: "Weekly summary of new connections",
-                  },
-                ].map(({ key, label, description }) => (
-                  <label
-                    key={key}
-                    className="flex items-center justify-between p-3 border border-gray-200 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors duration-150"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{label}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{description}</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={notificationPreferences[key]}
-                      onChange={(e) => {
-                        setNotificationPreferences((prev) => ({ ...prev, [key]: e.target.checked }));
-                        mark();
-                      }}
-                      className="w-4 h-4 accent-black"
-                    />
-                  </label>
-                ))}
+                  <div className="space-y-2.5 pt-2 border-t border-gray-100">
+                    <p className="text-xs text-gray-400 font-ibm-plex-mono mb-1">
+                      Choose which emails you&apos;d like to receive.
+                    </p>
+                    {[
+                      {
+                        key: "connectionUpdates" as const,
+                        label: "Connection updates",
+                        description: "Email when someone connects with you",
+                      },
+                      {
+                        key: "weeklyNewsletter" as const,
+                        label: "Weekly newsletter",
+                        description: "Weekly summary of new connections",
+                      },
+                    ].map(({ key, label, description }) => (
+                      <label
+                        key={key}
+                        className="flex items-center justify-between p-3 border border-gray-200 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors duration-150"
+                      >
+                        <div>
+                          <p className="text-sm font-medium font-ibm-plex-mono text-gray-700">{label}</p>
+                          <p className="text-xs text-gray-400 mt-0.5 font-ibm-plex-mono">{description}</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={notificationPreferences[key]}
+                          onChange={(e) => {
+                            setNotificationPreferences((prev) => ({ ...prev, [key]: e.target.checked }));
+                            mark();
+                          }}
+                          className="w-4 h-4 accent-black"
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </Tabs.Content>
