@@ -214,8 +214,16 @@ describe('buildMainAgentPrompt — agent-negotiation framing', () => {
       mainAgentToolUse: 'enabled',
       payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 0, candidates: [cand] },
     });
-    expect(out.toLowerCase()).toContain('negotiat');
-    expect(out.toLowerCase()).toContain('background');
+    const clauseRegion = out.split('===== INPUT =====')[0];
+    expect(clauseRegion.toLowerCase()).toContain('negotiat');
+    expect(clauseRegion.toLowerCase()).toContain('background');
+    // Conditional guard: framing must only fire when a candidate is surfaced —
+    // ambient is silent when nothing qualifies, so an unconditional opener
+    // would defeat the silence rule.
+    expect(clauseRegion).toContain('If you do surface a candidate');
+    // Pin "Index agent" specifically — the framing names the user's agent,
+    // not a generic "your agent" / "the system" phrasing.
+    expect(clauseRegion).toContain('Index agent');
   });
 
   it('instructs the agent to frame daily_digest as a summary of background negotiations', () => {
@@ -224,8 +232,14 @@ describe('buildMainAgentPrompt — agent-negotiation framing', () => {
       mainAgentToolUse: 'enabled',
       payload: { contentType: 'daily_digest', candidates: [cand] },
     });
-    expect(out.toLowerCase()).toContain('negotiat');
-    expect(out.toLowerCase()).toContain('background');
+    const clauseRegion = out.split('===== INPUT =====')[0];
+    expect(clauseRegion.toLowerCase()).toContain('negotiat');
+    expect(clauseRegion.toLowerCase()).toContain('background');
+    // Conditional guard: defensive, since the digest path only dispatches
+    // when there are candidates — but pin the phrase so a future edit can't
+    // silently turn it into an unconditional opener.
+    expect(clauseRegion).toContain('If there are candidates');
+    expect(clauseRegion).toContain('Index agent');
   });
 
   it('does NOT add negotiation framing to test_message (delivery probe — must stay unframed)', () => {
