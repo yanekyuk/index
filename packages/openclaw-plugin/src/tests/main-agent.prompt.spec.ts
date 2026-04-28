@@ -206,3 +206,34 @@ describe('buildMainAgentPrompt — INPUT-as-data defense', () => {
     expect(adversarialIndex).toBeGreaterThan(fenceIndex);
   });
 });
+
+describe('buildMainAgentPrompt — agent-negotiation framing', () => {
+  it('instructs the agent to frame ambient_discovery as background agent-to-agent negotiation', () => {
+    const out = buildMainAgentPrompt({
+      contentType: 'ambient_discovery',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 0, candidates: [cand] },
+    });
+    expect(out.toLowerCase()).toContain('negotiat');
+    expect(out.toLowerCase()).toContain('background');
+  });
+
+  it('instructs the agent to frame daily_digest as a summary of background negotiations', () => {
+    const out = buildMainAgentPrompt({
+      contentType: 'daily_digest',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'daily_digest', candidates: [cand] },
+    });
+    expect(out.toLowerCase()).toContain('negotiat');
+    expect(out.toLowerCase()).toContain('background');
+  });
+
+  it('does NOT add negotiation framing to test_message (delivery probe — must stay unframed)', () => {
+    const out = buildMainAgentPrompt({
+      contentType: 'test_message',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'test_message', content: 'ping' },
+    });
+    expect(out.toLowerCase()).not.toContain('negotiat');
+  });
+});
