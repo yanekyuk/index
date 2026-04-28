@@ -72,7 +72,8 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
  * legacy `index-network` entry left behind by pre-0.22.0 installs.
  */
 function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string): void {
-  if (!api.configSet) {
+  const configSet = api.configSet;
+  if (!configSet) {
     api.logger.debug('configSet not available — skipping MCP auto-registration.');
     return;
   }
@@ -88,15 +89,6 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     headers: { 'x-api-key': apiKey },
   };
 
-  // Migrate legacy key if present (one-shot, idempotent).
-  const legacy = api.config?.mcp?.servers?.['index-network'];
-  if (legacy !== undefined) {
-    api.configSet('mcp.servers.index-network', undefined).then(
-      () => api.logger.info('Migrated legacy mcp.servers.index-network → mcp.servers.index.'),
-      () => {/* swallow — best-effort cleanup */},
-    );
-  }
-
   const current = api.config?.mcp?.servers?.['index'];
   const needsUpdate =
     !current ||
@@ -104,13 +96,27 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     current.transport !== expected.transport ||
     current.headers?.['x-api-key'] !== apiKey;
 
-  if (needsUpdate) {
-    api.configSet('mcp.servers.index', expected).then(
+  // Write the new key. When a legacy key exists, delete it first so both ops
+  // don't race on the same config file (configSet is read-modify-write).
+  const writeNewKey = () => {
+    if (!needsUpdate) return;
+    configSet('mcp.servers.index', expected).then(
       () => api.logger.info('Index Network MCP server registered/updated.'),
       (err) => api.logger.warn(
         `Failed to auto-register MCP server: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
+  };
+
+  const legacy = api.config?.mcp?.servers?.['index-network'];
+  if (legacy !== undefined) {
+    // Delete legacy key first, then write new key so the two writes are sequential.
+    configSet('mcp.servers.index-network', undefined).then(
+      () => { api.logger.info('Migrated legacy mcp.servers.index-network → mcp.servers.index.'); writeNewKey(); },
+      () => writeNewKey(), // cleanup failed — proceed with canonical write anyway
+    );
+  } else {
+    writeNewKey();
   }
 }
 

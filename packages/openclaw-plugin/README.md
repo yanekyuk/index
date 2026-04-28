@@ -31,7 +31,7 @@ After auth, the plugin starts its polling loops and registers the `openclaw inde
 
 ## Configuration
 
-The plugin reads these keys under `plugins.entries.indexnetwork-openclaw-plugin.config`:
+The plugin reads these keys under `plugins.entries.indexnetwork-openclaw-plugin.config` (the plugin id is `indexnetwork-openclaw-plugin` — distinct from the npm package name `@indexnetwork/openclaw-plugin`):
 
 | Key | Default | Description |
 |---|---|---|
