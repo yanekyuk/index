@@ -111,8 +111,12 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/pages/terms-of-use/page"),
       },
       {
+        path: "/settings",
+        lazy: () => import("@/app/settings/page"),
+      },
+      {
         path: "/profile",
-        lazy: () => import("@/app/profile/page"),
+        element: <Navigate to="/settings" replace />,
       },
       
       {
@@ -158,10 +162,6 @@ export const router = createBrowserRouter([
       {
         path: "/agent/:tab?",
         lazy: () => import("@/app/agent/page"),
-      },
-      {
-        path: "/settings",
-        element: <Navigate to="/profile" replace />,
       },
       {
         path: "*",

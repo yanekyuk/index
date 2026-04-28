@@ -1,27 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Check, Copy, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { useAgents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import {
   buildMcpConfigs,
+  OPENCLAW_GATEWAY_RESTART_CMD,
   OPENCLAW_INSTALL_CMD,
   OPENCLAW_SETUP_CMD,
   OPENCLAW_UPDATE_CMD,
 } from "@/lib/mcp-config";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
-
-const SETUP_TABS: ReadonlyArray<readonly [value: string, label: string]> = [
-  ["openclaw", "OpenClaw"],
-  ["hermes", "Hermes"],
-  ["claude", "Claude Code"],
-] as const;
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -36,24 +28,25 @@ function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
 }
 
-function downloadText(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+/** True if the user has an active (non-collapsed) text selection on the page. */
+function hasActiveSelection(): boolean {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  return !!sel && !sel.isCollapsed && sel.toString().length > 0;
 }
 
-function ClickableCodeBlock({ code }: { code: string }) {
+/**
+ * Unified click-to-copy box used for every value in the setup panel:
+ * commands, URLs, IDs, secrets, and multi-line MCP configs.
+ */
+function CopyableBox({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
+    if (hasActiveSelection()) return;
     try {
-      await navigator.clipboard.writeText(code);
+      await navigator.clipboard.writeText(value);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setTimeout(() => setCopied(false), 800);
     } catch {
       /* silent */
     }
@@ -63,10 +56,14 @@ function ClickableCodeBlock({ code }: { code: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      aria-label="Copy code block"
-      className="relative w-full text-left group bg-gray-50 border border-gray-200 rounded-sm p-3 hover:bg-green-50 hover:border-green-300 transition-colors"
+      aria-label="Copy"
+      className={`relative w-full text-left group rounded-sm border p-3 transition-colors duration-300 ${
+        copied
+          ? "bg-green-100 border-green-400"
+          : "bg-gray-50 border-gray-200 hover:bg-green-50 hover:border-green-300"
+      }`}
     >
-      <span className="block text-xs text-gray-700 font-mono whitespace-pre-wrap break-all pr-16">{code}</span>
+      <code className="block text-xs text-gray-700 font-ibm-plex-mono whitespace-pre-wrap break-all pr-16 select-text">{value}</code>
       <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
         {copied ? (
           <>
@@ -84,50 +81,40 @@ function ClickableCodeBlock({ code }: { code: string }) {
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+function WizardPromptRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={async (e) => {
-        e.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        } catch {
-          /* Clipboard unavailable */
-        }
-      }}
-      className="shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
-      title="Copy"
-      aria-label="Copy value"
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  );
-}
 
-/** Read-only value with copy control inset on the right (same border as a single field). */
-function CopyableCodeField({ value, layout = "hug" }: { value: string; layout?: "hug" | "fill" }) {
+  async function handleCopy() {
+    if (hasActiveSelection()) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 800);
+    } catch {
+      /* silent */
+    }
+  }
+
   return (
-    <div
-      className={cn(
-        "relative max-w-full min-w-0 rounded-sm border border-gray-200 bg-gray-100",
-        layout === "fill" ? "flex w-full" : "inline-flex w-fit",
-      )}
-    >
-      <code
-        className={cn(
-          "block min-w-0 py-1.5 pl-2 pr-10 text-left text-xs font-mono text-gray-600 break-all",
-          layout === "fill" && "flex-1 w-full",
-        )}
-      >
-        {value}
-      </code>
-      <div className="absolute inset-y-0 right-0 flex w-9 items-center justify-end rounded-r-sm bg-gray-100 pr-1">
-        <CopyButton text={value} />
+    <div className="flex items-stretch border-b border-gray-200 last:border-b-0">
+      <div className="w-28 shrink-0 px-3 py-2 bg-gray-50 border-r border-gray-200 flex items-center">
+        <span className="text-xs font-medium text-gray-700 font-ibm-plex-mono">{label}</span>
       </div>
+      <button
+        type="button"
+        onClick={handleCopy}
+        aria-label={`Copy ${label}`}
+        className={`flex-1 min-w-0 px-3 py-2 text-left text-xs text-gray-700 break-all transition-colors duration-300 flex items-center justify-between gap-2 group ${
+          copied ? "bg-green-100" : "hover:bg-green-50"
+        }`}
+      >
+        <span className="truncate select-text font-ibm-plex-mono">{value}</span>
+        {copied ? (
+          <Check className="w-3 h-3 text-green-600 shrink-0" />
+        ) : (
+          <Copy className="w-3 h-3 text-gray-400 shrink-0 group-hover:text-green-700" />
+        )}
+      </button>
     </div>
   );
 }
@@ -141,107 +128,128 @@ function InlineSetupPanel({
   apiKey: string;
   onDismiss: () => void;
 }) {
-  const { claudeConfig, hermesConfig } = useMemo(() => buildMcpConfigs(apiKey), [apiKey]);
+  const { claudeConfig } = useMemo(() => buildMcpConfigs(apiKey), [apiKey]);
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const [keyCopied, setKeyCopied] = useState(false);
 
-  async function copy(text: string) {
+  async function copyKey() {
+    if (hasActiveSelection()) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(apiKey);
+      setKeyCopied(true);
+      setTimeout(() => setKeyCopied(false), 800);
     } catch {
       /* silent */
     }
   }
 
-  const subTabTriggerClass =
-    "px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent -mb-px data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2";
+  const tabTriggerClass =
+    "px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent -mb-px data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:text-gray-400";
 
   return (
     <div className="mt-4 border border-amber-200 rounded-sm bg-amber-50/50 p-4 space-y-4">
-      <p className="text-sm font-medium font-ibm-plex-mono text-amber-900">
-        This key will not be shown again. Copy the config below now.
-      </p>
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-amber-900 font-ibm-plex-mono">
+          Copy this key now — it won&apos;t be shown again
+        </p>
+        <button
+          type="button"
+          onClick={copyKey}
+          aria-label="Copy API key"
+          className={`relative w-full text-left group rounded-sm border p-3 transition-colors duration-300 ${
+            keyCopied
+              ? "bg-amber-200 border-amber-400"
+              : "bg-white border-amber-200 hover:bg-amber-100"
+          }`}
+        >
+          <code className="block text-xs text-gray-900 font-ibm-plex-mono whitespace-pre-wrap break-all pr-16 select-text">
+            {apiKey}
+          </code>
+          <span
+            className={`absolute top-2 right-2 inline-flex items-center gap-1 text-xs transition-colors select-none ${
+              keyCopied ? "text-amber-900" : "text-gray-400 group-hover:text-amber-900"
+            }`}
+          >
+            {keyCopied ? (
+              <>
+                <Check className="w-3 h-3" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" />
+                Copy
+              </>
+            )}
+          </span>
+        </button>
+      </div>
 
       <Tabs.Root defaultValue="openclaw" className="w-full">
         <Tabs.List className="flex w-full gap-0 border-b border-amber-200 mb-4">
-          {SETUP_TABS.map(([value, label]) => (
-            <Tabs.Trigger key={value} value={value} className={subTabTriggerClass}>
-              {label}
-            </Tabs.Trigger>
-          ))}
+          <Tabs.Trigger value="openclaw" className={tabTriggerClass}>
+            OpenClaw
+          </Tabs.Trigger>
+          <Tabs.Trigger value="claude" className={tabTriggerClass}>
+            MCP
+          </Tabs.Trigger>
+          <Tabs.Trigger value="hermes" disabled className={tabTriggerClass}>
+            <span className="inline-flex items-center gap-1.5">
+              Hermes
+              <span className="text-[10px] uppercase tracking-wider bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-sm font-ibm-plex-mono">
+                soon
+              </span>
+            </span>
+          </Tabs.Trigger>
         </Tabs.List>
 
         <Tabs.Content value="openclaw" className="space-y-4">
           <div>
-            <p className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">Install (first time)</p>
-            <ClickableCodeBlock code={OPENCLAW_INSTALL_CMD} />
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono mb-1.5">
+              1. Install or update
+            </p>
+            <div className="flex gap-3 items-stretch">
+              <div className="flex flex-col items-center shrink-0 py-3">
+                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
+                <div className="w-px flex-1 bg-gray-200 my-1" />
+                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
+              </div>
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <p className="text-xs text-gray-500 font-ibm-plex-mono mb-1">Install (first time)</p>
+                  <CopyableBox value={OPENCLAW_INSTALL_CMD} />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-ibm-plex-mono mb-1">Update (if already installed)</p>
+                  <CopyableBox value={OPENCLAW_UPDATE_CMD} />
+                </div>
+              </div>
+            </div>
           </div>
           <div>
-            <p className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">Update (if already installed)</p>
-            <ClickableCodeBlock code={OPENCLAW_UPDATE_CMD} />
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono mb-1.5">
+              2. Run setup wizard
+            </p>
+            <CopyableBox value={OPENCLAW_SETUP_CMD} />
+            <p className="text-xs text-gray-400 font-ibm-plex-mono mt-1.5">
+              The wizard will prompt for these values:
+            </p>
+          </div>
+          <div className="border border-gray-200 rounded-sm overflow-hidden bg-white">
+            <WizardPromptRow label="URL" value={baseUrl} />
+            <WizardPromptRow label="Agent ID" value={agentId} />
+            <WizardPromptRow label="API Key" value={apiKey} />
           </div>
           <div>
-            <p className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">Run setup wizard</p>
-            <ClickableCodeBlock code={OPENCLAW_SETUP_CMD} />
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono mb-1.5">
+              3. Restart the gateway
+            </p>
+            <CopyableBox value={OPENCLAW_GATEWAY_RESTART_CMD} />
           </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-2">URL</p>
-            <CopyableCodeField value={baseUrl} layout="fill" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-2">Agent ID</p>
-            <CopyableCodeField value={agentId} layout="hug" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-2">API Key</p>
-            <CopyableCodeField value={apiKey} layout="hug" />
-          </div>
-        </Tabs.Content>
-
-        <Tabs.Content value="hermes" className="space-y-3">
-          <SyntaxHighlighter
-            language="yaml"
-            style={oneLight}
-            customStyle={{
-              margin: 0,
-              fontSize: "0.75rem",
-              borderRadius: "0.125rem",
-              border: "1px solid rgb(229 231 235)",
-            }}
-          >
-            {hermesConfig}
-          </SyntaxHighlighter>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => copy(hermesConfig)}>
-              Copy config
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => downloadText("config.yaml", hermesConfig, "text/yaml")}>
-              Download
-            </Button>
-          </div>
-          <p className="text-xs text-gray-400 font-ibm-plex-mono">Add to your Hermes agent configuration</p>
         </Tabs.Content>
 
         <Tabs.Content value="claude" className="space-y-3">
-          <SyntaxHighlighter
-            language="json"
-            style={oneLight}
-            customStyle={{
-              margin: 0,
-              fontSize: "0.75rem",
-              borderRadius: "0.125rem",
-              border: "1px solid rgb(229 231 235)",
-            }}
-          >
-            {claudeConfig}
-          </SyntaxHighlighter>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => copy(claudeConfig)}>
-              Copy config
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => downloadText("mcp.json", claudeConfig, "application/json")}>
-              Download
-            </Button>
-          </div>
+          <CopyableBox value={claudeConfig} />
           <p className="text-xs text-gray-400 font-ibm-plex-mono">
             Add to ~/.claude/settings.json (global) or .mcp.json (per-project)
           </p>
@@ -382,7 +390,7 @@ export default function AgentApiKeysSection() {
   async function handleGenerateKey(agent: Agent) {
     setGenerating(true);
     try {
-      const result = await agentsService.createToken(agent.id, `${agent.name} API Key`);
+      const result = await agentsService.createToken(agent.id);
       setExpandedSetup({ agentId: agent.id, apiKey: result.key });
       await refreshTokens(agent.id);
       success("Agent API key created");
