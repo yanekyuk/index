@@ -11,7 +11,7 @@
  * gateway creates an isolated session with no channel binding and the
  * reply has nowhere to go.
  *
- * Required gateway config (bootstrapped by `openclaw index-network setup`):
+ * Required gateway config (bootstrapped by `openclaw index setup`):
  *  - `hooks.enabled = true`
  *  - `hooks.token`   = a non-empty secret distinct from `gateway.auth.token`
  *  - `hooks.path`    = a sub-path, defaulting to `/hooks`
@@ -209,7 +209,7 @@ export async function dispatchToMainAgent(
   if (!hooksEnabled || !hooksToken) {
     api.logger.warn(
       'Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset. ' +
-        'Run `openclaw index-network setup` to bootstrap hooks.',
+        'Run `openclaw index setup` to bootstrap hooks.',
     );
     return { delivered: false, error: 'config_error' };
   }

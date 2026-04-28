@@ -121,7 +121,7 @@ export interface OpenClawPluginApi {
   configSet?(path: string, value: unknown): Promise<void>;
   /** Read a value from the OpenClaw config by dot-path (e.g. 'agents.defaults.model'). */
   configGet?(path: string): Promise<unknown>;
-  /** Register a CLI subcommand (e.g. `openclaw index-network setup`). */
+  /** Register a CLI subcommand (e.g. `openclaw index setup`). */
   registerCli?: CliRegistration;
 }
 

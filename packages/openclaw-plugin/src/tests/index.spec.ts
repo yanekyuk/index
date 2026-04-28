@@ -158,12 +158,12 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
   });
 
-  test('warns user to run openclaw index-network setup when not configured', () => {
+  test('warns user to run openclaw index setup when not configured', () => {
     const fake = buildFakeApi({});
     register(fake.api);
 
     const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
-    expect(warnMsg).toContain('openclaw index-network setup');
+    expect(warnMsg).toContain('openclaw index setup');
   });
 
   test('falls back to protocolUrl and warns about migration', () => {
@@ -176,9 +176,35 @@ describe('register(api)', () => {
     const warnCalls = fake.logger.warn.mock.calls as string[][];
     const migrationWarn = warnCalls.find((args) => args[0].includes('deprecated'));
     expect(migrationWarn).toBeTruthy();
-    expect(migrationWarn![0]).toContain('openclaw index-network setup');
+    expect(migrationWarn![0]).toContain('openclaw index setup');
 
     expect(fake.configSetCalls.length).toBe(1);
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
+  });
+
+  test('registers the canonical `index` CLI subcommand', () => {
+    const fake = buildFakeApi({});
+    const registered: string[] = [];
+
+    fake.api.registerCli = mock((_cb, opts?: { descriptors?: Array<{ name: string }> }) => {
+      for (const d of opts?.descriptors ?? []) registered.push(d.name);
+    }) as any;
+
+    register(fake.api);
+
+    expect(registered).toContain('index');
+  });
+
+  test('also registers the deprecated `index-network` alias', () => {
+    const fake = buildFakeApi({});
+    const registered: string[] = [];
+
+    fake.api.registerCli = mock((_cb, opts?: { descriptors?: Array<{ name: string }> }) => {
+      for (const d of opts?.descriptors ?? []) registered.push(d.name);
+    }) as any;
+
+    register(fake.api);
+
+    expect(registered).toContain('index-network');
   });
 });

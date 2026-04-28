@@ -3,7 +3,7 @@
  *
  * Registered via `api.registerCli()` and invoked as:
  *
- *   openclaw index-network setup
+ *   openclaw index setup
  *
  * Collects url, apiKey, and mainAgentToolUse, resolves the caller's
  * agentId from the API key via GET /api/agents/me, then writes plugin
@@ -218,12 +218,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 }
 
 /**
- * Registers the `openclaw index-network setup` CLI command.
- *
- * @param program - Commander program instance provided by OpenClaw's `registerCli`.
- * @param api     - Plugin API for reading config and calling `configSet`.
- */
-/**
  * Read the OpenClaw config file, or return an empty object if missing.
  */
 function readOpenClawConfig(): Record<string, unknown> {
@@ -256,6 +250,7 @@ export function registerSetupCli(
     command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } };
     commands?: Array<{ name(): string }>;
   },
+  opts?: { deprecationWarning?: string },
 ): void {
   // Guard against duplicate registration — OpenClaw may invoke the callback multiple times.
   if (program.commands?.some((c) => c.name() === 'setup')) return;
@@ -264,6 +259,10 @@ export function registerSetupCli(
     .command('setup')
     .description('Interactive setup wizard for Index Network')
     .action(async () => {
+      if (opts?.deprecationWarning) {
+        console.warn(opts.deprecationWarning);
+      }
+
       const cfg = readOpenClawConfig();
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -289,7 +288,6 @@ export function registerSetupCli(
 
       try {
         await runSetup(ctx);
-        // Write the entire config back in one atomic operation
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
         console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
         console.log('Restart the gateway to apply changes: openclaw gateway restart');
