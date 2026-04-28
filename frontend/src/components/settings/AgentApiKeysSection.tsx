@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { Check, Copy, Loader2, Plus, Trash2 } from "lucide-react";
@@ -8,7 +9,19 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAgents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import {
+  buildMcpConfigs,
+  OPENCLAW_INSTALL_CMD,
+  OPENCLAW_SETUP_CMD,
+  OPENCLAW_UPDATE_CMD,
+} from "@/lib/mcp-config";
 import type { Agent, AgentTokenInfo } from "@/services/agents";
+
+const SETUP_TABS: ReadonlyArray<readonly [value: string, label: string]> = [
+  ["openclaw", "OpenClaw"],
+  ["hermes", "Hermes"],
+  ["claude", "Claude Code"],
+] as const;
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Never";
@@ -21,32 +34,6 @@ function formatDate(dateStr: string | null): string {
 
 function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
-}
-
-function buildMcpConfigs(apiKey: string) {
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
-  const mcpUrl = `${protocolUrl}/mcp`;
-  const claudeConfig = JSON.stringify(
-    {
-      mcpServers: {
-        "index-network": {
-          type: "http",
-          url: mcpUrl,
-          headers: {
-            "x-api-key": apiKey,
-          },
-        },
-      },
-    },
-    null,
-    2,
-  );
-  const hermesConfig = `mcp_servers:
-  - name: index-network
-    url: ${mcpUrl}
-    headers:
-      x-api-key: ${apiKey}`;
-  return { claudeConfig, hermesConfig, mcpUrl };
 }
 
 function downloadText(filename: string, content: string, mime: string) {
@@ -80,8 +67,18 @@ function ClickableCodeBlock({ code }: { code: string }) {
       className="relative w-full text-left group bg-gray-50 border border-gray-200 rounded-sm p-3 hover:bg-green-50 hover:border-green-300 transition-colors"
     >
       <span className="block text-xs text-gray-700 font-mono whitespace-pre-wrap break-all pr-16">{code}</span>
-      <span className="absolute top-2 right-2 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
-        {copied ? "✓ Copied" : "⧉ Copy"}
+      <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+        {copied ? (
+          <>
+            <Check className="w-3 h-3" />
+            Copied
+          </>
+        ) : (
+          <>
+            <Copy className="w-3 h-3" />
+            Copy
+          </>
+        )}
       </span>
     </button>
   );
@@ -146,10 +143,6 @@ function InlineSetupPanel({
 }) {
   const { claudeConfig, hermesConfig } = useMemo(() => buildMcpConfigs(apiKey), [apiKey]);
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  const openclawInstall =
-    "openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin";
-  const openclawUpdate = "openclaw plugins update indexnetwork-openclaw-plugin";
-  const openclawSetup = "openclaw index-network setup";
 
   async function copy(text: string) {
     try {
@@ -170,9 +163,9 @@ function InlineSetupPanel({
 
       <Tabs.Root defaultValue="openclaw" className="w-full">
         <Tabs.List className="flex w-full gap-0 border-b border-amber-200 mb-4">
-          {(["openclaw", "hermes", "claude"] as const).map((tab) => (
-            <Tabs.Trigger key={tab} value={tab} className={subTabTriggerClass}>
-              {tab === "openclaw" ? "OpenClaw" : tab === "hermes" ? "Hermes" : "Claude Code"}
+          {SETUP_TABS.map(([value, label]) => (
+            <Tabs.Trigger key={value} value={value} className={subTabTriggerClass}>
+              {label}
             </Tabs.Trigger>
           ))}
         </Tabs.List>
@@ -180,15 +173,15 @@ function InlineSetupPanel({
         <Tabs.Content value="openclaw" className="space-y-4">
           <div>
             <p className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">Install (first time)</p>
-            <ClickableCodeBlock code={openclawInstall} />
+            <ClickableCodeBlock code={OPENCLAW_INSTALL_CMD} />
           </div>
           <div>
             <p className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">Update (if already installed)</p>
-            <ClickableCodeBlock code={openclawUpdate} />
+            <ClickableCodeBlock code={OPENCLAW_UPDATE_CMD} />
           </div>
           <div>
             <p className="text-sm font-medium font-ibm-plex-mono text-gray-700 block mb-1.5">Run setup wizard</p>
-            <ClickableCodeBlock code={openclawSetup} />
+            <ClickableCodeBlock code={OPENCLAW_SETUP_CMD} />
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-2">URL</p>
@@ -284,11 +277,19 @@ export default function AgentApiKeysSection() {
   const [connecting, setConnecting] = useState(false);
   const [expandedSetup, setExpandedSetup] = useState<{ agentId: string; apiKey: string } | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [keysVersion, setKeysVersion] = useState(0);
   const [agentKeys, setAgentKeys] = useState<AgentTokenInfo[]>([]);
+  const [revokeTarget, setRevokeTarget] = useState<{ agent: Agent; tokenId: string } | null>(null);
+  const [revoking, setRevoking] = useState(false);
+
+  const tokensRequestRef = useRef(0);
 
   const personalAgents = useMemo(() => agents.filter((a) => a.type === "personal"), [agents]);
   const primaryAgent = personalAgents[0] ?? null;
+
+  // Defensive: clear plaintext API key from memory on unmount.
+  useEffect(() => {
+    return () => setExpandedSetup(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -311,24 +312,40 @@ export default function AgentApiKeysSection() {
     };
   }, [agentsService, error]);
 
+  const refreshTokens = useCallback(
+    async (agentId: string) => {
+      const reqId = ++tokensRequestRef.current;
+      try {
+        const tokens = await agentsService.listTokens(agentId);
+        if (tokensRequestRef.current === reqId) {
+          setAgentKeys(tokens);
+        }
+      } catch (err) {
+        if (tokensRequestRef.current === reqId) {
+          error("Failed to load API keys", err instanceof Error ? err.message : undefined);
+        }
+      }
+    },
+    [agentsService, error],
+  );
+
   useEffect(() => {
     if (!primaryAgent) {
-      setAgentKeys([]);
+      tokensRequestRef.current += 1;
       return;
     }
-    let cancelled = false;
+    const reqId = ++tokensRequestRef.current;
     agentsService
       .listTokens(primaryAgent.id)
       .then((tokens) => {
-        if (!cancelled) setAgentKeys(tokens);
+        if (tokensRequestRef.current === reqId) setAgentKeys(tokens);
       })
-      .catch(() => {
-        if (!cancelled) setAgentKeys([]);
+      .catch((err) => {
+        if (tokensRequestRef.current === reqId) {
+          error("Failed to load API keys", err instanceof Error ? err.message : undefined);
+        }
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [agentsService, primaryAgent, keysVersion]);
+  }, [agentsService, primaryAgent, error]);
 
   async function refreshAgents() {
     const next = await agentsService.list();
@@ -337,15 +354,25 @@ export default function AgentApiKeysSection() {
 
   async function handleCreateAgent() {
     setConnecting(true);
+    const name = generateDefaultAgentName(personalAgents);
+    let createdAgent: Agent | null = null;
     try {
-      const name = generateDefaultAgentName(personalAgents);
-      const agent = await agentsService.create(name);
-      const token = await agentsService.createToken(agent.id);
+      createdAgent = await agentsService.create(name);
+      const token = await agentsService.createToken(createdAgent.id);
       await refreshAgents();
-      setExpandedSetup({ agentId: agent.id, apiKey: token.key });
-      setKeysVersion((v) => v + 1);
+      setExpandedSetup({ agentId: createdAgent.id, apiKey: token.key });
+      await refreshTokens(createdAgent.id);
       success("Agent connected");
     } catch (err) {
+      // Compensate: if the agent was created but token issuance failed,
+      // delete the orphan agent so the user can retry cleanly.
+      if (createdAgent) {
+        try {
+          await agentsService.delete(createdAgent.id);
+        } catch {
+          /* best-effort cleanup */
+        }
+      }
       error("Failed to connect agent", err instanceof Error ? err.message : undefined);
     } finally {
       setConnecting(false);
@@ -357,7 +384,7 @@ export default function AgentApiKeysSection() {
     try {
       const result = await agentsService.createToken(agent.id, `${agent.name} API Key`);
       setExpandedSetup({ agentId: agent.id, apiKey: result.key });
-      setKeysVersion((v) => v + 1);
+      await refreshTokens(agent.id);
       success("Agent API key created");
     } catch (err) {
       error("Failed to create agent API key", err instanceof Error ? err.message : undefined);
@@ -366,17 +393,20 @@ export default function AgentApiKeysSection() {
     }
   }
 
-  async function handleRevokeKey(agent: Agent, tokenId: string) {
-    if (!window.confirm(`Revoke API key for "${agent.name}"?`)) {
-      return;
-    }
+  async function performRevoke() {
+    if (!revokeTarget) return;
+    const { agent, tokenId } = revokeTarget;
+    setRevoking(true);
     try {
       await agentsService.revokeToken(agent.id, tokenId);
       setExpandedSetup((cur) => (cur?.agentId === agent.id ? null : cur));
-      setKeysVersion((v) => v + 1);
+      await refreshTokens(agent.id);
       success("Agent API key revoked");
+      setRevokeTarget(null);
     } catch (err) {
       error("Failed to revoke agent API key", err instanceof Error ? err.message : undefined);
+    } finally {
+      setRevoking(false);
     }
   }
 
@@ -388,97 +418,131 @@ export default function AgentApiKeysSection() {
     );
   }
 
-  if (!primaryAgent) {
-    return (
-      <div className="space-y-4 max-w-2xl">
-        <div className="space-y-3">
-          <p className="text-xs text-gray-400 font-ibm-plex-mono">
-            Create an agent to generate API keys for MCP (Claude Code, Hermes, OpenClaw).
-          </p>
-          <Button onClick={handleCreateAgent} disabled={connecting}>
-            {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
-            Create agent
-          </Button>
-        </div>
-        {expandedSetup ? (
-          <InlineSetupPanel
-            agentId={expandedSetup.agentId}
-            apiKey={expandedSetup.apiKey}
-            onDismiss={() => setExpandedSetup(null)}
-          />
-        ) : null}
-      </div>
-    );
-  }
-
-  const showSetup = expandedSetup?.agentId === primaryAgent.id;
+  const showSetup =
+    primaryAgent !== null && expandedSetup?.agentId === primaryAgent.id;
 
   return (
-    <div className="max-w-3xl space-y-3">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-            API Keys
-          </p>
-          <Button size="sm" onClick={() => handleGenerateKey(primaryAgent)} disabled={generating}>
-            {generating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-            Generate Key
-          </Button>
-        </div>
-
-        {agentKeys.length === 0 ? (
-          <p className="text-xs text-gray-400 font-ibm-plex-mono">No API keys yet.</p>
-        ) : (
-          <div className="border border-gray-200 rounded-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                    Key
-                  </th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                    Created
-                  </th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                    Last used
-                  </th>
-                  <th className="text-right px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {agentKeys.map((key) => (
-                  <tr key={key.id} className="border-b border-gray-100 last:border-b-0">
-                    <td className="px-4 py-2 font-mono text-xs text-gray-500">{maskKey(key.start)}</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.createdAt)}</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.lastUsedAt)}</td>
-                    <td className="px-4 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleRevokeKey(primaryAgent, key.id)}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                        title="Revoke key"
-                        aria-label="Revoke key"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <>
+      {!primaryAgent ? (
+        <div className="space-y-4 max-w-2xl">
+          <div className="space-y-3">
+            <p className="text-xs text-gray-400 font-ibm-plex-mono">
+              Create an agent to generate API keys for MCP (Claude Code, Hermes, OpenClaw).
+            </p>
+            <Button onClick={handleCreateAgent} disabled={connecting}>
+              {connecting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+              Create agent
+            </Button>
           </div>
-        )}
-      </div>
+          {expandedSetup ? (
+            <InlineSetupPanel
+              agentId={expandedSetup.agentId}
+              apiKey={expandedSetup.apiKey}
+              onDismiss={() => setExpandedSetup(null)}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <div className="max-w-3xl space-y-3">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                API Keys
+              </p>
+              <Button size="sm" onClick={() => handleGenerateKey(primaryAgent)} disabled={generating}>
+                {generating ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                Generate Key
+              </Button>
+            </div>
 
-      {showSetup && expandedSetup ? (
-        <InlineSetupPanel
-          agentId={primaryAgent.id}
-          apiKey={expandedSetup.apiKey}
-          onDismiss={() => setExpandedSetup(null)}
-        />
-      ) : null}
-    </div>
+            {agentKeys.length === 0 ? (
+              <p className="text-xs text-gray-400 font-ibm-plex-mono">No API keys yet.</p>
+            ) : (
+              <div className="border border-gray-200 rounded-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                        Key
+                      </th>
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                        Created
+                      </th>
+                      <th className="text-left px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                        Last used
+                      </th>
+                      <th className="text-right px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {agentKeys.map((key) => (
+                      <tr key={key.id} className="border-b border-gray-100 last:border-b-0">
+                        <td className="px-4 py-2 font-mono text-xs text-gray-500">{maskKey(key.start)}</td>
+                        <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.createdAt)}</td>
+                        <td className="px-4 py-2 text-sm text-gray-500">{formatDate(key.lastUsedAt)}</td>
+                        <td className="px-4 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setRevokeTarget({ agent: primaryAgent, tokenId: key.id })}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                            title="Revoke key"
+                            aria-label="Revoke key"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {showSetup && expandedSetup ? (
+            <InlineSetupPanel
+              agentId={primaryAgent.id}
+              apiKey={expandedSetup.apiKey}
+              onDismiss={() => setExpandedSetup(null)}
+            />
+          ) : null}
+        </div>
+      )}
+
+      <AlertDialog.Root
+        open={revokeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !revoking) setRevokeTarget(null);
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Revoke API key</AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+              {revokeTarget
+                ? `Revoke API key for "${revokeTarget.agent.name}"? Any client using this key will stop working immediately.`
+                : ""}
+            </AlertDialog.Description>
+            <div className="flex justify-end gap-3">
+              <AlertDialog.Cancel asChild>
+                <Button variant="outline" disabled={revoking}>
+                  Cancel
+                </Button>
+              </AlertDialog.Cancel>
+              <Button
+                onClick={performRevoke}
+                disabled={revoking}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {revoking ? "Revoking..." : "Revoke"}
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </>
   );
 }

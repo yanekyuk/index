@@ -95,6 +95,7 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetForm mirrors server-fetched user into editable form fields; legitimate sync-from-external-state pattern.
     resetForm(user);
   }, [user, resetForm]);
 
@@ -212,24 +213,19 @@ export default function ProfilePage() {
 
           <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
             <Tabs.List className="flex flex-wrap gap-x-1 border-b border-gray-200 mb-8">
-              <Tabs.Trigger
-                value="profile"
-                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-              >
-                Profile Settings
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="notifications"
-                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-              >
-                Notification Settings
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="api-keys"
-                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-              >
-                API Keys
-              </Tabs.Trigger>
+              {([
+                ["profile", "Profile Settings"],
+                ["notifications", "Notification Settings"],
+                ["api-keys", "API Keys"],
+              ] as const).map(([value, label]) => (
+                <Tabs.Trigger
+                  key={value}
+                  value={value}
+                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent outline-none data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2"
+                >
+                  {label}
+                </Tabs.Trigger>
+              ))}
             </Tabs.List>
 
             <Tabs.Content value="profile">

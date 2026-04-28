@@ -23,6 +23,12 @@ import {
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents, useUsers } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import {
+  buildMcpConfigs,
+  OPENCLAW_INSTALL_CMD,
+  OPENCLAW_SETUP_CMD,
+  OPENCLAW_UPDATE_CMD,
+} from "@/lib/mcp-config";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -662,36 +668,8 @@ function OpenClawSetup({
 function SetupInstructions({ apiKey }: { apiKey?: string }) {
   const [expanded, setExpanded] = useState(false);
   const keyValue = apiKey || "YOUR_API_KEY";
-
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
   const baseUrl = window.location.origin;
-  const mcpUrl = `${protocolUrl}/mcp`;
-
-  const claudeConfig = JSON.stringify(
-    {
-      mcpServers: {
-        "index-network": {
-          type: "http",
-          url: mcpUrl,
-          headers: {
-            "x-api-key": keyValue,
-          },
-        },
-      },
-    },
-    null,
-    2,
-  );
-
-  const hermesConfig = `mcp_servers:
-  - name: index-network
-    url: ${mcpUrl}
-    headers:
-      x-api-key: ${keyValue}`;
-
-  const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
-  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
-  const openclawSetup = `openclaw index-network setup`;
+  const { claudeConfig, hermesConfig } = buildMcpConfigs(keyValue);
 
   return (
     <div className="border border-gray-200 rounded-sm">
@@ -715,7 +693,11 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
+            <OpenClawSetup
+              install={OPENCLAW_INSTALL_CMD}
+              update={OPENCLAW_UPDATE_CMD}
+              setup={OPENCLAW_SETUP_CMD}
+            />
             <WizardPromptGrid serverUrl={baseUrl} apiKey={keyValue} />
           </div>
         </div>
