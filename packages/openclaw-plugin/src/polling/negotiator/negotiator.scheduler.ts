@@ -21,7 +21,7 @@ export interface NegotiatorSchedulerConfig {
 export function start(config: NegotiatorSchedulerConfig): void {
   if (timer) { clearTimeout(timer); }
   const trigger = () => {
-    fetch(`http://127.0.0.1:${config.gatewayPort}/index-network/poll/negotiator`, {
+    fetch(`http://127.0.0.1:${config.gatewayPort}/index/poll/negotiator`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.gatewayToken}` },
       signal: AbortSignal.timeout(30_000),

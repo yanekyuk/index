@@ -4,14 +4,14 @@
  * Registers three HTTP routes across four polling domains and starts their
  * respective schedulers:
  *
- *   POST /index-network/poll/negotiator         — negotiation turn pickup
- *   POST /index-network/poll/ambient-discovery  — opportunity batch evaluation
- *   POST /index-network/poll/test-message       — test message pickup
+ *   POST /index/poll/negotiator         — negotiation turn pickup
+ *   POST /index/poll/ambient-discovery  — opportunity batch evaluation
+ *   POST /index/poll/test-message       — test message pickup
  *
  * Daily digest is scheduled directly (no HTTP route needed).
  *
  * Uses `definePluginEntry` from the OpenClaw plugin SDK so that CLI commands
- * (e.g. `openclaw index-network setup`) are properly registered.
+ * (e.g. `openclaw index setup`) are properly registered.
  */
 
 import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
@@ -30,8 +30,11 @@ import { deriveUrls } from './lib/utils/url.js';
 let registered = false;
 
 /**
- * Registers the `openclaw index-network setup` CLI command if the host
- * supports `registerCli`. Safe to call even when the plugin is unconfigured.
+ * Registers the `openclaw index setup` CLI command if the host supports
+ * `registerCli`. Also registers `openclaw index-network setup` as a deprecated
+ * alias for one minor version (drop in 0.23.0).
+ *
+ * Safe to call even when the plugin is unconfigured.
  */
 function registerSetupCommand(api: OpenClawPluginApi): void {
   if (!api.registerCli) {
@@ -42,27 +45,40 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
   api.registerCli(
     ({ program }) => {
       const cmd = (program as { command(n: string): { description(d: string): unknown } })
-        .command('index-network')
+        .command('index')
         .description('Manage Index Network plugin configuration');
       registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
+
+      // Deprecated alias — same handler, prints a warning. Remove in 0.23.0.
+      const aliasCmd = (program as { command(n: string): { description(d: string): unknown } })
+        .command('index-network')
+        .description('[Deprecated — use `openclaw index`] Manage Index Network plugin configuration');
+      registerSetupCli(aliasCmd as Parameters<typeof registerSetupCli>[0], {
+        deprecationWarning: 'Note: `openclaw index-network setup` is deprecated. Use `openclaw index setup` instead. The alias will be removed in 0.23.0.',
+      });
     },
-    { descriptors: [{ name: 'index-network', description: 'Manage Index Network plugin configuration' }] },
+    {
+      descriptors: [
+        { name: 'index', description: 'Manage Index Network plugin configuration' },
+        { name: 'index-network', description: '[Deprecated alias for `index`]' },
+      ],
+    },
   );
 }
 
 /**
- * Ensures the `index-network` MCP server definition in OpenClaw config
- * matches the current plugin config. Creates or updates as needed.
+ * Ensures the `index` MCP server definition in OpenClaw config matches the
+ * current plugin config. Creates or updates as needed. Also cleans up any
+ * legacy `index-network` entry left behind by pre-0.22.0 installs.
  */
 function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string): void {
-  if (!api.configSet) {
+  const configSet = api.configSet;
+  if (!configSet) {
     api.logger.debug('configSet not available — skipping MCP auto-registration.');
     return;
   }
-  // Never overwrite MCP config with an empty key — an empty apiKey means the
-  // plugin is not yet configured, not that the key should be blanked out.
   if (!apiKey) {
-    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index-network setup`.');
+    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index setup`.');
     return;
   }
 
@@ -73,20 +89,34 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     headers: { 'x-api-key': apiKey },
   };
 
-  const current = api.config?.mcp?.servers?.['index-network'];
+  const current = api.config?.mcp?.servers?.['index'];
   const needsUpdate =
     !current ||
     current.url !== expected.url ||
     current.transport !== expected.transport ||
     current.headers?.['x-api-key'] !== apiKey;
 
-  if (needsUpdate) {
-    api.configSet('mcp.servers.index-network', expected).then(
+  // Write the new key. When a legacy key exists, delete it first so both ops
+  // don't race on the same config file (configSet is read-modify-write).
+  const writeNewKey = () => {
+    if (!needsUpdate) return;
+    configSet('mcp.servers.index', expected).then(
       () => api.logger.info('Index Network MCP server registered/updated.'),
       (err) => api.logger.warn(
         `Failed to auto-register MCP server: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
+  };
+
+  const legacy = api.config?.mcp?.servers?.['index-network'];
+  if (legacy !== undefined) {
+    // Delete legacy key first, then write new key so the two writes are sequential.
+    configSet('mcp.servers.index-network', undefined).then(
+      () => { api.logger.info('Migrated legacy mcp.servers.index-network → mcp.servers.index.'); writeNewKey(); },
+      () => writeNewKey(), // cleanup failed — proceed with canonical write anyway
+    );
+  } else {
+    writeNewKey();
   }
 }
 
@@ -101,7 +131,7 @@ export function register(api: OpenClawPluginApi): void {
   }
   registered = true;
 
-  // Register `openclaw index-network setup` CLI command unconditionally
+  // Register `openclaw index setup` CLI command unconditionally
   registerSetupCommand(api);
 
   const agentId = readConfig(api, 'agentId');
@@ -109,7 +139,7 @@ export function register(api: OpenClawPluginApi): void {
 
   if (!agentId || !apiKey) {
     api.logger.warn(
-      'Index Network plugin not configured. Run `openclaw index-network setup` to complete setup.',
+      'Index Network plugin not configured. Run `openclaw index setup` to complete setup.',
     );
     return;
   }
@@ -118,7 +148,7 @@ export function register(api: OpenClawPluginApi): void {
   const legacyProtocolUrl = readConfig(api, 'protocolUrl');
   if (!urlFromConfig && legacyProtocolUrl) {
     api.logger.warn(
-      'Plugin config uses deprecated "protocolUrl". Run `openclaw index-network setup` to migrate to the new "url" field.',
+      'Plugin config uses deprecated "protocolUrl". Run `openclaw index setup` to migrate to the new "url" field.',
     );
   }
   const configUrl = urlFromConfig || legacyProtocolUrl || 'https://index.network';
@@ -129,7 +159,7 @@ export function register(api: OpenClawPluginApi): void {
 
   // Register test-message route
   api.registerHttpRoute({
-    path: '/index-network/poll/test-message',
+    path: '/index/poll/test-message',
     auth: 'gateway',
     match: 'exact',
     handler: async (_req, res) => {
@@ -153,7 +183,7 @@ export function register(api: OpenClawPluginApi): void {
   const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
   if (negotiationMode !== 'disabled') {
     api.registerHttpRoute({
-      path: '/index-network/poll/negotiator',
+      path: '/index/poll/negotiator',
       auth: 'gateway',
       match: 'exact',
       handler: async (_req, res) => {
@@ -183,7 +213,7 @@ export function register(api: OpenClawPluginApi): void {
 
   // Register ambient discovery route
   api.registerHttpRoute({
-    path: '/index-network/poll/ambient-discovery',
+    path: '/index/poll/ambient-discovery',
     auth: 'gateway',
     match: 'exact',
     handler: async (_req, res) => {
