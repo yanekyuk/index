@@ -4,9 +4,9 @@
  * Registers three HTTP routes across four polling domains and starts their
  * respective schedulers:
  *
- *   POST /index-network/poll/negotiator         — negotiation turn pickup
- *   POST /index-network/poll/ambient-discovery  — opportunity batch evaluation
- *   POST /index-network/poll/test-message       — test message pickup
+ *   POST /index/poll/negotiator         — negotiation turn pickup
+ *   POST /index/poll/ambient-discovery  — opportunity batch evaluation
+ *   POST /index/poll/test-message       — test message pickup
  *
  * Daily digest is scheduled directly (no HTTP route needed).
  *
@@ -153,7 +153,7 @@ export function register(api: OpenClawPluginApi): void {
 
   // Register test-message route
   api.registerHttpRoute({
-    path: '/index-network/poll/test-message',
+    path: '/index/poll/test-message',
     auth: 'gateway',
     match: 'exact',
     handler: async (_req, res) => {
@@ -177,7 +177,7 @@ export function register(api: OpenClawPluginApi): void {
   const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
   if (negotiationMode !== 'disabled') {
     api.registerHttpRoute({
-      path: '/index-network/poll/negotiator',
+      path: '/index/poll/negotiator',
       auth: 'gateway',
       match: 'exact',
       handler: async (_req, res) => {
@@ -207,7 +207,7 @@ export function register(api: OpenClawPluginApi): void {
 
   // Register ambient discovery route
   api.registerHttpRoute({
-    path: '/index-network/poll/ambient-discovery',
+    path: '/index/poll/ambient-discovery',
     auth: 'gateway',
     match: 'exact',
     handler: async (_req, res) => {
