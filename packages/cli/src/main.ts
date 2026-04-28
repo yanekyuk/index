@@ -77,8 +77,28 @@ function helpRowCont(leftW: number, right: string): string {
 
 /** Print grouped help (rounded panels). */
 function renderHelp(): void {
-  const gsLefts = ["index login", 'index intent create "..."', "index negotiation list", "index opportunity list"];
+  const gsLefts = [
+    "index login",
+    "index login --token <token>",
+    "index logout",
+    'index intent create "..."',
+    "index negotiation list",
+    "index opportunity list",
+  ];
   const gsLW = Math.max(...gsLefts.map((s) => s.length));
+
+  const formsLefts = [
+    'index conversation "message"',
+    "index conversation --session <id>",
+    "index sync --json",
+    "index profile create",
+    "index profile update",
+    "index intent list",
+    "index negotiation list",
+    "index opportunity list",
+    "index opportunity discover",
+  ];
+  const formsLW = Math.max(...formsLefts.map((s) => s.length));
 
   const cmdLefts = [
     "pattern",
@@ -96,7 +116,29 @@ function renderHelp(): void {
   ];
   const cmdLW = Math.max(...cmdLefts.map((s) => s.length));
 
-  const optLefts = ["--api-url <url>", "--token <token>", "--json", "--help", "--version"];
+  const optLefts = [
+    "--api-url <url>",
+    "--app-url <url>",
+    "--token <token>",
+    "--session <id>",
+    "--archived",
+    "--status <status>",
+    "--limit <n>",
+    "--since <date>",
+    "--json",
+    "--name <name>",
+    "--gmail",
+    "--objective <text>",
+    "--target <uid>",
+    "--introduce <uid>",
+    "--linkedin <url>",
+    "--github <url>",
+    "--twitter <url>",
+    "--title <text>",
+    "--details <text>",
+    "--help",
+    "--version",
+  ];
   const optLW = Math.max(...optLefts.map((s) => s.length));
 
   console.log();
@@ -107,9 +149,24 @@ function renderHelp(): void {
 
   panel("getting started", [
     helpRowCmd(gsLW, "index login", "authenticate via browser"),
+    helpRowCmd(gsLW, "index login --token <token>", "authenticate with a bearer token"),
+    helpRowCmd(gsLW, "index logout", "clear stored session"),
     helpRowCmd(gsLW, 'index intent create "..."', "describe what you're looking for"),
     helpRowCmd(gsLW, "index negotiation list", "see agent debates in progress"),
     helpRowCmd(gsLW, "index opportunity list", "see what was found for you"),
+  ]);
+
+  panel("common forms", [
+    helpRowCmd(formsLW, 'index conversation "message"', "send a one-shot agent message"),
+    helpRowCmd(formsLW, "index conversation --session <id>", "resume an agent chat session"),
+    helpRowCmd(formsLW, "index sync --json", "print synced context as JSON"),
+    "",
+    helpRowCmd(formsLW, "index profile create", "use social URL flags"),
+    helpRowCmd(formsLW, "index profile update", "use action text or --details"),
+    helpRowCmd(formsLW, "index intent list", "supports --archived and --limit"),
+    helpRowCmd(formsLW, "index negotiation list", "supports --since and --limit"),
+    helpRowCmd(formsLW, "index opportunity list", "supports --status and --limit"),
+    helpRowCmd(formsLW, "index opportunity discover", "supports --target and --introduce"),
   ]);
 
   panel("commands", [
@@ -134,8 +191,24 @@ function renderHelp(): void {
 
   panel("options", [
     helpRowDim(optLW, "--api-url <url>", "override API server URL"),
+    helpRowDim(optLW, "--app-url <url>", "override app URL for login"),
     helpRowDim(optLW, "--token <token>", "provide bearer token directly"),
+    helpRowDim(optLW, "--session <id>", "resume a chat session"),
+    helpRowDim(optLW, "--archived", "include archived signals"),
+    helpRowDim(optLW, "--status <status>", "filter opportunities by status"),
+    helpRowDim(optLW, "--limit <n>", "limit number of results"),
+    helpRowDim(optLW, "--since <date>", "filter by ISO date or duration"),
     helpRowDim(optLW, "--json", "output raw JSON"),
+    helpRowDim(optLW, "--name <name>", "name for contact add"),
+    helpRowDim(optLW, "--gmail", "import contacts from Gmail"),
+    helpRowDim(optLW, "--objective <text>", "objective for scrape command"),
+    helpRowDim(optLW, "--target <uid>", "target user for opportunity discovery"),
+    helpRowDim(optLW, "--introduce <uid>", "source user for introduction discovery"),
+    helpRowDim(optLW, "--linkedin <url>", "LinkedIn URL for profile create"),
+    helpRowDim(optLW, "--github <url>", "GitHub URL for profile create"),
+    helpRowDim(optLW, "--twitter <url>", "Twitter URL for profile create"),
+    helpRowDim(optLW, "--title <text>", "title for network update"),
+    helpRowDim(optLW, "--details <text>", "details for profile update"),
     helpRowDim(optLW, "--help", "show help for any command"),
     helpRowDim(optLW, "--version", "show version"),
   ]);
