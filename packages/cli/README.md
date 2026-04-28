@@ -159,7 +159,7 @@ index profile show <user-id>        # Show another user's profile
 index profile sync                  # Regenerate your profile
 index profile search <query>        # Search profiles by name or keyword
 index profile create                # Generate profile from social links
-index profile update <details>      # Update profile details
+index profile update <action> [--details <text>]  # Update profile (action is the verb-phrase, e.g. "add interests")
 ```
 
 ### `index contact`

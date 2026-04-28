@@ -183,12 +183,12 @@ The `index intent` command exposes subcommands for managing intents (user-facing
 
 ### `index intent link <id> <network-id>`
 
-1. Calls `create_intent_index` tool via Tool HTTP API with `{ intentId, indexId }`.
+1. Calls `create_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
 2. Prints "Signal linked to network." on success, error on failure.
 
 ### `index intent unlink <id> <network-id>`
 
-1. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, indexId }`.
+1. Calls `delete_intent_index` tool via Tool HTTP API with `{ intentId, networkId }`.
 2. Prints "Signal unlinked from network." on success, error on failure.
 
 ### `index intent links <id>`
@@ -205,7 +205,7 @@ The `index negotiation` command exposes subcommands for inspecting agent negotia
 ### `index negotiation list`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls `GET /api/agents/:agentId/negotiations` with optional query params (`limit`, `since`).
+2. Resolves the authenticated user via `GET /api/auth/me`, then calls `GET /api/users/:userId/negotiations` with optional query params (`limit`, `since`).
 3. Renders a table with columns: ID (short), counterparty name, outcome (opportunity/no match), role (helper/seeker/peer), turns, created date.
 4. Supports `--limit <n>` and `--since <date|duration>` (ISO date or human-friendly duration like `1h`, `2d`, `1w`).
 
