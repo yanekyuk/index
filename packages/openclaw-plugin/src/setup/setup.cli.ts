@@ -207,6 +207,14 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     ]);
   }
 
+  // --- Migrate legacy mcp.servers.index-network → mcp.servers.index ---
+  // One-shot cleanup so users who installed pre-0.22.0 don't end up with two
+  // entries. Always runs before the fresh write so the new key wins on conflict.
+  const legacyMcp = getRawAt(ctx.cfg, 'mcp.servers.index-network');
+  if (legacyMcp !== undefined) {
+    await ctx.configSet('mcp.servers.index-network', undefined);
+  }
+
   // --- Register MCP server ---
   const normalizedProtocolUrl = protocolUrl.replace(/\/+$/, '');
   const mcpDef = {
@@ -214,7 +222,7 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     transport: 'streamable-http',
     headers: { 'x-api-key': resolvedApiKey },
   };
-  await ctx.configSet('mcp.servers.index-network', mcpDef);
+  await ctx.configSet('mcp.servers.index', mcpDef);
 }
 
 /**

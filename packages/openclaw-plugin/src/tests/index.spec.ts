@@ -102,7 +102,7 @@ describe('register(api)', () => {
     register(fake.api);
 
     expect(fake.configSetCalls.length).toBe(1);
-    expect(fake.configSetCalls[0].path).toBe('mcp.servers.index-network');
+    expect(fake.configSetCalls[0].path).toBe('mcp.servers.index');
     expect(fake.configSetCalls[0].value).toEqual({
       url: 'https://protocol.index.network/mcp',
       transport: 'streamable-http',
@@ -115,7 +115,7 @@ describe('register(api)', () => {
       { agentId: 'agent-1', apiKey: 'key-1', url: 'https://index.network' },
       {
         mcpServers: {
-          'index-network': {
+          'index': {
             url: 'https://protocol.index.network/mcp',
             transport: 'streamable-http',
             headers: { 'x-api-key': 'key-1' },
@@ -133,7 +133,7 @@ describe('register(api)', () => {
       { agentId: 'agent-1', apiKey: 'new-key', url: 'https://index.network' },
       {
         mcpServers: {
-          'index-network': {
+          'index': {
             url: 'https://protocol.index.network/mcp',
             transport: 'streamable-http',
             headers: { 'x-api-key': 'old-key' },
@@ -206,5 +206,33 @@ describe('register(api)', () => {
     register(fake.api);
 
     expect(registered).toContain('index-network');
+  });
+
+  test('writes mcp.servers.index when api key is present', () => {
+    const fake = buildFakeApi({ agentId: 'a', apiKey: 'k' });
+    register(fake.api);
+
+    const setCalls = (fake.api.configSet as ReturnType<typeof mock>).mock.calls as Array<[string, unknown]>;
+    expect(setCalls.map(([p]) => p)).toContain('mcp.servers.index');
+  });
+
+  test('migrates legacy mcp.servers.index-network on register', () => {
+    const fake = buildFakeApi(
+      { agentId: 'a', apiKey: 'k' },
+      {
+        mcpServers: {
+          'index-network': {
+            url: 'old',
+            transport: 'streamable-http',
+            headers: { 'x-api-key': 'k' },
+          },
+        },
+      },
+    );
+    register(fake.api);
+
+    const setCalls = (fake.api.configSet as ReturnType<typeof mock>).mock.calls as Array<[string, unknown]>;
+    const cleanup = setCalls.find(([p, v]) => p === 'mcp.servers.index-network' && v === undefined);
+    expect(cleanup).toBeDefined();
   });
 });

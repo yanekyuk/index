@@ -67,16 +67,15 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
 }
 
 /**
- * Ensures the `index-network` MCP server definition in OpenClaw config
- * matches the current plugin config. Creates or updates as needed.
+ * Ensures the `index` MCP server definition in OpenClaw config matches the
+ * current plugin config. Creates or updates as needed. Also cleans up any
+ * legacy `index-network` entry left behind by pre-0.22.0 installs.
  */
 function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string): void {
   if (!api.configSet) {
     api.logger.debug('configSet not available — skipping MCP auto-registration.');
     return;
   }
-  // Never overwrite MCP config with an empty key — an empty apiKey means the
-  // plugin is not yet configured, not that the key should be blanked out.
   if (!apiKey) {
     api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index setup`.');
     return;
@@ -89,7 +88,16 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     headers: { 'x-api-key': apiKey },
   };
 
-  const current = api.config?.mcp?.servers?.['index-network'];
+  // Migrate legacy key if present (one-shot, idempotent).
+  const legacy = api.config?.mcp?.servers?.['index-network'];
+  if (legacy !== undefined) {
+    api.configSet('mcp.servers.index-network', undefined).then(
+      () => api.logger.info('Migrated legacy mcp.servers.index-network → mcp.servers.index.'),
+      () => {/* swallow — best-effort cleanup */},
+    );
+  }
+
+  const current = api.config?.mcp?.servers?.['index'];
   const needsUpdate =
     !current ||
     current.url !== expected.url ||
@@ -97,7 +105,7 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     current.headers?.['x-api-key'] !== apiKey;
 
   if (needsUpdate) {
-    api.configSet('mcp.servers.index-network', expected).then(
+    api.configSet('mcp.servers.index', expected).then(
       () => api.logger.info('Index Network MCP server registered/updated.'),
       (err) => api.logger.warn(
         `Failed to auto-register MCP server: ${err instanceof Error ? err.message : String(err)}`,

@@ -81,7 +81,7 @@ describe('setup wizard', () => {
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.url');
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.agentId');
     expect(paths).toContain('plugins.entries.indexnetwork-openclaw-plugin.config.apiKey');
-    expect(paths).toContain('mcp.servers.index-network');
+    expect(paths).toContain('mcp.servers.index');
 
     const urlWrite = fake.configWrites.find(
       (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.url',
@@ -97,7 +97,7 @@ describe('setup wizard', () => {
       { protocolUrl: 'https://protocol.index.network', apiKey: 'key-456' },
     ]);
 
-    const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index-network');
+    const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index');
     expect(mcpWrite?.value).toEqual({
       url: 'https://protocol.index.network/mcp',
       transport: 'streamable-http',
@@ -132,7 +132,7 @@ describe('setup wizard', () => {
     );
     expect(urlWrite?.value).toBe('https://dev.index.network');
 
-    const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index-network');
+    const mcpWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index');
     expect((mcpWrite?.value as { url: string }).url).toBe('https://protocol.dev.index.network/mcp');
   });
 
@@ -302,7 +302,7 @@ describe('setup wizard', () => {
     const mainAgentWriteIdx = paths.indexOf(
       'plugins.entries.indexnetwork-openclaw-plugin.config.mainAgentToolUse',
     );
-    const mcpWriteIdx = paths.indexOf('mcp.servers.index-network');
+    const mcpWriteIdx = paths.indexOf('mcp.servers.index');
     expect(mainAgentWriteIdx).toBeGreaterThanOrEqual(0);
     expect(mcpWriteIdx).toBeGreaterThan(mainAgentWriteIdx);
   });
@@ -563,5 +563,46 @@ describe('setup wizard', () => {
       (w) => w.path === 'plugins.entries.indexnetwork-openclaw-plugin.config.agentId',
     );
     expect(agentWrite?.value).toBe('fresh-agent-from-key');
+  });
+
+  test('migrates legacy mcp.servers.index-network to mcp.servers.index on setup', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+      resolvedAgentId: 'agent-from-key',
+    });
+    // Seed the cfg snapshot with the legacy MCP key.
+    (fake.ctx.cfg as Record<string, unknown>).mcp = {
+      servers: {
+        'index-network': {
+          url: 'https://old/mcp',
+          transport: 'streamable-http',
+          headers: { 'x-api-key': 'old' },
+        },
+      },
+    };
+
+    await setup(fake.ctx);
+
+    const newWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index');
+    const oldDelete = fake.configWrites.find(
+      (w) => w.path === 'mcp.servers.index-network' && w.value === undefined,
+    );
+
+    expect(newWrite).toBeDefined();
+    expect(oldDelete).toBeDefined();
+  });
+
+  test('writes mcp.servers.index on a fresh install (no legacy key)', async () => {
+    const fake = buildFakeCtx({
+      promptResponses: { 'API key': 'key-456' },
+      selectResponses: { 'Daily digest': 'true' },
+      resolvedAgentId: 'agent-from-key',
+    });
+
+    await setup(fake.ctx);
+
+    const newWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index');
+    expect(newWrite).toBeDefined();
   });
 });
