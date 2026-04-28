@@ -140,7 +140,7 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         'URL-rendering rules above still apply (links go inline on a verb phrase, never as',
         'sub-bullets, action strips, or separate link rows).',
         '',
-        'Open with one short line that frames this as a summary of the background negotiations',
+        'If there are candidates to present, open with one short line that frames this as a summary of the background negotiations',
         "your Index agent has been running with other people's agents on the user's behalf — for",
         'example: "Here\'s what your Index agent has been working on in the background — a summary',
         'of recent negotiations." Then present the list. Speak in your own voice; the example is',

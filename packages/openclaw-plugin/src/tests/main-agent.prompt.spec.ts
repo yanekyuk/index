@@ -235,5 +235,6 @@ describe('buildMainAgentPrompt — agent-negotiation framing', () => {
       payload: { contentType: 'test_message', content: 'ping' },
     });
     expect(out.toLowerCase()).not.toContain('negotiat');
+    expect(out.toLowerCase()).not.toContain('background');
   });
 });
