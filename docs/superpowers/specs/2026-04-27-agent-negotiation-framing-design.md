@@ -4,34 +4,49 @@
 
 ## Problem
 
-Two places where opportunity results lack context about agent-to-agent negotiation:
+When opportunities surface in the user's chat (Telegram, etc.), nothing in the OpenClaw main-agent prompt tells the agent to acknowledge that these results came from background agent-to-agent negotiation. The user sees "Seren looks relevant…" with no signal that their Index agent has been working in the background on their behalf. That context is what makes the discovery feel earned rather than algorithmic — and it's currently missing.
 
-1. **Ambient/digest updates** (Telegram etc.): The openclaw main-agent prompt doesn't instruct the agent to frame notifications as the result of background negotiation. The user sees "Seren looks relevant..." with no context about how this was discovered.
-2. **Manual discovery** (MCP `create_opportunities`): When the user triggers discovery via chat, the tool response says "Found N potential connection(s)." with no mention that the system negotiated with other people's agents.
+## Scope
+
+OpenClaw plugin only. No changes to MCP / `opportunity.tools.ts` — ambient and daily digest are OpenClaw delivery concepts, not MCP-surface concepts, and a generic MCP tool response shouldn't carry an "agent negotiated in the background" narrative for clients that don't have that flow.
 
 ## Changes
 
-### 1. Openclaw plugin ambient/digest prompt
-
 **File:** `packages/openclaw-plugin/src/lib/delivery/main-agent.prompt.ts`
 
-Edit `perTypeInstruction()`:
+Edit `perTypeInstruction()` (lines 114-148) to add framing instructions to two of the three opportunity types it handles.
 
-- **`ambient_discovery`** case (lines 127-143): Add a framing instruction telling the agent to open with a brief line about how the user's Index agent has been negotiating with other agents in the background and these are the new possibilities it found.
-- **`daily_digest`** case (lines 117-126): Similar framing appropriate for a daily summary of background negotiations.
+### `ambient_discovery` (lines 127-144)
 
-The framing is an instruction to the agent (not hardcoded text), so the agent still speaks in its own voice.
+Append an instruction telling the agent to open with one short line that frames the candidate as the result of background negotiation between its agent and other people's agents, before presenting the opportunity itself. The agent still speaks in its own voice; the framing is delivered as instruction, not template.
 
-### 2. MCP discovery tool response
+Reference phrasing (an anchor for the agent, not a fixed string):
 
-**File:** `packages/protocol/src/opportunity/opportunity.tools.ts`
+> *"Your Index agent has been quietly negotiating with other agents — here's a new possibility worth surfacing."*
 
-Edit `buildOpportunityPresentation()` (lines 171-205):
+### `daily_digest` (lines 117-126)
 
-- For the MCP path (`isMcp=true`), update the summarization instruction (line 189) to tell the agent to frame results as coming from negotiation with other people's agents. Change from "Summarize these for the user in natural prose" to include framing like "Present these as connections your agent found by negotiating with other people's agents."
-- The `leadIn` strings at call sites can stay as-is since the summarization instruction will provide the framing.
+Same shape, framed as a summary rather than a single surfaced candidate. The pass already explains that ambient ran earlier today; the framing addition tells the agent to open with one line acknowledging the broader background work, then present the numbered list.
 
-## Files to Change
+Reference phrasing:
 
-- `packages/openclaw-plugin/src/lib/delivery/main-agent.prompt.ts` -- `perTypeInstruction()` function
-- `packages/protocol/src/opportunity/opportunity.tools.ts` -- `buildOpportunityPresentation()` MCP summarization instruction
+> *"Here's what your Index agent has been working on in the background — a summary of recent negotiations."*
+
+### `test_message` (lines 145-146) — explicitly excluded
+
+Leave untouched. This is a delivery-verification probe, not a real opportunity, and framing it as the result of negotiation would be misleading.
+
+## Voice constraints
+
+The reference phrasings above match the project voice (calm, direct, analytical, concise). The implementing prompt should not introduce banned vocabulary (`leverage`, `unlock`, `optimize`, `scale`, `maximize`, `match`, etc.) or describe the action as "search". Prefer language like *signal, surfaced, emerging, adjacency, negotiation*.
+
+## Out of scope
+
+- `packages/protocol/src/opportunity/opportunity.tools.ts` — unchanged.
+- `buildOpportunityPresentation()` and its MCP path — unchanged. Any MCP client (Claude Code, custom agents) calls it as a generic discovery tool; ambient/digest framing doesn't apply there.
+- The web-chat opportunity card UI — unchanged.
+- The negotiation subagent itself — unchanged. Per project convention, behavioral guidance for the negotiator lives in the MCP server's `MCP_INSTRUCTIONS`, not the OpenClaw delivery prompt.
+
+## Files to change
+
+- `packages/openclaw-plugin/src/lib/delivery/main-agent.prompt.ts` — `perTypeInstruction()`, the `daily_digest` and `ambient_discovery` cases only.
