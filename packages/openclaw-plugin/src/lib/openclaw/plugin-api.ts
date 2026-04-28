@@ -66,8 +66,12 @@ export interface RouteOptions {
 }
 
 /**
- * Narrow slice of OpenClawConfig that the plugin reads at register time.
+ * Narrow slice of OpenClawConfig that the plugin reads at runtime.
  * Matches the shape exposed by `api.config` per the OpenClaw plugin SDK.
+ *
+ * Only the fields the plugin actively reads are typed here. The real
+ * OpenClawConfig has many more fields; treating this as a strict subset
+ * keeps the plugin loosely coupled to the SDK's evolving surface.
  */
 export interface OpenClawConfigSlice {
   gateway?: {
@@ -75,6 +79,18 @@ export interface OpenClawConfigSlice {
     auth?: {
       token?: string;
     };
+  };
+  /**
+   * Hooks subsystem. The plugin requires `hooks.enabled=true` and a
+   * non-empty `hooks.token` to dispatch via `POST /hooks/agent`. Setup
+   * wizard bootstraps both. See `lib/delivery/main-agent.dispatcher.ts`.
+   */
+  hooks?: {
+    enabled?: boolean;
+    path?: string;
+    token?: string;
+    allowRequestSessionKey?: boolean;
+    allowedSessionKeyPrefixes?: string[];
   };
   mcp?: {
     servers?: Record<string, {
@@ -105,7 +121,7 @@ export interface OpenClawPluginApi {
   configSet?(path: string, value: unknown): Promise<void>;
   /** Read a value from the OpenClaw config by dot-path (e.g. 'agents.defaults.model'). */
   configGet?(path: string): Promise<unknown>;
-  /** Register a CLI subcommand (e.g. `openclaw index-network setup`). */
+  /** Register a CLI subcommand (e.g. `openclaw index setup`). */
   registerCli?: CliRegistration;
 }
 

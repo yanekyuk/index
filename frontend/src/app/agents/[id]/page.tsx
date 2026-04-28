@@ -23,6 +23,12 @@ import {
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAgents, useUsers } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import {
+  buildMcpConfigs,
+  OPENCLAW_INSTALL_CMD,
+  OPENCLAW_SETUP_CMD,
+  OPENCLAW_UPDATE_CMD,
+} from "@/lib/mcp-config";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -575,13 +581,15 @@ function WizardRow({
   );
 }
 
+// MIRROR: This grid previews the OpenClaw setup wizard prompts for users
+// who can't run an LLM-driven setup. Keep it in sync with `runSetup` in
+// `packages/openclaw-plugin/src/setup/setup.cli.ts` — any prompt added,
+// renamed, or removed there must be reflected here (and vice versa).
 function WizardPromptGrid({
   serverUrl,
-  agentId,
   apiKey,
 }: {
   serverUrl: string;
-  agentId: string;
   apiKey: string;
 }) {
   return (
@@ -592,21 +600,10 @@ function WizardPromptGrid({
       </div>
       <div className="grid grid-cols-2">
         <WizardRow prompt="URL" description="Index Network URL" value={serverUrl} copyable />
-        <WizardRow prompt="Agent ID" description="Your personal agent's unique identifier" value={agentId} copyable />
-        <WizardRow prompt="API Key" description="The API key you just generated" value={apiKey} copyable />
+        <WizardRow prompt="API Key" description="The API key you just generated. Setup resolves your agent from this key automatically." value={apiKey} copyable />
         <div className="col-span-2 px-3 py-2 border-b border-gray-200 bg-gray-100">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Optional</span>
         </div>
-        <WizardRow
-          prompt="Delivery channel"
-          description="Platform to receive notifications (Telegram, Discord, Slack, etc.)"
-          value="select or skip"
-        />
-        <WizardRow
-          prompt="Delivery target"
-          description="Your user ID or handle on the chosen platform"
-          value="your ID"
-        />
         <WizardRow
           prompt="Daily digest"
           description="Receive a daily summary of opportunities"
@@ -620,7 +617,12 @@ function WizardPromptGrid({
         <WizardRow
           prompt="Max per digest"
           description="Maximum number of opportunities included per digest"
-          value="10 (default)"
+          value="20 (default)"
+        />
+        <WizardRow
+          prompt="Main agent tool use during Index Network renders"
+          description="Whether the agent may call MCP tools when rendering results"
+          value={"1. Disabled — agent renders from provided content only (default)\n2. Enabled — agent may call MCP tools to enrich"}
         />
       </div>
     </div>
@@ -663,40 +665,11 @@ function OpenClawSetup({
   );
 }
 
-function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
+function SetupInstructions({ apiKey }: { apiKey?: string }) {
   const [expanded, setExpanded] = useState(false);
   const keyValue = apiKey || "YOUR_API_KEY";
-  const agentValue = agentId || "YOUR_AGENT_ID";
-
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "https://api.index.network";
   const baseUrl = window.location.origin;
-  const mcpUrl = `${protocolUrl}/mcp`;
-
-  const claudeConfig = JSON.stringify(
-    {
-      mcpServers: {
-        "index-network": {
-          type: "http",
-          url: mcpUrl,
-          headers: {
-            "x-api-key": keyValue,
-          },
-        },
-      },
-    },
-    null,
-    2,
-  );
-
-  const hermesConfig = `mcp_servers:
-  - name: index-network
-    url: ${mcpUrl}
-    headers:
-      x-api-key: ${keyValue}`;
-
-  const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
-  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
-  const openclawSetup = `openclaw index-network setup`;
+  const { claudeConfig, hermesConfig } = buildMcpConfigs(keyValue);
 
   return (
     <div className="border border-gray-200 rounded-sm">
@@ -720,8 +693,12 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
           </div>
           <div className="space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-            <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
-            <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
+            <OpenClawSetup
+              install={OPENCLAW_INSTALL_CMD}
+              update={OPENCLAW_UPDATE_CMD}
+              setup={OPENCLAW_SETUP_CMD}
+            />
+            <WizardPromptGrid serverUrl={baseUrl} apiKey={keyValue} />
           </div>
         </div>
       )}
@@ -847,7 +824,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
             </Button>
           </div>
           <div className="mt-3">
-            <SetupInstructions apiKey={createdKey} agentId={agent.id} />
+            <SetupInstructions apiKey={createdKey} />
           </div>
           <button
             onClick={() => { setCreatedKey(null); setCopied(false); }}
@@ -940,7 +917,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
         </div>
       )}
 
-      {!createdKey && keys.length > 0 && <SetupInstructions agentId={agent.id} />}
+      {!createdKey && keys.length > 0 && <SetupInstructions />}
 
       <AlertDialog.Root open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialog.Portal>

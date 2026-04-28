@@ -1,136 +1,69 @@
-# indexnetwork-openclaw-plugin
+# @indexnetwork/openclaw-plugin
 
-Index Network — find the right people and let them find you.
+> Find the right people. Let them find you.
 
-This plugin wires the [Index Network](https://index.network) MCP server into your OpenClaw workspace and polls for background work in two categories:
-
-- **Opportunity and test-message deliveries (v1)** — the plugin picks up pending deliveries and announces them to the user via the configured OpenClaw channel.
-- **Negotiation turns (alpha)** — the plugin picks up pending negotiation turns assigned to your agent and responds silently on your behalf.
-
-On first use the bootstrap skill registers the MCP server and guides you through auth; after that, the MCP server's own instructions carry all the behavioral guidance.
+The Index Network plugin for OpenClaw. Opportunities surface inside your existing chat, in your main agent's voice, on whichever channel you currently use. Negotiation turns are handled silently on your behalf (alpha).
 
 ## Install
 
-From the GitHub marketplace (until ClawHub submission lands):
-
 ```bash
-openclaw plugins install indexnetwork-openclaw-plugin \
-  --marketplace https://github.com/indexnetwork/openclaw-plugin
+openclaw plugins install @indexnetwork/openclaw-plugin
+openclaw index setup
 ```
+
+The wizard asks for your Index Network URL and API key (generated at https://index.network/agents), then bootstraps everything else.
+
+## What you get
+
+- **Real-time opportunity delivery + daily digest.** The plugin polls Index Network every 5 minutes and at a configurable digest time. Pending opportunities are handed to your main OpenClaw agent for rendering.
+- **Rendered by your main agent, on your active chat channel.** The plugin doesn't speak for itself — it dispatches a batch to your main agent via OpenClaw's hooks subsystem, which routes the rendered reply to whichever channel you most recently chatted on (Telegram, Discord, etc.).
+- **Silent negotiation handling (alpha).** Pending negotiation turns assigned to your agent are picked up by a silent subagent that responds on your behalf without surfacing the back-and-forth to you.
+- **Outbound polling only — no public ports.** The plugin initiates all connections outbound to Index Network. No webhook endpoint, no public gateway port required.
 
 ## How it works
 
-On first activation the bootstrap skill detects whether the Index Network MCP server is already registered in your OpenClaw config. If it isn't, it runs:
+On first run the bootstrap skill registers the Index Network MCP server in your OpenClaw config and asks you to pick an auth mode:
 
-```bash
-openclaw mcp set index-network '{"url":"https://protocol.index.network/mcp","transport":"streamable-http"}'
-```
+- **Persistent session** (recommended) — paste a personal agent key generated at https://index.network/agents. Every tool call is authenticated automatically.
+- **Temporary session** — leaves the registration unauthenticated; the MCP server challenges with OAuth on first tool call. Only works if your runtime can open a browser window.
 
-and asks you to pick an auth mode.
+After auth, the plugin starts its polling loops and registers the `openclaw index setup` CLI command. Subsequent runs of the wizard fill in gaps without clobbering existing config.
 
-### Auth modes
+## Configuration
 
-**Temporary session** — leaves the registration unauthenticated and lets the Index Network MCP server challenge with OAuth when you make your first tool call. This only works if your OpenClaw runtime can open a browser window for the callback.
+The plugin reads these keys under `plugins.entries.indexnetwork-openclaw-plugin.config` (the plugin id is `indexnetwork-openclaw-plugin` — distinct from the npm package name `@indexnetwork/openclaw-plugin`):
 
-**Persistent session** — uses a personal agent key that you generate once and reuse across sessions:
+| Key | Default | Description |
+|---|---|---|
+| `apiKey` | _(required)_ | API key linked to your agent. The wizard resolves the bound `agentId` for you. |
+| `agentId` | _(populated by setup)_ | Your Index Network agent ID, written automatically from the API key. |
+| `url` | `https://index.network` | Index Network URL. Protocol and frontend URLs are derived. |
+| `mainAgentToolUse` | `disabled` | Set `enabled` to allow your main agent to call MCP tools while rendering. |
+| `negotiationMode` | `enabled` | Set `disabled` to skip negotiation turn pickup; Index Network's system negotiator runs instead. |
+| `digestEnabled` | `true` | Set `false` to disable daily digest. |
+| `digestTime` | `08:00` | Time to send digest in HH:MM format (24-hour, local timezone). |
 
-1. Visit https://index.network/agents
-2. Create a personal agent and generate a key
-3. Paste the key into the chat when prompted
+Prefer `openclaw index setup` over manual edits — it resolves your `agentId` from the API key automatically and keeps `hooks.*` configured correctly for opportunity dispatch.
 
-The skill then re-registers the MCP server with an `x-api-key` header so every tool call is authenticated automatically.
+## Daily digest
 
-## Automatic opportunity delivery (v1)
+In addition to real-time polling, the plugin sends a daily digest of lower-priority opportunities at the configured `digestTime`. Like real-time delivery, the digest is rendered by your main OpenClaw agent in its own voice; the plugin doesn't see what the agent rendered. The agent decides which opportunities are worth surfacing and confirms each one it mentions via `confirm_opportunity_delivery` over MCP.
 
-Once the plugin is configured with an `agentId`, `apiKey`, `deliveryChannel`, and `deliveryTarget`, it polls the Index Network backend every 5 minutes for pending opportunities and test messages. When one is found, the plugin:
+## Resilience
 
-1. Picks it up via `POST /agents/:agentId/opportunities/pickup` or `POST /agents/:agentId/test-messages/pickup` (reservation-based, 60 s TTL).
-2. Dispatches a subagent with `deliver: true`, routed to `agent:main:<deliveryChannel>:direct:<deliveryTarget>`, so the rendered card is announced to the user on the configured channel.
-3. Confirms delivery via `POST .../delivered` so the opportunity is marked delivered in the backend's ledger.
-
-When routing is not configured, the plugin logs a warning and skips the announce without confirming delivery — the backend holds the reservation until it expires and retries on the next poll cycle.
-
-## Automatic negotiations (alpha)
-
-When `negotiationMode` is `enabled` (the default), the same poll loop also pulls pending negotiation turns assigned to your agent via `POST /agents/:agentId/negotiations/pickup`, and launches a silent subagent (`deliver: false`) to read the negotiation, ground itself in your profile and intents, and respond via `respond_to_negotiation`. In-flight turns are deduplicated across poll cycles.
-
-You never see the turns. The subagent speaks on your behalf. The only user-facing message you receive is when a negotiation is **accepted** — a single short line telling you who you're now connected with and why.
-
-This capability is still alpha — if you want to opt out, set `negotiationMode` to `"disabled"` and Index Network falls back to its system `Index Negotiator` after the turn times out.
-
-### Configuration
-
-The plugin reads these config keys under `plugins.entries.indexnetwork-openclaw-plugin.config`:
-
-- `agentId` (string, required) — your Index Network agent ID. Find it at https://index.network/agents.
-- `apiKey` (string, required) — API key linked to your agent.
-- `deliveryChannel` (string, required for deliveries) — OpenClaw channel id for announcing opportunity and test-message cards (e.g. `"telegram"`).
-- `deliveryTarget` (string, required for deliveries) — channel-specific recipient id (e.g. your Telegram chat ID).
-- `protocolUrl` (string, optional) — backend base URL. Defaults to `http://localhost:3001`.
-- `negotiationMode` (`"enabled"` | `"disabled"`, default `"enabled"`) — when set to `"disabled"`, polling skips negotiation turn pickup. Index Network's side falls back to its system `Index Negotiator` after the turn times out.
-
-Configure via CLI:
-
-```bash
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId YOUR_AGENT_ID
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey YOUR_API_KEY
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryChannel telegram
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.deliveryTarget YOUR_CHAT_ID
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
-```
-
-### Daily Digest
-
-In addition to real-time polling every 5 minutes, the plugin sends a daily digest of lower-priority opportunities at a configurable time.
-
-| Config Key | Default | Description |
-|------------|---------|-------------|
-| `digestEnabled` | `"true"` | Set to `"false"` to disable daily digest |
-| `digestTime` | `"08:00"` | Time to send digest in HH:MM format (24-hour, local timezone) |
-| `digestMaxCount` | `10` | Maximum opportunities to include in digest |
-
-The digest ranks all pending opportunities by relevance and delivers the top N. Opportunities not included roll over to the next day's digest.
-
-### Resilience
-
+- **In-flight deduplication** — pending turns and opportunity batches already being handled are not re-launched on subsequent poll cycles.
+- **Exponential backoff** — on real errors (backend unreachable, dispatch failure), the poll interval doubles up to ~80 minutes, then resets on the next successful communication. "No pending opportunities" is a healthy idle state and does NOT trigger backoff.
+- **Startup diagnostics** — on first poll, the plugin checks backend reachability and logs an actionable warning if `url` is misconfigured.
 - **Duplicate registration guard** — if OpenClaw calls `register()` more than once per process, only the first call takes effect.
-- **In-flight deduplication** — turns already being handled are not re-launched on subsequent poll cycles.
-- **Exponential backoff** — on repeated failures (backend unreachable, subagent errors), the poll interval doubles up to ~8 minutes, then resets on the next successful communication.
-- **Startup diagnostics** — on first poll, the plugin checks backend reachability and logs an actionable warning if `protocolUrl` is misconfigured.
 
-### Pinning the subagent model
+## Privacy
 
-By default, the negotiation subagent uses your workspace's default model. If you want to pin a specific model for negotiation runs, set these operator-level keys in your OpenClaw config (not under `config`, under `subagent`):
+Two distinct rendering paths are logged differently:
 
-```json
-{
-  "plugins": {
-    "entries": {
-      "indexnetwork-openclaw-plugin": {
-        "subagent": {
-          "allowModelOverride": true,
-          "allowedModels": ["openrouter/anthropic/claude-sonnet-4.6"]
-        }
-      }
-    }
-  }
-}
-```
+- **Opportunity / digest / test-message rendering** runs inside your main OpenClaw agent session via `POST /hooks/agent`. It surfaces in your normal main-agent log — no separate subagent transcript.
+- **Negotiation turns** run in a silent subagent (`api.runtime.subagent.run({ deliver: false })`) and are logged by OpenClaw's standard subagent logging.
 
-These keys are operator-gated by OpenClaw itself; the plugin does not request an override without them.
-
-### Privacy note
-
-Subagent runs are logged by OpenClaw's standard subagent logging. Users who want their runs redacted can configure OpenClaw's log scrubbing at the workspace level.
-
-## What it ships
-
-- `openclaw.plugin.json` — plugin manifest
-- `src/index.ts` — plugin entry point: registers poll route and background polling loop
-- `src/prompts/` — canonical prompts for the turn-handler and accepted-notifier subagents
-- `skills/index-network/SKILL.md` — bootstrap skill (generated from the monorepo template)
-
-Behavioral guidance (voice, vocabulary, entity model, discovery-first rule, output rules) lives in the MCP server's `instructions` field and is delivered automatically on connect — not in this skill file.
+Configure OpenClaw's log scrubbing at the workspace level if you want either path redacted.
 
 ## Troubleshooting
 
@@ -138,25 +71,22 @@ Behavioral guidance (voice, vocabulary, entity model, discovery-first rule, outp
 
 **OAuth never opens a browser** — switch to persistent session mode.
 
-**`openclaw mcp set` fails with "command not found"** — make sure you have OpenClaw CLI ≥0.1.0 installed.
-
-**Opportunities picked up but never delivered** — confirm `deliveryChannel` and `deliveryTarget` are set. Without them the plugin logs a warning, skips the announce, and leaves the reservation to expire so the backend can retry.
+**Opportunities picked up but not rendered** — check OpenClaw gateway logs:
+- `Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset` → re-run `openclaw index setup` to bootstrap hooks.
+- `/hooks/agent returned 401: hooks.token rejected` → run `openclaw config unset hooks.token` and re-run setup.
+- `/hooks/agent returned 404` → confirm `hooks.enabled=true` in `~/.openclaw/openclaw.json`.
 
 **Automatic negotiations never fire** — confirm the plugin has `agentId` and `apiKey` configured. Check OpenClaw gateway logs for poll errors. Verify your agent exists at https://index.network/agents.
 
-**Plugin logs "Cannot reach Index Network backend"** — check that `protocolUrl` is correct and the backend is running.
+**Plugin logs "Cannot reach Index Network backend"** — verify `url` is correct and the backend is running.
 
-**Plugin logs "Backing off"** — the backend or subagent is returning errors. Check gateway logs for details. The plugin will automatically recover once the issue is resolved.
+**Plugin logs "Backing off"** — the backend is returning errors. The plugin will recover automatically once the issue is resolved.
 
 ## Technical notes
 
-### Route auth: `gateway` not `plugin`
+**Route auth must be `gateway`, not `plugin`.** `api.runtime.subagent.run()` requires `operator.write` scope, which only gateway-authed routes receive. `auth: 'plugin'` will fail with `missing scope: operator.write`.
 
-The poll route MUST use `auth: 'gateway'` because `api.runtime.subagent.run()` requires `operator.write` scope, which only gateway-authed routes receive. Using `auth: 'plugin'` will fail with `missing scope: operator.write`.
-
-### No public endpoint required
-
-Unlike webhook-based architectures, polling does not require the gateway HTTP port to be publicly reachable. The plugin initiates all connections outbound to the Index Network backend.
+**No public endpoint required.** Unlike webhook-based architectures, polling does not require the gateway HTTP port to be publicly reachable.
 
 ## License
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { AuthGuard, AuthOrApiKeyGuard, resolveApiKeyAgentId, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { AgentTestMessageService } from '../services/agent-test-message.service';
@@ -63,10 +63,6 @@ const confirmTestMessageDeliveredSchema = z.object({
 
 const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
-});
-
-const batchConfirmDeliveredSchema = z.object({
-  opportunityIds: z.array(z.string().uuid()).min(1).max(50),
 });
 
 const respondNegotiationSchema = z.object({
@@ -177,6 +173,22 @@ export class AgentController {
       return Response.json({ agent }, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Get('/me')
+  @UseGuards(AuthOrApiKeyGuard)
+  async getMe(req: Request, user: AuthenticatedUser) {
+    const agentId = await resolveApiKeyAgentId(req);
+    if (!agentId) {
+      return jsonError('This endpoint requires an agent-bound API key', 400);
+    }
+
+    try {
+      const agent = await agentService.getById(agentId, user.id);
+      return Response.json({ agent });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err, 404));
     }
   }
 
@@ -526,46 +538,62 @@ export class AgentController {
 
   @Get('/:id/opportunities/pending')
   @UseGuards(AuthOrApiKeyGuard)
-  async getPendingOpportunities(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async getPendingOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
       return jsonError('Agent ID is required', 400);
     }
 
+    // Validation contract: the controller only enforces "the param parses to a
+    // finite number". The service is the single source of truth for clamping
+    // (rounds to integer, then clamps to [1, 20]), so values like 0, -3, 1.5,
+    // 100 are all accepted here and normalized downstream. NaN/Infinity/empty
+    // are rejected with 400 — they signal a malformed request, not a value out
+    // of range.
+    const url = new URL(req.url);
+    const limitParam = url.searchParams.get('limit');
+    let limit: number | undefined;
+    if (limitParam !== null && limitParam !== '') {
+      const parsed = Number(limitParam);
+      if (!Number.isFinite(parsed)) {
+        return jsonError('limit must be a finite number', 400);
+      }
+      limit = parsed;
+    }
+
     try {
       await agentService.getById(agentId, user.id);
       await agentService.touchLastSeen(agentId);
-      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId);
+      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
       return Response.json({ opportunities });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }
   }
 
-  @Post('/:id/opportunities/confirm-batch')
+  @Get('/:id/opportunities/delivery-stats')
   @UseGuards(AuthOrApiKeyGuard)
-  async confirmBatchDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+  async getDeliveryStats(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const agentId = params?.id;
     if (!agentId) {
       return jsonError('Agent ID is required', 400);
     }
 
-    const body = await parseBody(req, batchConfirmDeliveredSchema);
-    if (body instanceof Response) {
-      return body;
+    const url = new URL(req.url);
+    const sinceParam = url.searchParams.get('since');
+    if (!sinceParam) {
+      return jsonError('since query parameter is required (ISO 8601)', 400);
+    }
+    const since = new Date(sinceParam);
+    if (Number.isNaN(since.getTime())) {
+      return jsonError('since must be a valid ISO 8601 timestamp', 400);
     }
 
     try {
       await agentService.getById(agentId, user.id);
-      const results = await Promise.all(
-        body.opportunityIds.map((id) =>
-          opportunityDeliveryService.commitDelivery(id, user.id, agentId),
-        ),
-      );
-      return Response.json({
-        confirmed: results.filter((r) => r === 'confirmed').length,
-        alreadyDelivered: results.filter((r) => r === 'already_delivered').length,
-      });
+      await agentService.touchLastSeen(agentId);
+      const counts = await opportunityDeliveryService.countDeliveriesSince(agentId, since);
+      return Response.json(counts);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }

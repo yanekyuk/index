@@ -19,7 +19,7 @@ import {
   OpportunityPresenter,
   canUserSeeOpportunity,
   gatherPresenterContext,
-  getOrCreateHomeCardBatch,
+  getOrCreateDeliveryCardBatch,
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
@@ -226,6 +226,8 @@ export class OpportunityDeliveryService {
    * @param opportunityId - The opportunity being confirmed as delivered.
    * @param userId - The user the opportunity was delivered to.
    * @param agentId - The agent performing the delivery.
+   * @param trigger - Which dispatch path produced this delivery: 'ambient' for
+   *                  real-time critical alerts, 'digest' for the daily sweep.
    * @returns `'confirmed'` on first delivery, `'already_delivered'` on duplicates.
    * @throws Error `'opportunity_not_found'` when the opportunity does not exist.
    * @throws Error `'not_authorized'` when userId is not an actor on the opportunity.
@@ -234,6 +236,7 @@ export class OpportunityDeliveryService {
     opportunityId: string,
     userId: string,
     agentId: string | null,
+    trigger: 'ambient' | 'digest',
   ): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
@@ -269,7 +272,7 @@ export class OpportunityDeliveryService {
         userId,
         agentId,
         channel: CHANNEL,
-        trigger: TRIGGER_PENDING,
+        trigger,
         deliveredAtStatus: opp.status,
         reservationToken: randomUUID(),
         reservedAt: new Date(),
@@ -292,10 +295,13 @@ export class OpportunityDeliveryService {
    * decides which candidates to commit via `commitDelivery`.
    *
    * @param agentId - The agent whose owner's pending opportunities are fetched.
-   * @returns Array of candidates with rendered cards, ordered oldest-first (up to 20).
+   * @param limit - Optional maximum number of candidates to return. Clamped to [1, 20]. Defaults to 20.
+   * @returns Array of candidates with rendered cards, ordered oldest-first (up to `limit`).
    */
-  async fetchPendingCandidates(agentId: string): Promise<PendingCandidate[]> {
+  async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidate[]> {
     const userId = await this.resolveAgentOwner(agentId);
+    const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 20;
+    const effectiveLimit = Math.min(20, Math.max(1, raw));
 
     const result = await db.execute(sql`
       SELECT o.id, o.actors, o.status, o.interpretation, o.detection
@@ -323,7 +329,7 @@ export class OpportunityDeliveryService {
             AND d.delivered_at IS NOT NULL
         )
       ORDER BY o.updated_at ASC
-      LIMIT 20
+      LIMIT ${effectiveLimit}
     `);
 
     const rows = result as unknown as Array<{
@@ -362,6 +368,37 @@ export class OpportunityDeliveryService {
     );
 
     return candidates;
+  }
+
+  /**
+   * Count committed deliveries for an agent grouped by trigger since `since`.
+   * Rows where `delivered_at IS NULL` (open reservations) are excluded.
+   *
+   * @param agentId - Agent whose deliveries to count.
+   * @param since - Lower bound (inclusive) on `delivered_at`.
+   */
+  async countDeliveriesSince(
+    agentId: string,
+    since: Date,
+  ): Promise<{ ambient: number; digest: number }> {
+    const result = await db.execute(sql`
+      SELECT trigger, COUNT(*)::int AS count
+      FROM opportunity_deliveries
+      WHERE agent_id = ${agentId}
+        AND delivered_at IS NOT NULL
+        AND delivered_at >= ${since.toISOString()}
+        AND trigger IN ('ambient', 'digest')
+      GROUP BY trigger
+    `);
+
+    const rows = result as unknown as Array<{ trigger: string; count: number }>;
+    const counts = { ambient: 0, digest: 0 };
+    for (const row of rows) {
+      if (row.trigger === 'ambient' || row.trigger === 'digest') {
+        counts[row.trigger] = row.count;
+      }
+    }
+    return counts;
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -407,7 +444,7 @@ export class OpportunityDeliveryService {
           detection: opp.detection,
         };
 
-        const cards = await getOrCreateHomeCardBatch(
+        const cards = await getOrCreateDeliveryCardBatch(
           this.cache,
           this.presenter,
           this.presenterDb,

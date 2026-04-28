@@ -1,15 +1,8 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
-import { readModel } from '../../lib/openclaw/plugin-api.js';
-import { isDeliveryConfigured, dispatchDelivery, EVALUATOR_TIMEOUT_MS } from '../../lib/delivery/delivery.dispatcher.js';
-import { extractSelectedIds, confirmDeliveredBatch } from '../../lib/delivery/post-delivery-confirm.js';
+import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
+import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
+import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
-import { opportunityEvaluatorPrompt } from './opportunity-evaluator.prompt.js';
-
-/** Hash of the last opportunity batch dispatched. Used to skip unchanged batches. */
-let lastOpportunityBatchHash: string | null = null;
-
-/** Startup nonce — prevents idempotency collisions across gateway restarts. */
-const startupNonce = Date.now().toString(36);
 
 export interface AmbientDiscoveryConfig {
   baseUrl: string;
@@ -18,30 +11,91 @@ export interface AmbientDiscoveryConfig {
   frontendUrl: string;
 }
 
+const PENDING_LIMIT = 10;
+
+/** Hash of the last opportunity batch dispatched. Used to skip unchanged batches. */
+let lastOpportunityBatchHash: string | null = null;
+
 /**
- * Handles one ambient discovery poll cycle using a three-phase pipeline:
+ * Handles one ambient discovery poll cycle. Single-pass:
+ *  1. GET /opportunities/pending?limit=10
+ *  2. Hash the batch; skip if identical to last successful dispatch (dedup).
+ *  3. Fetch today's ambient delivery count from GET /opportunities/delivery-stats.
+ *  4. Build the ambient-discovery prompt and hand it to the user's main
+ *     OpenClaw agent via `dispatchToMainAgent` (POST /hooks/agent →
+ *     user's last channel).
+ *  5. On dispatch success, advance the dedup hash. The agent confirms
+ *     individual opportunities via `confirm_opportunity_delivery` MCP tool.
  *
- * Phase 1 — Evaluator subagent (deliver: false, own session):
- *   Evaluates candidates, selects high-value ones, and outputs plain content.
+ * The agent decides which subset to surface and confirms only what it
+ * actually mentions. The dedup hash prevents back-to-back redispatch of
+ * the same set.
  *
- * Phase 2 — Delivery (via dispatchDelivery):
- *   Captures evaluator output via waitForRun + getSessionMessages, then
- *   dispatches it through the delivery dispatcher which applies channel styling.
- *   Waits for delivery to complete before proceeding.
- *
- * Phase 3 — Confirm (direct HTTP):
- *   After delivery succeeds, extracts selected opportunity IDs from the
- *   evaluator output and confirms them via the batch-confirm backend endpoint.
- *
- * @param api - The OpenClaw plugin API instance.
- * @param config - Configuration for the ambient discovery poller.
- * @returns `true` if delivery was dispatched, `false` otherwise.
+ * @returns
+ *   - `'dispatched'` — a dispatch landed successfully.
+ *   - `'empty'` — backend reached, but nothing to dispatch (no opportunities, all filtered out, or batch unchanged since last cycle). This is a healthy idle state, not a failure.
+ *   - `'error'` — the backend was unreachable or returned an error, OR dispatch to the main agent failed. The scheduler should back off only on this case.
  */
+export type AmbientDiscoveryOutcome = 'dispatched' | 'empty' | 'error';
+
+/**
+ * Compute start-of-today in the **OpenClaw host's** local timezone, expressed
+ * as a UTC ISO string. The plugin is intended to run on the user's own
+ * machine, so host-local matches user-local in practice; deployments where
+ * the host runs a different TZ from the user (e.g. UTC server, user in PT)
+ * will see the "today" boundary shift by the offset. DST transitions are
+ * handled by the platform's `setHours` semantics.
+ */
+function midnightLocalIso(now: Date = new Date()): string {
+  const local = new Date(now);
+  local.setHours(0, 0, 0, 0);
+  return local.toISOString();
+}
+
+/**
+ * Fetch today's ambient delivery count. Best-effort: returns null on any failure
+ * (the prompt will then tell the agent the count is unknown). Auth failures
+ * (401/403) are logged at error level since they indicate a misconfigured key
+ * that will keep the soft cap permanently disabled until fixed.
+ */
+async function fetchAmbientDeliveredToday(
+  api: OpenClawPluginApi,
+  config: AmbientDiscoveryConfig,
+): Promise<number | null> {
+  const since = encodeURIComponent(midnightLocalIso());
+  const url = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/delivery-stats?since=${since}`;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'x-api-key': config.apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      const detail = { url, status: res.status, agentId: config.agentId };
+      if (res.status === 401 || res.status === 403) {
+        api.logger.error('Ambient stats fetch unauthorized — soft cap disabled', detail);
+      } else {
+        api.logger.warn('Ambient stats fetch failed', detail);
+      }
+      return null;
+    }
+    const body = (await res.json()) as { ambient?: unknown };
+    return Number.isFinite(body.ambient) ? (body.ambient as number) : null;
+  } catch (err) {
+    api.logger.warn('Ambient stats fetch errored', {
+      url,
+      agentId: config.agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 export async function handle(
   api: OpenClawPluginApi,
   config: AmbientDiscoveryConfig,
-): Promise<boolean> {
-  const pendingUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/pending`;
+): Promise<AmbientDiscoveryOutcome> {
+  const pendingUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/pending?limit=${PENDING_LIMIT}`;
 
   let res: Response;
   try {
@@ -51,203 +105,87 @@ export async function handle(
       signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
-    api.logger.warn(
-      `Opportunity pending fetch errored: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
+    api.logger.warn('Ambient discovery fetch errored', {
+      url: pendingUrl,
+      agentId: config.agentId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return 'error';
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    api.logger.warn(`Opportunity pending fetch failed: ${res.status} ${text}`);
-    return false;
+    const detail = { url: pendingUrl, status: res.status, body: text, agentId: config.agentId };
+    if (res.status === 401 || res.status === 403) {
+      api.logger.error('Ambient discovery fetch unauthorized', detail);
+    } else {
+      api.logger.warn('Ambient discovery fetch failed', detail);
+    }
+    return 'error';
   }
 
   const body = (await res.json()) as {
     opportunities: Array<{
       opportunityId: string;
       counterpartUserId: string | null;
-      rendered: {
-        headline: string;
-        personalizedSummary: string;
-        suggestedAction: string;
-        narratorRemark: string;
-      };
+      rendered: { headline: string; personalizedSummary: string; suggestedAction: string; narratorRemark: string };
     }>;
   };
 
   if (!body.opportunities.length) {
-    return false;
+    api.logger.info('Ambient discovery: no pending opportunities');
+    return 'empty';
   }
 
-  // Fail fast before running the evaluator if delivery is not configured.
-  if (!isDeliveryConfigured(api)) {
-    api.logger.warn(
-      'Index Network delivery routing not configured — skipping opportunity batch. ' +
-        'Set pluginConfig.deliveryChannel and pluginConfig.deliveryTarget.',
-    );
-    return false;
-  }
+  const candidates = body.opportunities
+    .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
+    .map((o) => ({
+      opportunityId: o.opportunityId,
+      counterpartUserId: o.counterpartUserId,
+      headline: o.rendered.headline,
+      personalizedSummary: o.rendered.personalizedSummary,
+      suggestedAction: o.rendered.suggestedAction,
+      narratorRemark: o.rendered.narratorRemark,
+      profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
+      acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
+    }));
 
-  const batchHash = hashOpportunityBatch(body.opportunities.map((o) => o.opportunityId));
-
-  if (batchHash === lastOpportunityBatchHash) {
-    api.logger.info('Opportunity batch unchanged since last poll — skipping subagent.');
-    return false;
-  }
+  if (!candidates.length) return 'empty';
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  const model = await readModel(api);
-  const evaluatorSessionKey = `index:ambient-discovery:${config.agentId}`;
+  const batchHash = hashOpportunityBatch(candidates.map((c) => c.opportunityId));
 
-  // Phase 1: run evaluator silently in its own session.
-  api.logger.info(`Ambient eval: sessionKey=${evaluatorSessionKey} batchHash=${batchHash} nonce=${startupNonce}`);
-  let runId: string;
-  try {
-    const evalResult = await api.runtime.subagent.run({
-      sessionKey: evaluatorSessionKey,
-      idempotencyKey: `index:eval:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}:${startupNonce}`,
-      message: opportunityEvaluatorPrompt(
-        body.opportunities
-          .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
-          .map((o) => ({
-            opportunityId: o.opportunityId,
-            userId: o.counterpartUserId,
-            headline: o.rendered.headline,
-            personalizedSummary: o.rendered.personalizedSummary,
-            suggestedAction: o.rendered.suggestedAction,
-            narratorRemark: o.rendered.narratorRemark,
-            profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-            acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
-            skipUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/skip`,
-          })),
-      ),
-      deliver: false,
-      model,
-    });
-    runId = evalResult.runId;
-    api.logger.info(`Ambient eval dispatched: runId=${runId}`);
-  } catch (err) {
-    api.logger.warn(
-      `Opportunity evaluator dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
+  if (batchHash === lastOpportunityBatchHash) {
+    api.logger.info('Opportunity batch unchanged since last poll — skipping main-agent dispatch.');
+    return 'empty';
   }
 
-  // Wait for the evaluator to finish.
-  try {
-    api.logger.info(`Ambient eval waiting: runId=${runId}`);
-    await api.runtime.subagent.waitForRun({ runId, timeoutMs: EVALUATOR_TIMEOUT_MS });
-    api.logger.info(`Ambient eval completed: runId=${runId}`);
-  } catch (err) {
-    api.logger.warn(
-      `Opportunity evaluator timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
+  const ambientDeliveredToday = await fetchAmbientDeliveredToday(api, config);
+  const mainAgentToolUse = readMainAgentToolUse(api);
 
-  // Capture evaluator output — the last assistant message in the session.
-  let content: string;
-  try {
-    const { messages } = await api.runtime.subagent.getSessionMessages({
-      sessionKey: evaluatorSessionKey,
-      limit: 10,
-    });
-    const rawContent = messages.filter((m) => m.role === 'assistant').at(-1)?.content ?? '';
-    content = extractTextContent(rawContent);
-    api.logger.info(`Ambient eval session: ${messages.length} msgs, content length=${content.length}`);
-  } catch (err) {
-    api.logger.warn(
-      `Opportunity evaluator session read failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-
-  if (!content) {
-    api.logger.debug('Opportunity evaluator produced no output — skipping delivery.');
-    lastOpportunityBatchHash = batchHash;
-    return false;
-  }
-
-  const batchIds = body.opportunities.map((o) => o.opportunityId);
-  const selectedIds = extractSelectedIds(content, batchIds);
-
-  if (selectedIds.length === 0) {
-    api.logger.debug('Opportunity evaluator selected no opportunities — skipping delivery.');
-    lastOpportunityBatchHash = batchHash;
-    return false;
-  }
-
-  // Phase 2: dispatch to user via delivery dispatcher.
-  // Idempotency key uses the eval runId so a new eval run busts the cache.
-  const dispatchResult = await dispatchDelivery(api, {
+  const prompt = buildMainAgentPrompt({
     contentType: 'ambient_discovery',
-    content,
-    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${runId}`,
-    previewShieldUrl: config.frontendUrl,
+    mainAgentToolUse,
+    payload: { contentType: 'ambient_discovery', ambientDeliveredToday, candidates },
   });
 
-  if (dispatchResult === null) {
-    return false;
-  }
+  const dispatch = await dispatchToMainAgent(api, {
+    prompt,
+    idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
+  });
 
-  // Wait for delivery to complete before confirming.
-  try {
-    await api.runtime.subagent.waitForRun({
-      runId: dispatchResult.runId,
-      timeoutMs: EVALUATOR_TIMEOUT_MS,
-    });
-  } catch (err) {
-    api.logger.warn(
-      `Ambient delivery timed out or failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
+  if (!dispatch.delivered) {
+    return 'error';
   }
 
   lastOpportunityBatchHash = batchHash;
 
   api.logger.info(
-    `Opportunity batch dispatched: ${body.opportunities.length} candidate(s) evaluated`,
-    { agentId: config.agentId },
+    `Ambient discovery dispatched: ${candidates.length} candidate(s); agent will confirm individually`,
+    { agentId: config.agentId, ambientDeliveredToday },
   );
 
-  // Phase 3: confirm selected opportunities after successful delivery.
-  await confirmDeliveredBatch({
-    baseUrl: config.baseUrl,
-    agentId: config.agentId,
-    apiKey: config.apiKey,
-    opportunityIds: selectedIds,
-    logger: api.logger,
-  });
-
-  return true;
-}
-
-/**
- * Extracts plain text from a session message content field.
- * OpenClaw may return structured content blocks (`[{type:"text", text:"..."}]`)
- * or a plain string. This normalises both to a trimmed string.
- */
-function extractTextContent(raw: unknown): string {
-  if (Array.isArray(raw)) {
-    return raw
-      .filter((b: { type?: string }) => b?.type === 'text')
-      .map((b: { text?: string }) => b?.text ?? '')
-      .join('\n')
-      .trim();
-  }
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (!trimmed) return '';
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return extractTextContent(parsed);
-    } catch {
-      // Not JSON — treat as plain text.
-    }
-    return trimmed;
-  }
-  return '';
+  return 'dispatched';
 }
 
 /** Reset module-level state. Exposed for tests only. */

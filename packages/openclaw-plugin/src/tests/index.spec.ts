@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
 
 import { register, _resetForTesting } from '../index.js';
 import type {
@@ -102,7 +102,7 @@ describe('register(api)', () => {
     register(fake.api);
 
     expect(fake.configSetCalls.length).toBe(1);
-    expect(fake.configSetCalls[0].path).toBe('mcp.servers.index-network');
+    expect(fake.configSetCalls[0].path).toBe('mcp.servers.index');
     expect(fake.configSetCalls[0].value).toEqual({
       url: 'https://protocol.index.network/mcp',
       transport: 'streamable-http',
@@ -115,7 +115,7 @@ describe('register(api)', () => {
       { agentId: 'agent-1', apiKey: 'key-1', url: 'https://index.network' },
       {
         mcpServers: {
-          'index-network': {
+          'index': {
             url: 'https://protocol.index.network/mcp',
             transport: 'streamable-http',
             headers: { 'x-api-key': 'key-1' },
@@ -133,7 +133,7 @@ describe('register(api)', () => {
       { agentId: 'agent-1', apiKey: 'new-key', url: 'https://index.network' },
       {
         mcpServers: {
-          'index-network': {
+          'index': {
             url: 'https://protocol.index.network/mcp',
             transport: 'streamable-http',
             headers: { 'x-api-key': 'old-key' },
@@ -158,12 +158,12 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
   });
 
-  test('warns user to run openclaw index-network setup when not configured', () => {
+  test('warns user to run openclaw index setup when not configured', () => {
     const fake = buildFakeApi({});
     register(fake.api);
 
     const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
-    expect(warnMsg).toContain('openclaw index-network setup');
+    expect(warnMsg).toContain('openclaw index setup');
   });
 
   test('falls back to protocolUrl and warns about migration', () => {
@@ -176,9 +176,63 @@ describe('register(api)', () => {
     const warnCalls = fake.logger.warn.mock.calls as string[][];
     const migrationWarn = warnCalls.find((args) => args[0].includes('deprecated'));
     expect(migrationWarn).toBeTruthy();
-    expect(migrationWarn![0]).toContain('openclaw index-network setup');
+    expect(migrationWarn![0]).toContain('openclaw index setup');
 
     expect(fake.configSetCalls.length).toBe(1);
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
+  });
+
+  test('registers the canonical `index` CLI subcommand', () => {
+    const fake = buildFakeApi({});
+    const registered: string[] = [];
+
+    fake.api.registerCli = mock((_cb, opts?: { descriptors?: Array<{ name: string }> }) => {
+      for (const d of opts?.descriptors ?? []) registered.push(d.name);
+    }) as any;
+
+    register(fake.api);
+
+    expect(registered).toContain('index');
+  });
+
+  test('also registers the deprecated `index-network` alias', () => {
+    const fake = buildFakeApi({});
+    const registered: string[] = [];
+
+    fake.api.registerCli = mock((_cb, opts?: { descriptors?: Array<{ name: string }> }) => {
+      for (const d of opts?.descriptors ?? []) registered.push(d.name);
+    }) as any;
+
+    register(fake.api);
+
+    expect(registered).toContain('index-network');
+  });
+
+  test('writes mcp.servers.index when api key is present', () => {
+    const fake = buildFakeApi({ agentId: 'a', apiKey: 'k' });
+    register(fake.api);
+
+    const setCalls = (fake.api.configSet as ReturnType<typeof mock>).mock.calls as Array<[string, unknown]>;
+    expect(setCalls.map(([p]) => p)).toContain('mcp.servers.index');
+  });
+
+  test('migrates legacy mcp.servers.index-network on register', () => {
+    const fake = buildFakeApi(
+      { agentId: 'a', apiKey: 'k' },
+      {
+        mcpServers: {
+          'index-network': {
+            url: 'old',
+            transport: 'streamable-http',
+            headers: { 'x-api-key': 'k' },
+          },
+        },
+      },
+    );
+    register(fake.api);
+
+    const setCalls = (fake.api.configSet as ReturnType<typeof mock>).mock.calls as Array<[string, unknown]>;
+    const cleanup = setCalls.find(([p, v]) => p === 'mcp.servers.index-network' && v === undefined);
+    expect(cleanup).toBeDefined();
   });
 });

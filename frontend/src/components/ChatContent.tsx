@@ -574,6 +574,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
     if (!USE_HOME_API || messages.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHomeViewData(null);
       return;
     }
@@ -628,6 +629,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       // Don't abort in-flight stream so the new session can finish and appear in the sidebar
       clearChat({ abortStream: false });
       setSelectedNetworkIds([]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSessionLoaded(true);
     }
   }, [sessionIdFromUrl, loadSession, clearChat]);
@@ -717,28 +719,32 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         return;
       }
 
-      // Non-ghost + accepted + non-introducer: skip modal, prefill chat with AI message, accept only after first message
+      // Non-ghost + accepted + non-introducer: atomically accept the opp and
+      // resolve the DM in one round-trip via POST /opportunities/:id/start-chat.
       if (action === "accepted" && !isIntroducer && !isGhost) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
-        const userId = fallbackUserId ?? "";
-        let prefillMessage = "";
         try {
-          const { message } = await opportunitiesService.getInviteMessage(opportunityId);
-          prefillMessage = message;
-        } catch { /* use empty */ }
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
-        setHomeViewData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            sections: prev.sections
-              .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
-              .filter((s) => s.items.length > 0),
-          };
-        });
-        navigate(`/u/${userId}/chat`, {
-          state: { prefill: prefillMessage, opportunityId },
-        });
+          const result = await opportunitiesService.startChat(opportunityId);
+          setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
+          setHomeViewData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              sections: prev.sections
+                .map((s) => ({ ...s, items: s.items.filter((i) => i.opportunityId !== opportunityId) }))
+                .filter((s) => s.items.length > 0),
+            };
+          });
+          refreshConversations();
+          // Always route to the h2h chat page (`/u/:peer/chat` renders `ChatView`).
+          // `/chat/:id` routes to the A2A NegotiationDetailPage and does not show
+          // the in-chat opportunity context.
+          navigate(`/u/${result.counterpartUserId ?? fallbackUserId ?? ""}/chat`);
+        } catch (error) {
+          showError(error instanceof Error ? error.message : "Failed to start chat");
+        } finally {
+          setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
+        }
         return;
       }
 
@@ -777,7 +783,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
       }
     },
-    [opportunitiesService, navigate, showError, showSuccess],
+    [opportunitiesService, navigate, showError, showSuccess, refreshConversations],
   );
 
   /**
@@ -794,11 +800,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         const result = await opportunitiesService.startChat(opportunityId);
         setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
         refreshConversations();
-        if (result.conversationId) {
-          navigate(`/chat/${result.conversationId}`);
-        } else {
-          navigate(`/u/${counterpartUserId}/chat`);
-        }
+        // Always route to the h2h chat page (`/u/:peer/chat`). `/chat/:id`
+        // is the A2A negotiation route and does not render the in-chat
+        // opportunity context.
+        navigate(`/u/${result.counterpartUserId ?? counterpartUserId}/chat`);
       } catch (error) {
         showError(error instanceof Error ? error.message : "Failed to start chat");
       } finally {
@@ -854,6 +859,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   useEffect(() => {
     const el = inputRef.current;
     if (!input) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsInputMultiline(false);
       setIsTextareaMultiline(false);
       return;

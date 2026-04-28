@@ -277,7 +277,7 @@ Detailed documentation lives in the `docs/` directory:
 
 - **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
 - **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
-- **[CLI v1 Spec](docs/specs/cli-v1.md)** -- Login and conversation command specification
+- **[CLI Reference Spec](docs/specs/cli-reference.md)** -- Complete CLI command behavior specification
 - **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
 
 ## Contributing

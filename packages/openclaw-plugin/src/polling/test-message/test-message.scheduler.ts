@@ -14,7 +14,7 @@ export interface TestMessageSchedulerConfig {
 
 /**
  * Starts the test message scheduler, which periodically triggers the
- * `/index-network/poll/test-message` route via local fetch.
+ * `/index/poll/test-message` route via local fetch.
  *
  * @param config - Scheduler configuration including gateway port and token.
  */
@@ -22,7 +22,7 @@ export function start(config: TestMessageSchedulerConfig): void {
   if (timer) { clearTimeout(timer); }
 
   const trigger = () => {
-    fetch(`http://127.0.0.1:${config.gatewayPort}/index-network/poll/test-message`, {
+    fetch(`http://127.0.0.1:${config.gatewayPort}/index/poll/test-message`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.gatewayToken}` },
       signal: AbortSignal.timeout(30_000),

@@ -93,11 +93,11 @@ git push <indexnetwork-remote> main
 
 ### Subtrees
 
-The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `scripts/hooks/pre-push` hook detects commits touching each prefix and runs `git subtree push` whenever you push `dev` or `main` to the canonical `indexnetwork/index` repo, regardless of whether that remote is named `origin`, `upstream`, or something else. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`).
+The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `.github/workflows/sync-subtrees.yml` workflow runs on every push to `dev` or `main` of the canonical `indexnetwork/index` repo (including PR merges), splitting each prefix and force-pushing to the corresponding subtree repo with the `SUBTREE_SYNC_PAT` secret. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`). The workflow also exposes `workflow_dispatch` for manual reruns. The local `scripts/hooks/pre-push` hook still regenerates SKILL.md files before push, but no longer runs subtree push.
 
 #### packages/openclaw-plugin/ → indexnetwork/openclaw-plugin
 
-The `indexnetwork-openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, and (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
+The `@indexnetwork/openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`, and (c) polls for pending opportunities (ambient discovery, daily digest, test messages) and dispatches them to the user's main OpenClaw agent via the gateway's `POST /hooks/agent` endpoint with `deliver: true, channel: "last"` — the gateway then routes the agent's reply to whichever channel the user last chatted on. The setup wizard bootstraps the OpenClaw `hooks` subsystem (`hooks.enabled`, `hooks.token`, `hooks.path`) on first run; the dispatch path requires it. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
 
 **Version fields (bump BOTH on every release):**
 - `package.json` → `version` (npm / workspace-facing)
@@ -172,7 +172,7 @@ index/
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
-│   ├── openclaw-plugin/ # indexnetwork-openclaw-plugin — bootstrap + negotiation poller, subtree → indexnetwork/openclaw-plugin
+│   ├── openclaw-plugin/ # @indexnetwork/openclaw-plugin — bootstrap + negotiation poller, subtree → indexnetwork/openclaw-plugin
 │   └── claude-plugin/   # @indexnetwork/claude-plugin — index-orchestrator and index-negotiator skills, subtree → indexnetwork/claude-plugin
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)

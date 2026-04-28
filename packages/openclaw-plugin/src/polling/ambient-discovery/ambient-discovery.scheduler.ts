@@ -14,7 +14,7 @@ export interface AmbientDiscoverySchedulerConfig {
 
 /**
  * Starts the ambient discovery scheduler, which periodically triggers the
- * `/index-network/poll/ambient-discovery` route via local fetch.
+ * `/index/poll/ambient-discovery` route via local fetch.
  *
  * @param config - Scheduler configuration including gateway port and token.
  */
@@ -22,7 +22,7 @@ export function start(config: AmbientDiscoverySchedulerConfig): void {
   if (timer) { clearTimeout(timer); }
 
   const trigger = () => {
-    fetch(`http://127.0.0.1:${config.gatewayPort}/index-network/poll/ambient-discovery`, {
+    fetch(`http://127.0.0.1:${config.gatewayPort}/index/poll/ambient-discovery`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.gatewayToken}` },
       signal: AbortSignal.timeout(30_000),

@@ -27,92 +27,192 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.10.0";
+const VERSION = "0.10.2";
 
-const HELP_TEXT = `
-Index CLI v${VERSION}
+/** Unicode box-drawing (rounded), same style as Honcho CLI. */
+const BOX = { tl: "\u256d", tr: "\u256e", bl: "\u2570", br: "\u256f", h: "\u2500", v: "\u2502" } as const;
 
-Usage:
-  index login                           Authenticate via browser (uses existing session or OAuth)
-  index login --token <token>           Authenticate with a manually provided token
-  index logout                          Clear stored session
-  index conversation                    Chat with the AI agent (interactive REPL)
-  index conversation "message"          One-shot message to the AI agent
-  index conversation --session <id>     Resume a specific chat session
-  index conversation sessions           List AI chat sessions
-  index conversation list               List all conversations (H2A + H2H)
-  index conversation with <user-id>     Open or resume a DM with a user
-  index conversation show <id>          Show messages in a conversation
-  index conversation send <id> <msg>    Send a message
-  index conversation stream             Listen for real-time events (SSE)
-  index profile                         Show your profile
-  index profile show <user-id>          Show another user's profile
-  index profile sync                    Regenerate your profile
-  index profile search <query>          Search user profiles
-  index profile create [--linkedin <url>] [--github <url>] [--twitter <url>]
-                                        Create your profile from social URLs
-  index profile update <action> [--details <text>]
-                                        Update your profile
-  index intent list [--archived] [--limit <n>]  List your signals
-  index intent show <id>               Show signal details
-  index intent create <content>        Create a signal from natural language
-  index intent update <id> <content>   Update a signal's description
-  index intent archive <id>            Archive a signal
-  index intent link <id> <network-id>  Link a signal to a network
-  index intent unlink <id> <network-id> Unlink a signal from a network
-  index intent links <id>              Show linked networks for a signal
-  index negotiation list               List your agent's negotiations
-  index negotiation list --limit <n>   Limit results
-  index negotiation list --since <t>   Filter by time (ISO date or 1h, 2d, 1w)
-  index negotiation show <id>          Show negotiation turn-by-turn details (accepts short ID)
-  index opportunity list                List your opportunities
-  index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
-  index opportunity list --limit <n>    Limit results
-  index opportunity show <id>           Show full opportunity details
-  index opportunity accept <id>         Accept an opportunity
-  index opportunity reject <id>         Reject an opportunity
-  index opportunity discover <query>    Discover opportunities by search query
-  index network list                    List your networks
-  index network create <name>           Create a new network
-  index network show <id>               Show network details and members
-  index network update <id> [--title <t>] [--prompt <p>]
-                                        Update a network
-  index network delete <id>             Delete a network
-  index network join <id>               Join a public network
-  index network leave <id>              Leave a network
-  index network invite <id> <email>     Invite a user by email
-  index contact list                    List your contacts
-  index contact add <email>             Add a contact by email
-  index contact remove <email>          Remove a contact
-  index contact import --gmail          Import contacts from Gmail
-  index scrape <url>                    Extract content from a URL
-  index onboarding complete             Mark onboarding as complete
-  index sync                            Sync context to ~/.index/context.json
-  index sync --json                     Output synced context to stdout
-  index --help                          Show this help message
-  index --version                       Show version
+function visualLen(s: string): number {
+  return output.stripAnsi(s).length;
+}
 
-Options:
-  --api-url <url>     Override the API server URL (default: ${DEFAULT_API_URL})
-  --app-url <url>     Override the app URL for login (default: ${DEFAULT_APP_URL})
-  --token <token>, -t Provide a bearer token directly (skips browser flow)
-  --session <id>, -s  Resume a specific chat session
-  --archived          Include archived signals (intent list)
-  --status <status>   Filter opportunities by status
-  --limit <n>         Limit number of results
-  --since <date>      Filter by time (ISO date or duration like 1h, 2d, 1w)
-  --json              Output raw JSON instead of formatted text
-  --name <name>       Name for contact add
-  --gmail             Import source flag for contact import
-  --objective <text>  Objective for scrape command
-  --target <uid>      Target user for opportunity discover
-  --introduce <uid>   Source user for introduction discovery
-  --linkedin <url>    LinkedIn URL for profile create
-  --github <url>      GitHub URL for profile create
-  --twitter <url>     Twitter URL for profile create
-  --title <text>      Title for network update
-  --details <text>    Details for profile update
-`;
+function padVisual(s: string, width: number): string {
+  return s + " ".repeat(Math.max(0, width - visualLen(s)));
+}
+
+/**
+ * Print a bordered panel with a title in the top edge.
+ *
+ * @param title - Short label embedded after `╭─`
+ * @param rows - Inner lines (no border chars); each should start with a leading space for alignment.
+ */
+function panel(title: string, rows: string[]): void {
+  const innerW = Math.max(
+    52,
+    title.length + 4,
+    ...rows.map((r) => visualLen(r)),
+  );
+  const dashRun = Math.max(1, innerW - title.length - 3);
+  const innerTop = `${BOX.h} ${title} ${BOX.h.repeat(dashRun)}`;
+  console.log(`${output.GRAY}${BOX.tl}${innerTop}${BOX.tr}${output.RESET}`);
+  for (const row of rows) {
+    console.log(`${output.GRAY}${BOX.v}${output.RESET}${padVisual(row, innerW)}${output.GRAY}${BOX.v}${output.RESET}`);
+  }
+  console.log(`${output.GRAY}${BOX.bl}${BOX.h.repeat(innerW)}${BOX.br}${output.RESET}\n`);
+}
+
+function helpRowDim(leftW: number, left: string, right: string): string {
+  const pad = Math.max(0, leftW - left.length);
+  return ` ${output.GRAY}${left}${" ".repeat(pad)} ${right}${output.RESET}`;
+}
+
+function helpRowCmd(leftW: number, left: string, right: string): string {
+  const pad = Math.max(0, leftW - left.length);
+  return ` ${output.BOLD}${output.CYAN}${left}${output.RESET}${" ".repeat(pad)} ${right}`;
+}
+
+function helpRowCont(leftW: number, right: string): string {
+  return ` ${" ".repeat(leftW)} ${right}`;
+}
+
+/** Print grouped help (rounded panels). */
+function renderHelp(): void {
+  const gsLefts = [
+    "index login",
+    "index login --token <token>",
+    "index logout",
+    'index intent create "..."',
+    "index negotiation list",
+    "index opportunity list",
+  ];
+  const gsLW = Math.max(...gsLefts.map((s) => s.length));
+
+  const formsLefts = [
+    'index conversation "message"',
+    "index conversation --session <id>",
+    "index sync --json",
+    "index profile create",
+    "index profile update",
+    "index intent list",
+    "index negotiation list",
+    "index opportunity list",
+    "index opportunity discover",
+  ];
+  const formsLW = Math.max(...formsLefts.map((s) => s.length));
+
+  const cmdLefts = [
+    "pattern",
+    "example",
+    "intent",
+    "negotiation",
+    "opportunity",
+    "profile",
+    "conversation",
+    "network",
+    "contact",
+    "scrape",
+    "sync",
+    "onboarding",
+  ];
+  const cmdLW = Math.max(...cmdLefts.map((s) => s.length));
+
+  const optLefts = [
+    "--api-url <url>",
+    "--app-url <url>",
+    "--token <token>",
+    "--session <id>",
+    "--archived",
+    "--status <status>",
+    "--limit <n>",
+    "--since <date>",
+    "--json",
+    "--name <name>",
+    "--gmail",
+    "--objective <text>",
+    "--target <uid>",
+    "--introduce <uid>",
+    "--linkedin <url>",
+    "--github <url>",
+    "--twitter <url>",
+    "--title <text>",
+    "--details <text>",
+    "--help",
+    "--version",
+  ];
+  const optLW = Math.max(...optLefts.map((s) => s.length));
+
+  console.log();
+  console.log(
+    `  ${output.BOLD}${output.CYAN}I N D E X${output.RESET}  ${output.GRAY}cli${output.RESET}`,
+  );
+  console.log(`  ${output.GRAY}v${VERSION}${output.RESET}\n`);
+
+  panel("getting started", [
+    helpRowCmd(gsLW, "index login", "authenticate via browser"),
+    helpRowCmd(gsLW, "index login --token <token>", "authenticate with a bearer token"),
+    helpRowCmd(gsLW, "index logout", "clear stored session"),
+    helpRowCmd(gsLW, 'index intent create "..."', "describe what you're looking for"),
+    helpRowCmd(gsLW, "index negotiation list", "see agent debates in progress"),
+    helpRowCmd(gsLW, "index opportunity list", "see what was found for you"),
+  ]);
+
+  panel("common forms", [
+    helpRowCmd(formsLW, 'index conversation "message"', "send a one-shot agent message"),
+    helpRowCmd(formsLW, "index conversation --session <id>", "resume an agent chat session"),
+    helpRowCmd(formsLW, "index sync --json", "print synced context as JSON"),
+    "",
+    helpRowCmd(formsLW, "index profile create", "use social URL flags"),
+    helpRowCmd(formsLW, "index profile update", "use action text or --details"),
+    helpRowCmd(formsLW, "index intent list", "supports --archived and --limit"),
+    helpRowCmd(formsLW, "index negotiation list", "supports --since and --limit"),
+    helpRowCmd(formsLW, "index opportunity list", "supports --status and --limit"),
+    helpRowCmd(formsLW, "index opportunity discover", "supports --target and --introduce"),
+  ]);
+
+  panel("commands", [
+    helpRowDim(cmdLW, "pattern", "index <command> [args] [options]"),
+    helpRowDim(cmdLW, "example", 'index intent create "looking for a CTO"'),
+    "",
+    helpRowCmd(cmdLW, "intent", "list · show · create · update · archive"),
+    helpRowCont(cmdLW, "link · unlink · links"),
+    helpRowCmd(cmdLW, "negotiation", "list · show"),
+    helpRowCmd(cmdLW, "opportunity", "list · show · accept · reject · discover"),
+    "",
+    helpRowCmd(cmdLW, "profile", "show · sync · search · create · update"),
+    helpRowCmd(cmdLW, "conversation", "sessions · list · with · show · send · stream"),
+    helpRowCmd(cmdLW, "network", "list · create · show · update · delete"),
+    helpRowCont(cmdLW, "join · leave · invite"),
+    helpRowCmd(cmdLW, "contact", "list · add · remove · import"),
+    "",
+    helpRowCmd(cmdLW, "scrape", "extract content from a URL"),
+    helpRowCmd(cmdLW, "sync", "download your context locally"),
+    helpRowCmd(cmdLW, "onboarding", "finish account setup"),
+  ]);
+
+  panel("options", [
+    helpRowDim(optLW, "--api-url <url>", "override API server URL"),
+    helpRowDim(optLW, "--app-url <url>", "override app URL for login"),
+    helpRowDim(optLW, "--token <token>", "provide bearer token directly"),
+    helpRowDim(optLW, "--session <id>", "resume a chat session"),
+    helpRowDim(optLW, "--archived", "include archived signals"),
+    helpRowDim(optLW, "--status <status>", "filter opportunities by status"),
+    helpRowDim(optLW, "--limit <n>", "limit number of results"),
+    helpRowDim(optLW, "--since <date>", "filter by ISO date or duration"),
+    helpRowDim(optLW, "--json", "output raw JSON"),
+    helpRowDim(optLW, "--name <name>", "name for contact add"),
+    helpRowDim(optLW, "--gmail", "import contacts from Gmail"),
+    helpRowDim(optLW, "--objective <text>", "objective for scrape command"),
+    helpRowDim(optLW, "--target <uid>", "target user for opportunity discovery"),
+    helpRowDim(optLW, "--introduce <uid>", "source user for introduction discovery"),
+    helpRowDim(optLW, "--linkedin <url>", "LinkedIn URL for profile create"),
+    helpRowDim(optLW, "--github <url>", "GitHub URL for profile create"),
+    helpRowDim(optLW, "--twitter <url>", "Twitter URL for profile create"),
+    helpRowDim(optLW, "--title <text>", "title for network update"),
+    helpRowDim(optLW, "--details <text>", "details for profile update"),
+    helpRowDim(optLW, "--help", "show help for any command"),
+    helpRowDim(optLW, "--version", "show version"),
+  ]);
+}
 
 // ── Auth helper ──────────────────────────────────────────────────────
 
@@ -221,7 +321,7 @@ async function main(): Promise<void> {
   // Commands that don't require authentication
   switch (args.command) {
     case "help":
-      console.log(HELP_TEXT);
+      renderHelp();
       return;
     case "version":
       console.log(VERSION);

@@ -69,6 +69,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const [socialX, setSocialX] = useState(user?.socials?.x || '');
   const [socialLinkedin, setSocialLinkedin] = useState(user?.socials?.linkedin || '');
   const [socialGithub, setSocialGithub] = useState(user?.socials?.github || '');
+  const [socialTelegram, setSocialTelegram] = useState(user?.socials?.telegram || '');
   const [websites, setWebsites] = useState<string[]>(
     user?.socials?.websites || []
   );
@@ -134,6 +135,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
         ...(socialX && { x: socialX }),
         ...(socialLinkedin && { linkedin: socialLinkedin }),
         ...(socialGithub && { github: socialGithub }),
+        ...(socialTelegram && { telegram: socialTelegram }),
         ...(websites.length > 0 && {
           websites: websites.filter(w => w)
         })
@@ -170,6 +172,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
       setSocialX(user.socials?.x || '');
       setSocialLinkedin(user.socials?.linkedin || '');
       setSocialGithub(user.socials?.github || '');
+      setSocialTelegram(user.socials?.telegram || '');
       setWebsites(user.socials?.websites || []);
     }
   }, [open, user]);
@@ -328,6 +331,19 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                   id="socialGithub"
                   value={socialGithub}
                   onChange={(e) => setSocialGithub(e.target.value)}
+                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                />
+              </div>
+
+              {/* Telegram */}
+              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
+                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
+                  t.me/
+                </div>
+                <Input
+                  id="socialTelegram"
+                  value={socialTelegram}
+                  onChange={(e) => setSocialTelegram(e.target.value)}
                   className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>

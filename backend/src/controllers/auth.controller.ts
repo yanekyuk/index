@@ -7,6 +7,8 @@ import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
 
+// `telegram` is intentionally excluded — it's a private contact channel,
+// not a public-web identity Parallel.ai can enrich from.
 function hasAtLeastOneSocial(socials: unknown): boolean {
   if (!socials || typeof socials !== 'object') {
     return false;

@@ -10,6 +10,12 @@ import { Input } from '@/components/ui/input';
 import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
+import {
+  buildMcpConfigs,
+  OPENCLAW_INSTALL_CMD,
+  OPENCLAW_SETUP_CMD,
+  OPENCLAW_UPDATE_CMD,
+} from '@/lib/mcp-config';
 import type { Agent, AgentTokenInfo } from '@/services/agents';
 
 function formatDate(dateStr: string | null): string {
@@ -165,16 +171,6 @@ function WizardPromptGrid({
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Optional</span>
         </div>
         <WizardRow
-          prompt="Delivery channel"
-          description="Platform to receive notifications (Telegram, Discord, Slack, etc.)"
-          value="select or skip"
-        />
-        <WizardRow
-          prompt="Delivery target"
-          description="Your user ID or handle on the chosen platform"
-          value="your ID"
-        />
-        <WizardRow
           prompt="Daily digest"
           description="Receive a daily summary of opportunities"
           value="enable / disable"
@@ -187,7 +183,12 @@ function WizardPromptGrid({
         <WizardRow
           prompt="Max per digest"
           description="Maximum number of opportunities included per digest"
-          value="10 (default)"
+          value="20 (default)"
+        />
+        <WizardRow
+          prompt="Main agent tool use during Index Network renders"
+          description="Whether the agent may call MCP tools when rendering results"
+          value={"1. Disabled — agent renders from provided content only (default)\n2. Enabled — agent may call MCP tools to enrich"}
         />
       </div>
     </div>
@@ -233,35 +234,8 @@ function OpenClawSetup({
 function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
   const keyValue = apiKey || 'YOUR_API_KEY';
   const agentValue = agentId || 'YOUR_AGENT_ID';
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || 'https://api.index.network';
   const baseUrl = window.location.origin;
-  const mcpUrl = `${protocolUrl}/mcp`;
-
-  const claudeConfig = JSON.stringify(
-    {
-      mcpServers: {
-        'index-network': {
-          type: 'http',
-          url: mcpUrl,
-          headers: {
-            'x-api-key': keyValue,
-          },
-        },
-      },
-    },
-    null,
-    2,
-  );
-
-  const hermesConfig = `mcp_servers:
-  - name: index-network
-    url: ${mcpUrl}
-    headers:
-      x-api-key: ${keyValue}`;
-
-  const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
-  const openclawUpdate = `openclaw plugins update indexnetwork-openclaw-plugin`;
-  const openclawSetup = `openclaw index-network setup`;
+  const { claudeConfig, hermesConfig } = buildMcpConfigs(keyValue);
 
   return (
     <div className="space-y-6">
@@ -275,7 +249,11 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
       </div>
       <div className="space-y-3">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
-        <OpenClawSetup install={openclawInstall} update={openclawUpdate} setup={openclawSetup} />
+        <OpenClawSetup
+          install={OPENCLAW_INSTALL_CMD}
+          update={OPENCLAW_UPDATE_CMD}
+          setup={OPENCLAW_SETUP_CMD}
+        />
         <WizardPromptGrid serverUrl={baseUrl} agentId={agentValue} apiKey={keyValue} />
       </div>
     </div>

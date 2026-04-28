@@ -2,7 +2,7 @@
 # Builds native binaries for all platforms before publishing.
 # Skips if the version in package.json is already on npm.
 #
-# Requires: GitHub repo secret INDEX_REPO_TOKEN (npm automation token).
+# Requires: org-level NPM_TOKEN secret.
 name: Publish
 
 on:
@@ -155,7 +155,7 @@ jobs:
 
       - name: Publish platform packages
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.INDEX_REPO_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for dir in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
             echo "Publishing @indexnetwork/cli-$dir..."
@@ -164,5 +164,5 @@ jobs:
 
       - name: Publish main package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.INDEX_REPO_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --tag "${{ needs.check.outputs.tag }}"

@@ -1,327 +1,155 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
-import type { OpenClawPluginApi, SubagentRunOptions } from '../lib/openclaw/plugin-api.js';
+import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
-describe('handleDailyDigest', () => {
+const OPP_1 = '11111111-1111-1111-1111-111111111111';
+const OPP_2 = '22222222-2222-2222-2222-222222222222';
+
+interface FetchSink {
+  pendingUrls: string[];
+  hookCalls: Array<{ url: string; body?: unknown }>;
+  confirmCalls: Array<{ url: string; body?: unknown }>;
+}
+
+function makeApi(): OpenClawPluginApi {
+  return {
+    id: 'indexnetwork-openclaw-plugin',
+    name: 'Index Network',
+    pluginConfig: { mainAgentToolUse: 'disabled' },
+    config: {
+      gateway: { port: 18789 },
+      hooks: { enabled: true, token: 'hooks-tok', path: '/hooks' },
+    },
+    runtime: {
+      subagent: {
+        run: mock(async () => ({ runId: 'unused' })),
+        waitForRun: mock(async () => ({ result: null })),
+        getSessionMessages: mock(async () => ({ messages: [] })),
+      },
+    },
+    logger: {
+      debug: mock(() => {}),
+      info: mock(() => {}),
+      warn: mock(() => {}),
+      error: mock(() => {}),
+    },
+    registerHttpRoute: mock(() => {}),
+  };
+}
+
+function mockBackend(opportunities: unknown[], hookStatus = 200, confirmStatus = 200): FetchSink {
+  const sink: FetchSink = { pendingUrls: [], hookCalls: [], confirmCalls: [] };
+  global.fetch = mock(async (input: RequestInfo, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/opportunities/pending')) {
+      sink.pendingUrls.push(url);
+      return new Response(JSON.stringify({ opportunities }), { status: 200 });
+    }
+    if (url.includes('/hooks/agent')) {
+      const body = init?.body ? (JSON.parse(init.body as string) as unknown) : undefined;
+      sink.hookCalls.push({ url, body });
+      return new Response(JSON.stringify({ status: 'sent' }), { status: hookStatus });
+    }
+    if (url.includes('/confirm-batch')) {
+      const body = init?.body ? (JSON.parse(init.body as string) as unknown) : undefined;
+      sink.confirmCalls.push({ url, body });
+      return new Response(
+        JSON.stringify({ confirmed: 1, alreadyDelivered: 0 }),
+        { status: confirmStatus },
+      );
+    }
+    return new Response('not-found', { status: 404 });
+  }) as unknown as typeof fetch;
+  return sink;
+}
+
+describe('handleDailyDigest (hooks-only path)', () => {
   let mockApi: OpenClawPluginApi;
-  let subagentRunCalls: SubagentRunOptions[];
   let originalFetch: typeof global.fetch;
 
-  const EVALUATOR_CONTENT = 'Digest: opp-1 matches your goals. opp-2 is also relevant.';
-
   beforeEach(() => {
-    subagentRunCalls = [];
     originalFetch = global.fetch;
-
-    mockApi = {
-      id: 'test-plugin',
-      name: 'Test Plugin',
-      pluginConfig: {
-        deliveryChannel: 'telegram',
-        deliveryTarget: '12345',
-      },
-      runtime: {
-        subagent: {
-          run: mock(async (opts) => {
-            subagentRunCalls.push(opts);
-            return { runId: `run-${subagentRunCalls.length}` };
-          }),
-          waitForRun: mock(async () => ({ result: null })),
-          getSessionMessages: mock(async () => ({
-            messages: [{ role: 'assistant', content: EVALUATOR_CONTENT }],
-          })),
-        },
-      },
-      logger: {
-        debug: mock(() => {}),
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-      },
-      registerHttpRoute: mock(() => {}),
-    };
+    mockApi = makeApi();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
   });
 
-  it('phase 1: evaluator runs with deliver:false on daily-digest session key', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-          { opportunityId: 'opp-2', counterpartUserId: 'user-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
+  const cfg = {
+    baseUrl: 'https://test.example.com',
+    agentId: 'agent-123',
+    apiKey: 'k',
+    frontendUrl: 'https://test.index.network',
+  };
 
-    await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 5,
-    });
-
-    expect(subagentRunCalls[0].deliver).toBe(false);
-    expect(subagentRunCalls[0].sessionKey).toMatch(/^index:daily-digest:agent-123:\d{4}-\d{2}-\d{2}$/);
+  it('fetches /pending with ?limit=20 (digest cap)', async () => {
+    const sink = mockBackend([]);
+    await handleDailyDigest(mockApi, cfg);
+    expect(sink.pendingUrls).toHaveLength(1);
+    expect(sink.pendingUrls[0]).toContain('limit=20');
   });
 
-  it('phase 1: evaluator prompt contains top-N instruction and candidate data', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-          { opportunityId: 'opp-2', counterpartUserId: 'user-2', rendered: { headline: 'H2', personalizedSummary: 'S2', suggestedAction: 'A2', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 5,
-    });
-
-    expect(subagentRunCalls[0].message).toContain('daily digest');
-    expect(subagentRunCalls[0].message).toContain('top 2'); // min(5, 2 available)
-    expect(subagentRunCalls[0].message).toContain('opp-1');
-    expect(subagentRunCalls[0].message).toContain('opp-2');
+  it('returns false when /pending is empty', async () => {
+    const sink = mockBackend([]);
+    const result = await handleDailyDigest(mockApi, cfg);
+    expect(result).toBe(false);
+    expect(sink.hookCalls).toHaveLength(0);
   });
 
-  it('phase 2: delivery subagent runs with deliver:true on telegram session key', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
+  it('dispatches via /hooks/agent with digest prompt', async () => {
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_2, counterpartUserId: 'user-2', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ]);
 
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 5,
-    });
-
+    const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(true);
-    expect(subagentRunCalls).toHaveLength(2);
-    expect(subagentRunCalls[1].deliver).toBe(true);
-    expect(subagentRunCalls[1].sessionKey).toBe('agent:main:telegram:direct:12345');
+    expect(sink.hookCalls).toHaveLength(1);
+    const body = sink.hookCalls[0].body as { message: string };
+    expect(body.message.toLowerCase()).toContain('digest');
+
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 
-  it('delivery idempotency key contains daily-digest and a date', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
+  it('returns false when dispatch fails', async () => {
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ], 500);
 
-    await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 5,
-    });
-
-    expect(subagentRunCalls[1].idempotencyKey).toContain('daily-digest');
-    expect(subagentRunCalls[1].idempotencyKey).toMatch(/\d{4}-\d{2}-\d{2}/);
-  });
-
-  it('phase 2: delivery message contains evaluator output', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 5,
-    });
-
-    expect(subagentRunCalls[1].message).toContain(EVALUATOR_CONTENT);
-  });
-
-  it('phase 1: evaluator prompt includes pre-computed URLs from frontendUrl', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H1', personalizedSummary: 'S1', suggestedAction: 'A1', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://dev.index.network',
-      maxCount: 5,
-    });
-
-    const evaluatorPrompt = subagentRunCalls[0].message;
-    expect(evaluatorPrompt).toContain('https://dev.index.network/u/user-1');
-    expect(evaluatorPrompt).toContain('https://dev.index.network/opportunities/opp-1/accept');
-    expect(evaluatorPrompt).toContain('https://dev.index.network/opportunities/opp-1/skip');
-  });
-
-  it('returns false when no opportunities pending', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({ opportunities: [] }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
+    const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(false);
-    expect(subagentRunCalls).toHaveLength(0);
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 
-  it('returns false when delivery routing not configured', async () => {
-    mockApi.pluginConfig = {};
+  it('returns true after successful dispatch (no confirm step)', async () => {
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ], 200, 500);
 
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
-    expect(result).toBe(false);
-    expect(subagentRunCalls).toHaveLength(0);
+    const result = await handleDailyDigest(mockApi, cfg);
+    expect(result).toBe(true);
+    expect(sink.hookCalls).toHaveLength(1);
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 
-  it('returns false on fetch network error', async () => {
-    global.fetch = mock(async () => { throw new Error('Network error'); }) as unknown as typeof fetch;
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
+  it('skips opportunities with null counterpartUserId', async () => {
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: null, rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+    ]);
+    const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(false);
-    expect(subagentRunCalls).toHaveLength(0);
-    expect(mockApi.logger.warn).toHaveBeenCalled();
+    expect(sink.hookCalls).toHaveLength(0);
   });
 
-  it('returns false on non-200 response', async () => {
-    global.fetch = mock(async () =>
-      new Response('Internal Server Error', { status: 500 }),
-    ) as unknown as typeof fetch;
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
-    expect(result).toBe(false);
-    expect(subagentRunCalls).toHaveLength(0);
-    expect(mockApi.logger.warn).toHaveBeenCalled();
-  });
-
-  it('returns false when waitForRun times out', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    mockApi.runtime.subagent.waitForRun = async () => { throw new Error('Evaluator timed out'); };
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
-    expect(result).toBe(false);
-    expect(subagentRunCalls).toHaveLength(1);
-    expect(mockApi.logger.warn).toHaveBeenCalled();
-  });
-
-  it('returns false when getSessionMessages fails', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    mockApi.runtime.subagent.getSessionMessages = async () => { throw new Error('Session not found'); };
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
-    expect(result).toBe(false);
-    expect(subagentRunCalls).toHaveLength(1);
-    expect(mockApi.logger.warn).toHaveBeenCalled();
-  });
-
-  it('returns false when evaluator subagent dispatch throws', async () => {
-    global.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        opportunities: [
-          { opportunityId: 'opp-1', counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-        ],
-      }), { status: 200 }),
-    ) as unknown as typeof fetch;
-
-    mockApi.runtime.subagent.run = mock(async () => { throw new Error('Subagent runtime error'); });
-
-    const result = await handleDailyDigest(mockApi, {
-      baseUrl: 'https://test.example.com',
-      agentId: 'agent-123',
-      apiKey: 'api-key-123',
-      frontendUrl: 'https://test.index.network',
-      maxCount: 10,
-    });
-
-    expect(result).toBe(false);
-    expect(mockApi.logger.warn).toHaveBeenCalled();
+  it('does NOT call /confirm-batch after successful dispatch', async () => {
+    const sink = mockBackend([
+      { opportunityId: OPP_1, counterpartUserId: 'cp-1', rendered: { headline: 'h', personalizedSummary: 's', suggestedAction: 'a', narratorRemark: 'n' } },
+    ]);
+    const result = await handleDailyDigest(mockApi, cfg);
+    expect(result).toBe(true);
+    expect(sink.hookCalls).toHaveLength(1);
+    expect(sink.confirmCalls).toHaveLength(0);
   });
 });

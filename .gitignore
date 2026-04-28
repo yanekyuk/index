@@ -48,6 +48,7 @@ node_modules/
 # Environment Files
 # ===================
 evaluator/.env
+.mcp.json
 
 # ===================
 # Project Configuration (Zed Agent Rules)

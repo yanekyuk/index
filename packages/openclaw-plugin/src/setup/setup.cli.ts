@@ -3,42 +3,39 @@
  *
  * Registered via `api.registerCli()` and invoked as:
  *
- *   openclaw index-network setup
+ *   openclaw index setup
  *
- * Collects url, agentId, apiKey, and optional delivery routing,
- * then writes plugin config and registers the MCP server.
+ * Collects url, apiKey, and mainAgentToolUse, resolves the caller's
+ * agentId from the API key via GET /api/agents/me, then writes plugin
+ * config and registers the MCP server.
+ *
+ * Wizard steps (in order):
+ *   1. Index Network URL
+ *   2. API key
+ *   3. Daily digest (enabled/disabled)
+ *   4. Digest time (if enabled)
+ *   5. Main agent tool use during Index Network renders
+ *   6. MCP server registration
+ *
+ * MIRROR: The Index Network agents page renders a copyable preview of
+ * this same wizard for users who run setup outside an LLM. When you
+ * change the prompts here (add a step, rename a label, remove a field),
+ * also update `WizardPromptGrid` and `SetupInstructions` in
+ * `frontend/src/app/agents/[id]/page.tsx` so the two stay in sync.
  */
 
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline/promises';
 
 import { deriveUrls } from '../lib/utils/url.js';
+import { defaultFetchAgentId } from './fetch-agent-id.js';
 
 const PLUGIN_ID = 'indexnetwork-openclaw-plugin';
 const CONFIG_PATH = path.join(os.homedir(), '.openclaw', 'openclaw.json');
 const DEFAULT_URL = 'https://index.network';
-
-/** Human-readable labels for known channel IDs. */
-const CHANNEL_LABELS: Record<string, string> = {
-  telegram: 'Telegram',
-  discord: 'Discord',
-  slack: 'Slack',
-  whatsapp: 'WhatsApp',
-  signal: 'Signal',
-  matrix: 'Matrix',
-};
-
-/** Channel-specific prompts for the delivery target input. */
-const TARGET_PROMPTS: Record<string, string> = {
-  telegram: 'Telegram chat ID (message @userinfobot on Telegram to find yours)',
-  discord: 'Discord channel ID',
-  slack: 'Slack channel ID',
-  whatsapp: 'WhatsApp number',
-  signal: 'Signal number',
-  matrix: 'Matrix room ID',
-};
 
 /**
  * Abstraction over user I/O and config writes. The CLI command injects
@@ -53,17 +50,46 @@ export interface SetupContext {
   select(label: string, choices: Array<{ label: string; value: string }>): Promise<string>;
   /** Write a value into the OpenClaw config file. */
   configSet(path: string, value: unknown): Promise<void>;
+  /** Resolve the caller's agentId from the API key. Tests inject a fake. */
+  fetchAgentId(protocolUrl: string, apiKey: string): Promise<string>;
 }
 
 /** Read a single dot-path value from the OpenClaw config snapshot. */
 function getExistingConfig(cfg: Record<string, unknown>, dotPath: string): string | undefined {
+  return getStringAt(cfg, dotPath);
+}
+
+/** Read a string at a dot-path in the cfg snapshot, or return undefined. */
+function getStringAt(cfg: Record<string, unknown>, dotPath: string): string | undefined {
+  const value = getRawAt(cfg, dotPath);
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** Read a boolean at a dot-path in the cfg snapshot, or return undefined. */
+function getBooleanAt(cfg: Record<string, unknown>, dotPath: string): boolean | undefined {
+  const value = getRawAt(cfg, dotPath);
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** Read a string array at a dot-path in the cfg snapshot, or return undefined. */
+function getStringArrayAt(
+  cfg: Record<string, unknown>,
+  dotPath: string,
+): string[] | undefined {
+  const value = getRawAt(cfg, dotPath);
+  if (!Array.isArray(value)) return undefined;
+  const filtered = value.filter((v): v is string => typeof v === 'string');
+  return filtered.length === value.length ? filtered : undefined;
+}
+
+function getRawAt(cfg: Record<string, unknown>, dotPath: string): unknown {
   const parts = dotPath.split('.');
   let obj: unknown = cfg;
   for (const key of parts) {
     if (typeof obj !== 'object' || obj === null) return undefined;
     obj = (obj as Record<string, unknown>)[key];
   }
-  return typeof obj === 'string' ? obj : undefined;
+  return obj;
 }
 
 /**
@@ -86,12 +112,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   const url = await ctx.prompt('Index Network URL', { default: defaultUrl });
   const { protocolUrl } = deriveUrls(url);
 
-  // --- Agent ID ---
-  const agentId = await ctx.prompt('Agent ID', { default: existing('agentId') });
-  if (!agentId) {
-    throw new Error('Agent ID is required. Find it on the Index Network Agents page.');
-  }
-
   // --- API Key ---
   const apiKey = existing('apiKey')
     ? await ctx.prompt('API key (leave blank to keep existing)', { secret: true })
@@ -101,6 +121,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     throw new Error('API key is required. Generate one on the Index Network Agents page.');
   }
 
+  // --- Resolve agentId from API key ---
+  const agentId = await ctx.fetchAgentId(protocolUrl, resolvedApiKey);
+
   // --- Write core config ---
   await ctx.configSet(`${configPrefix}.url`, url);
   await ctx.configSet(`${configPrefix}.agentId`, agentId);
@@ -108,39 +131,6 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 
   if (legacyProtocolUrl) {
     await ctx.configSet(`${configPrefix}.protocolUrl`, undefined);
-  }
-
-  // --- Detect available delivery channels ---
-  const channels = ctx.cfg.channels as Record<string, unknown> | undefined;
-  const configuredChannels = Object.entries(channels || {})
-    .filter(([, val]) => val && typeof val === 'object')
-    .map(([id]) => id);
-
-  if (configuredChannels.length > 0) {
-    const currentChannel = existing('deliveryChannel') || '';
-    const choices = [
-      ...configuredChannels.map((id) => ({
-        label: id === currentChannel
-          ? `${CHANNEL_LABELS[id] || id} (current)`
-          : (CHANNEL_LABELS[id] || id),
-        value: id,
-      })),
-      { label: 'Skip', value: '' },
-    ];
-
-    const selectedChannel = await ctx.select('Delivery channel', choices);
-
-    if (selectedChannel) {
-      const targetLabel = TARGET_PROMPTS[selectedChannel] || `${selectedChannel} recipient ID`;
-      const deliveryTarget = await ctx.prompt(targetLabel, {
-        default: existing('deliveryTarget') || undefined,
-      });
-
-      if (deliveryTarget) {
-        await ctx.configSet(`${configPrefix}.deliveryChannel`, selectedChannel);
-        await ctx.configSet(`${configPrefix}.deliveryTarget`, deliveryTarget);
-      }
-    }
   }
 
   // --- Daily digest config ---
@@ -155,11 +145,74 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
       default: existing('digestTime') || '08:00',
     });
     await ctx.configSet(`${configPrefix}.digestTime`, digestTime);
+  }
 
-    const digestMaxCount = await ctx.prompt('Max opportunities per digest', {
-      default: existing('digestMaxCount') || '10',
-    });
-    await ctx.configSet(`${configPrefix}.digestMaxCount`, digestMaxCount);
+  // --- Main agent tool use ---
+  const mainAgentToolUse = await ctx.select('Main agent tool use during Index Network renders', [
+    { label: 'Disabled — agent renders from provided content only (default)', value: 'disabled' },
+    { label: 'Enabled — agent may call MCP tools to enrich', value: 'enabled' },
+  ]);
+  await ctx.configSet(`${configPrefix}.mainAgentToolUse`, mainAgentToolUse || 'disabled');
+
+  // --- Bootstrap gateway hooks (required for /hooks/agent dispatch) ---
+  // The plugin dispatches notifications via POST /hooks/agent, which requires
+  // hooks.enabled=true and a non-empty hooks.token distinct from the gateway
+  // auth token. Existing hooks.token values are preserved (a user may already
+  // be using the hooks subsystem for other integrations); only fill in gaps.
+  const existingHooksToken = getStringAt(ctx.cfg, 'hooks.token');
+  const existingHooksEnabled = getBooleanAt(ctx.cfg, 'hooks.enabled');
+  const existingHooksPath = getStringAt(ctx.cfg, 'hooks.path');
+  const gatewayAuthToken = getStringAt(ctx.cfg, 'gateway.auth.token');
+
+  const hooksToken =
+    existingHooksToken && existingHooksToken !== gatewayAuthToken
+      ? existingHooksToken
+      : randomBytes(32).toString('hex');
+
+  if (existingHooksToken && existingHooksToken === gatewayAuthToken) {
+    throw new Error(
+      'hooks.token must be distinct from gateway.auth.token. ' +
+        'Run `openclaw config unset hooks.token` and re-run setup to regenerate.',
+    );
+  }
+
+  if (hooksToken !== existingHooksToken) {
+    await ctx.configSet('hooks.token', hooksToken);
+  }
+  if (existingHooksEnabled !== true) {
+    await ctx.configSet('hooks.enabled', true);
+  }
+  if (!existingHooksPath) {
+    await ctx.configSet('hooks.path', '/hooks');
+  }
+
+  // The dispatcher passes `sessionKey` so /hooks/agent runs land in the user's
+  // existing chat-bound session (instead of a fresh isolated session that has
+  // no channel binding). Both knobs are required: gateway rejects per-request
+  // sessionKey unless allowRequestSessionKey is true and the prefix is allowed.
+  const existingAllowRequestSessionKey = getBooleanAt(
+    ctx.cfg,
+    'hooks.allowRequestSessionKey',
+  );
+  if (existingAllowRequestSessionKey !== true) {
+    await ctx.configSet('hooks.allowRequestSessionKey', true);
+  }
+
+  const REQUIRED_SESSION_KEY_PREFIX = 'agent:main:';
+  const existingPrefixes = getStringArrayAt(ctx.cfg, 'hooks.allowedSessionKeyPrefixes') ?? [];
+  if (!existingPrefixes.includes(REQUIRED_SESSION_KEY_PREFIX)) {
+    await ctx.configSet('hooks.allowedSessionKeyPrefixes', [
+      ...existingPrefixes,
+      REQUIRED_SESSION_KEY_PREFIX,
+    ]);
+  }
+
+  // --- Migrate legacy mcp.servers.index-network → mcp.servers.index ---
+  // One-shot cleanup so users who installed pre-0.22.0 don't end up with two
+  // entries. Always runs before the fresh write so the new key wins on conflict.
+  const legacyMcp = getRawAt(ctx.cfg, 'mcp.servers.index-network');
+  if (legacyMcp !== undefined) {
+    await ctx.configSet('mcp.servers.index-network', undefined);
   }
 
   // --- Register MCP server ---
@@ -169,15 +222,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     transport: 'streamable-http',
     headers: { 'x-api-key': resolvedApiKey },
   };
-  await ctx.configSet('mcp.servers.index-network', mcpDef);
+  await ctx.configSet('mcp.servers.index', mcpDef);
 }
 
-/**
- * Registers the `openclaw index-network setup` CLI command.
- *
- * @param program - Commander program instance provided by OpenClaw's `registerCli`.
- * @param api     - Plugin API for reading config and calling `configSet`.
- */
 /**
  * Read the OpenClaw config file, or return an empty object if missing.
  */
@@ -211,6 +258,7 @@ export function registerSetupCli(
     command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } };
     commands?: Array<{ name(): string }>;
   },
+  opts?: { deprecationWarning?: string },
 ): void {
   // Guard against duplicate registration — OpenClaw may invoke the callback multiple times.
   if (program.commands?.some((c) => c.name() === 'setup')) return;
@@ -219,6 +267,10 @@ export function registerSetupCli(
     .command('setup')
     .description('Interactive setup wizard for Index Network')
     .action(async () => {
+      if (opts?.deprecationWarning) {
+        console.warn(opts.deprecationWarning);
+      }
+
       const cfg = readOpenClawConfig();
       const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -239,11 +291,11 @@ export function registerSetupCli(
         configSet: async (dotPath, value) => {
           setConfigValue(cfg, dotPath, value);
         },
+        fetchAgentId: defaultFetchAgentId,
       };
 
       try {
         await runSetup(ctx);
-        // Write the entire config back in one atomic operation
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
         console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
         console.log('Restart the gateway to apply changes: openclaw gateway restart');

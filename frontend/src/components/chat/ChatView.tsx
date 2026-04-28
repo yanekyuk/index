@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Loader2, ArrowUp, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { cn } from '@/lib/utils';
+import { cn, formatChatDayLabel } from '@/lib/utils';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
+import { useOpportunities } from '@/contexts/APIContext';
+import type { ChatContextOpportunity } from '@/services/opportunities';
+import { buildChatTimeline } from './timeline';
+import OpportunityDivider from './OpportunityDivider';
 
 interface ChatViewProps {
   userId: string;
@@ -28,6 +32,7 @@ interface ChatViewProps {
 
 export default function ChatView({ userId, userName, userAvatar, isGhost = false, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack }: ChatViewProps) {
   const { user } = useAuthContext();
+  const opportunitiesService = useOpportunities();
   const {
     messages: allMessages,
     sendMessage: conversationSend,
@@ -40,6 +45,14 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
   const [messageText, setMessageText] = useState(autoSend ? '' : (initialMessage ?? ''));
   const hasAutoSentRef = useRef(false);
   const hasFiredFirstMessageRef = useRef(false);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [acceptedOpportunities, setAcceptedOpportunities] = useState<ChatContextOpportunity[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Reset conversation state when userId changes (component reused by React Router)
   const prevUserIdRef = useRef(userId);
@@ -49,19 +62,33 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
       setConversationId(null);
       setMessagesLoading(true);
       setContextLoading(true);
+      setAcceptedOpportunities([]);
       hasAutoSentRef.current = false;
       hasFiredFirstMessageRef.current = false;
     }
   }, [userId]);
-  const [messagesLoading, setMessagesLoading] = useState(true);
-  const [contextLoading, setContextLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
-  const messages = conversationId ? (allMessages.get(conversationId) || []) : [];
+  const messages = useMemo(
+    () => (conversationId ? allMessages.get(conversationId) ?? [] : []),
+    [conversationId, allMessages],
+  );
+
+  useEffect(() => {
+    if (!userId) return;
+    const controller = new AbortController();
+    opportunitiesService
+      .getChatContext(userId, { signal: controller.signal })
+      .then((list) => {
+        if (!controller.signal.aborted) setAcceptedOpportunities(list);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        console.error('[ChatView] Failed to load chat context:', err);
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [userId, opportunitiesService]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,7 +100,9 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     if (cid) {
       loadMessages(cid, { limit: 50 }).finally(() => setMessagesLoading(false));
     } else {
-      setMessagesLoading(false);
+      // No conversation yet: clear the initial loading state via microtask
+      // to satisfy react-hooks/set-state-in-effect.
+      queueMicrotask(() => setMessagesLoading(false));
     }
   }, [initialGroupId, conversationId, loadMessages]);
 
@@ -116,8 +145,8 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
 
     const text = initialMessage.trim();
     hasAutoSentRef.current = true;
-    setSending(true);
     (async () => {
+      setSending(true);
       try {
         if (conversationId) {
           await conversationSend(conversationId, [{ text }]);
@@ -196,6 +225,11 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
     return new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
+  const timeline = useMemo(
+    () => buildChatTimeline(messages, acceptedOpportunities),
+    [messages, acceptedOpportunities],
+  );
+
   return (
     <>
       {/* Header */}
@@ -240,7 +274,7 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
           <div className="space-y-4">
             {messagesLoading ? (
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
-            ) : messages.length === 0 && !contextLoading ? (
+            ) : messages.length === 0 && !contextLoading && acceptedOpportunities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                 {isGhost ? (
                   <>
@@ -261,49 +295,56 @@ export default function ChatView({ userId, userName, userAvatar, isGhost = false
               </div>
             )}
 
-            {messages.map((message, index) => {
-              const isOwn = message.senderId === user?.id;
-              const textPart = (message.parts as { text?: string }[] | undefined)?.find(p => p.text)?.text;
-              const content = textPart ?? '';
-              if (!content.trim()) return null;
-              const prevMessage = messages[index - 1];
-              const showTimestamp = index === 0 || (prevMessage && new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() > 300_000);
+            {timeline.map((item, index) => {
+                const prev = timeline[index - 1];
+                const showTimestamp =
+                  item.type === 'message' &&
+                  (index === 0 ||
+                    (prev && prev.type === 'message' &&
+                      new Date(item.at).getTime() - new Date(prev.at).getTime() > 300_000));
 
-              return (
-                <div key={message.id}>
-                  {showTimestamp && message.createdAt && (
-                    <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
-                      {(() => {
-                        const d = new Date(message.createdAt);
-                        const now = new Date();
-                        const isToday = d.toDateString() === now.toDateString();
-                        const yesterday = new Date(now);
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        const isYesterday = d.toDateString() === yesterday.toDateString();
-                        const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                        return `${label}, ${formatTime(message.createdAt)}`;
-                      })()}
-                    </div>
-                  )}
-                  <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
-                    {!isOwn && (
-                      <Link to={`/u/${userId}`} className="flex-shrink-0">
-                        <UserAvatar avatar={userAvatar} id={userId} name={userName} size={32} />
-                      </Link>
+                if (item.type === 'opportunity') {
+                  return (
+                    <OpportunityDivider
+                      key={`opp-${item.opportunities[0].opportunityId}`}
+                      opportunities={item.opportunities}
+                      defaultExpanded={messages.length === 0}
+                    />
+                  );
+                }
+
+                const message = item.message;
+                const isOwn = message.senderId === user?.id;
+                const textPart = (message.parts as { text?: string }[] | undefined)?.find((p) => p.text)?.text;
+                const content = textPart ?? '';
+                if (!content.trim()) return null;
+
+                return (
+                  <div key={message.id}>
+                    {showTimestamp && message.createdAt && (
+                      <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
+                        {`${formatChatDayLabel(message.createdAt)}, ${formatTime(message.createdAt)}`}
+                      </div>
                     )}
-                    <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
-                      <article className={cn('text-sm', isOwn && 'text-white')}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-                      </article>
+                    <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
+                      {!isOwn && (
+                        <Link to={`/u/${userId}`} className="flex-shrink-0">
+                          <UserAvatar avatar={userAvatar} id={userId} name={userName} size={32} />
+                        </Link>
+                      )}
+                      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
+                        <article className={cn('text-sm', isOwn && 'text-white')}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                        </article>
+                      </div>
+                      {isOwn && (
+                        <Link to={`/u/${user?.id}`} className="flex-shrink-0">
+                          <UserAvatar avatar={user?.avatar} id={user?.id} name={user?.name} size={32} />
+                        </Link>
+                      )}
                     </div>
-                    {isOwn && (
-                      <Link to={`/u/${user?.id}`} className="flex-shrink-0">
-                        <UserAvatar avatar={user?.avatar} id={user?.id} name={user?.name} size={32} />
-                      </Link>
-                    )}
                   </div>
-                </div>
-              );
+                );
             })}
             <div ref={messagesEndRef} />
           </div>

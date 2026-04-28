@@ -8,8 +8,12 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "outDir": "./dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "types": ["node", "bun-types"]
   },
-  "include": ["src/**/*", "openclaw.plugin.json"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts", "src/tests/**", "node_modules", "dist"]
 }

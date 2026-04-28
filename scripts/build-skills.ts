@@ -4,12 +4,14 @@
  *
  * Sources:
  *   packages/protocol/skills/openclaw/SKILL.md.template
+ *   packages/protocol/skills/openclaw/index-orchestrator.template.md
  *   packages/protocol/skills/claude-plugin/index-orchestrator.template.md
  *   packages/protocol/skills/claude-plugin/index-negotiator.template.md
  *
  * Destinations:
- *   - skills/index-network/SKILL.md                          (repo-root workspace dev copy, gitignored)
- *   - packages/openclaw-plugin/skills/index-network/SKILL.md (plugin payload, committed for subtree push)
+ *   - skills/index-network/SKILL.md                                (repo-root workspace dev copy, gitignored)
+ *   - packages/openclaw-plugin/skills/index-network/SKILL.md       (plugin payload, committed for subtree push)
+ *   - packages/openclaw-plugin/skills/index-orchestrator/SKILL.md  (plugin payload, committed for subtree push)
  *   - packages/claude-plugin/skills/index-orchestrator/SKILL.md
  *   - packages/claude-plugin/skills/index-negotiator/SKILL.md
  *
@@ -41,12 +43,24 @@ const NEGOTIATOR_TEMPLATE_PATH = join(
   REPO_ROOT,
   'packages/protocol/skills/claude-plugin/index-negotiator.template.md',
 );
+const OPENCLAW_ORCHESTRATOR_TEMPLATE_PATH = join(
+  REPO_ROOT,
+  'packages/protocol/skills/openclaw/index-orchestrator.template.md',
+);
 
 export function resolveOutputPaths(repoRoot = REPO_ROOT): string[] {
   return [
     join(repoRoot, 'skills/index-network/SKILL.md'),
     join(repoRoot, 'packages/openclaw-plugin/skills/index-network/SKILL.md'),
   ];
+}
+
+export function resolveOpenclawPluginOutputs(repoRoot = REPO_ROOT): {
+  orchestrator: string[];
+} {
+  return {
+    orchestrator: [join(repoRoot, 'packages/openclaw-plugin/skills/index-orchestrator/SKILL.md')],
+  };
 }
 
 export function resolveClaudePluginOutputs(repoRoot = REPO_ROOT): {
@@ -94,6 +108,9 @@ if (import.meta.main) {
   const partials = { CORE_GUIDANCE: coreGuidance };
 
   build(TEMPLATE_PATH, resolveOutputPaths(), partials);
+
+  const openclawOutputs = resolveOpenclawPluginOutputs();
+  build(OPENCLAW_ORCHESTRATOR_TEMPLATE_PATH, openclawOutputs.orchestrator, partials);
 
   const claudeOutputs = resolveClaudePluginOutputs();
   build(ORCHESTRATOR_TEMPLATE_PATH, claudeOutputs.orchestrator, partials);

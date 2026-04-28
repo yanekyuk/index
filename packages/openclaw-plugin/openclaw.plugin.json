@@ -2,7 +2,7 @@
   "id": "indexnetwork-openclaw-plugin",
   "name": "Index Network",
   "description": "Index Network — find the right people and let them find you. Registers the Index Network MCP server on first use and hands off to its guidance.",
-  "version": "0.15.3",
+  "version": "0.22.1",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -31,13 +31,11 @@
         "default": "enabled",
         "description": "When set to \"disabled\", pending turns are skipped — Index Network falls back to its system negotiator."
       },
-      "deliveryChannel": {
+      "mainAgentToolUse": {
         "type": "string",
-        "description": "OpenClaw channel id for delivering Index Network notifications (e.g. \"telegram\"). Required to receive opportunity and test-message deliveries."
-      },
-      "deliveryTarget": {
-        "type": "string",
-        "description": "Channel-specific recipient identifier (e.g. your Telegram chat ID). Required to receive opportunity and test-message deliveries."
+        "enum": ["disabled", "enabled"],
+        "default": "disabled",
+        "description": "If 'enabled', the main agent may call MCP tools while rendering Index Network notifications."
       },
       "digestEnabled": {
         "type": "string",
@@ -50,12 +48,6 @@
         "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
         "default": "08:00",
         "description": "Time to send digest in HH:MM format (24-hour, local timezone)."
-      },
-      "digestMaxCount": {
-        "type": "string",
-        "pattern": "^[0-9]+$",
-        "default": "10",
-        "description": "Maximum opportunities to include in daily digest."
       }
     },
     "required": [],

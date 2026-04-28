@@ -514,6 +514,10 @@ Create a personal agent owned by the current user.
 }
 ```
 
+### GET /api/agents/me
+
+Resolve and return the agent bound to the calling API key (`x-api-key` header). The key's `metadata.agentId` is read from the database and the matching agent is returned in the same shape as `GET /api/agents/:id`. Returns 400 if called with a JWT or with a key that has no agent binding. Used by personal-agent runtimes (e.g. the OpenClaw plugin setup wizard) to bootstrap their `agentId` from a single pasted API key, avoiding a separate agent-id input.
+
 ### GET /api/agents/:id
 
 Fetch one agent by ID if the current user owns it or has a permission grant on it.
@@ -745,7 +749,13 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 
 Fetch all undelivered eligible opportunities for an owned personal agent as a batch. Authenticates with the agent's API key (`x-api-key` header) or a session. Read-only: the response does not reserve or mutate the delivery ledger, so callers are expected to decide which candidates to surface and then commit each selection via the `confirm_opportunity_delivery` MCP tool.
 
-Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`, the caller's user listed in `actors`, draft exclusion when `createdBy == user`, agent has `notify_on_opportunity = true`, no committed delivery row exists, and `canUserSeeOpportunity` passes. Results are capped at 20, ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
+Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`, the caller's user listed in `actors`, draft exclusion when `createdBy == user`, agent has `notify_on_opportunity = true`, no committed delivery row exists, and `canUserSeeOpportunity` passes. Results are capped at 20 by default; pass `?limit=N` (1..20) to request fewer. Results are ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
+
+**Query parameters**:
+
+| Parameter | Type    | Required | Description |
+|-----------|---------|----------|-------------|
+| `limit`   | number  | no       | Maximum number of opportunities to return. Server clamps to `[1, 20]` and truncates fractional values. Out-of-range values (`0`, negatives, `>20`) are normalized rather than rejected. Defaults to `20` when omitted or empty. |
 
 **Request body**: empty.
 
@@ -770,7 +780,38 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
 - Each poll also bumps `agents.last_seen_at`.
 
 **Errors**:
+- `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
 - `403` if the agent is not owned by the authenticated user.
+
+### GET /api/agents/:id/opportunities/delivery-stats
+
+Return committed delivery counts for an owned personal agent since a given timestamp, grouped by trigger type.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID.
+
+**Query params**:
+
+| Parameter | Type   | Required | Description |
+|-----------|--------|----------|-------------|
+| `since`   | string | yes      | ISO 8601 timestamp; counts deliveries with `delivered_at >= since`. |
+
+**Response 200**:
+```json
+{ "ambient": 2, "digest": 1 }
+```
+
+- `ambient` — number of committed deliveries with `trigger = "ambient"` since the given timestamp.
+- `digest` — number of committed deliveries with `trigger = "digest"` since the given timestamp.
+
+**Response 400**: `{ "error": "..." }` when `since` is missing or cannot be parsed as a valid ISO 8601 date.
+
+**Errors**:
+- `403` if the agent is not owned by the authenticated user.
+
+**Used by**: the OpenClaw plugin's ambient discovery poller, which calls this endpoint before each cycle to feed today's committed delivery count into the agent's prompt for soft self-restraint against a ≤3/day target.
 
 ---
 
