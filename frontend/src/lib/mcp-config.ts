@@ -5,9 +5,10 @@ const PROTOCOL_URL = import.meta.env.VITE_PROTOCOL_URL || DEFAULT_PROTOCOL_URL;
 const MCP_URL = `${PROTOCOL_URL}/mcp`;
 
 export const OPENCLAW_INSTALL_CMD =
-  "openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin";
-export const OPENCLAW_UPDATE_CMD = "openclaw plugins update indexnetwork-openclaw-plugin";
-export const OPENCLAW_SETUP_CMD = "openclaw index-network setup";
+  "openclaw plugins install @indexnetwork/openclaw-plugin";
+export const OPENCLAW_UPDATE_CMD =
+  "openclaw plugins update @indexnetwork/openclaw-plugin";
+export const OPENCLAW_SETUP_CMD = "openclaw index setup";
 export const OPENCLAW_GATEWAY_RESTART_CMD = "openclaw gateway restart";
 
 function yamlDoubleQuoted(value: string): string {
@@ -24,7 +25,7 @@ export function buildMcpConfigs(apiKey: string): McpConfigs {
   const claudeConfig = JSON.stringify(
     {
       mcpServers: {
-        "index-network": {
+        index: {
           type: "http",
           url: MCP_URL,
           headers: { "x-api-key": apiKey },
@@ -36,7 +37,7 @@ export function buildMcpConfigs(apiKey: string): McpConfigs {
   );
 
   const hermesConfig = `mcp_servers:
-  - name: index-network
+  - name: index
     url: ${yamlDoubleQuoted(MCP_URL)}
     headers:
       x-api-key: ${yamlDoubleQuoted(apiKey)}`;
