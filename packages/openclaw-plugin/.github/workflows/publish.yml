@@ -72,4 +72,4 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         run: npm publish --access public --tag "${{ steps.meta.outputs.tag }}"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.INDEX_REPO_TOKEN }}
