@@ -260,7 +260,7 @@ The `index opportunity` command exposes subcommands for managing opportunities f
 
 Supports optional flags:
 - `--target <uid>` — Discover opportunities for a specific user (on behalf of)
-- `--introduce <userA> <userB>` — Discover an introduction opportunity between two users
+- `--introduce <userA> <userB>` — Discover an introduction opportunity between two users. The flag takes the first user ID; the second is a trailing positional argument.
 
 ---
 
@@ -290,7 +290,7 @@ Leaves a network. Calls `POST /api/indexes/:id/leave`. Prints confirmation. Retu
 
 ### `index network update <id> [--title <t>] [--prompt <p>]`
 
-Updates network settings. Calls the `update_index` MCP tool via the Tool HTTP API with the provided fields (`title`, `prompt`). Prints confirmation with the updated network title.
+Updates network settings. Calls the `update_index` MCP tool via the Tool HTTP API with `{ networkId, settings: { title?, prompt? } }`, populating only the fields supplied as flags. Prints confirmation with the updated network title.
 
 ### `index network delete <id>`
 
@@ -309,19 +309,19 @@ Prints confirmation or "User not found" if the search returns no results.
 
 ### `index contact list`
 
-Lists the authenticated user's contacts. Renders a table of contacts with name, email, and added date.
+Lists the authenticated user's contacts. Calls the `list_contacts` MCP tool via the Tool HTTP API. Renders a table of contacts with name, email, and added date.
 
 ### `index contact add <email>`
 
-Adds a contact by email. Supports optional `--name <name>` flag.
+Adds a contact by email. Calls the `add_contact` MCP tool with `{ email, name? }`. Supports optional `--name <name>` flag for display name.
 
 ### `index contact remove <email>`
 
-Removes a contact by email.
+Removes a contact by email. First calls `list_contacts` to resolve the email to a `userId`, then calls the `remove_contact` MCP tool with `{ contactUserId }`.
 
 ### `index contact import --gmail`
 
-Imports contacts from the user's connected Gmail account.
+Imports contacts from the user's connected Gmail account. Calls the `import_gmail_contacts` MCP tool via the Tool HTTP API.
 
 ---
 
