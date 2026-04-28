@@ -1,7 +1,5 @@
 # Publish @indexnetwork/openclaw-plugin prereleases from dev and stable releases
 # from main. Reads version from package.json — skips silently if already published.
-#
-# Uses the org-level NPM_TOKEN secret — no per-repo setup required.
 name: Publish
 
 on:
@@ -74,4 +72,4 @@ jobs:
         if: steps.check.outputs.skip == 'false'
         run: npm publish --access public --tag "${{ steps.meta.outputs.tag }}"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.INDEX_REPO_TOKEN }}
