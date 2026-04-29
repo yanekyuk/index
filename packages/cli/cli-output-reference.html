@@ -200,7 +200,7 @@ body {
 <div class="header">
   <h1>I N D E X  CLI</h1>
   <div class="subtitle">Complete output reference — every possible rendered response form</div>
-  <div class="version">v0.7.0</div>
+  <div class="version">v0.10.3</div>
 </div>
 
 <div class="nav" id="nav">
@@ -209,9 +209,12 @@ body {
   <div class="nav-item" data-target="conversation">Conversation</div>
   <div class="nav-item" data-target="profile">Profile</div>
   <div class="nav-item" data-target="signals">Signals</div>
+  <div class="nav-item" data-target="negotiations">Negotiations</div>
   <div class="nav-item" data-target="opportunities">Opportunities</div>
   <div class="nav-item" data-target="networks">Networks</div>
+  <div class="nav-item" data-target="contacts">Contacts</div>
   <div class="nav-item" data-target="conversations">Conversations</div>
+  <div class="nav-item" data-target="scrape">Scrape & Sync</div>
   <div class="nav-item" data-target="streaming">Streaming / Markdown</div>
   <div class="nav-item" data-target="errors">Errors & Status</div>
 </div>
@@ -221,62 +224,85 @@ body {
 <!-- ═══════ HELP ═══════ -->
 <div class="section" id="help">
   <div class="section-title"><span class="dot" style="background:var(--gray)"></span> Help &amp; Version <span class="cmd-label system">system</span></div>
-  <div class="section-desc">No auth required. Printed to stdout.</div>
+  <div class="section-desc">No auth required. Grouped panels with rounded box-drawing borders.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index --help</span></div>
       <div class="terminal-body">
-<span class="c-white">Index CLI v0.7.0</span>
+  <span class="bold c-cyan">I N D E X</span>  <span class="c-gray">cli</span>
+  <span class="c-gray">v0.10.3</span>
 
-<span class="c-white bold">Usage:</span>
-  index login                           Authenticate via browser (uses existing session or OAuth)
-  index login --token &lt;token&gt;           Authenticate with a manually provided token
-  index logout                          Clear stored session
-  index conversation                    Chat with the AI agent (interactive REPL)
-  index conversation "message"          One-shot message to the AI agent
-  index conversation --session &lt;id&gt;     Resume a specific chat session
-  index conversation sessions           List AI chat sessions
-  index conversation list               List all conversations (H2A + H2H)
-  index conversation with &lt;user-id&gt;     Open or resume a DM with a user
-  index conversation show &lt;id&gt;          Show messages in a conversation
-  index conversation send &lt;id&gt; &lt;msg&gt;    Send a message
-  index conversation stream             Listen for real-time events (SSE)
-  index profile                         Show your profile
-  index profile show &lt;user-id&gt;          Show another user's profile
-  index profile sync                    Regenerate your profile
-  index intent list [--archived] [--limit &lt;n&gt;]  List your signals
-  index intent show &lt;id&gt;               Show signal details
-  index intent create &lt;content&gt;        Create a signal from natural language
-  index intent archive &lt;id&gt;            Archive a signal
-  index opportunity list                List your opportunities
-  index opportunity list --status &lt;s&gt;   Filter by status (pending|accepted|rejected|expired)
-  index opportunity list --limit &lt;n&gt;    Limit results
-  index opportunity show &lt;id&gt;           Show full opportunity details
-  index opportunity accept &lt;id&gt;         Accept an opportunity
-  index opportunity reject &lt;id&gt;         Reject an opportunity
-  index network list                    List your networks
-  index network create &lt;name&gt;           Create a new network
-  index network show &lt;id&gt;               Show network details and members
-  index network join &lt;id&gt;               Join a public network
-  index network leave &lt;id&gt;              Leave a network
-  index network invite &lt;id&gt; &lt;email&gt;     Invite a user by email
-  index --help                          Show this help message
-  index --version                       Show version
+<span class="c-gray">╭─ getting started ──────────────────────────────────────╮</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index login</span>                      authenticate via browser                    <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index login --token &lt;token&gt;</span>       authenticate with a bearer token             <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index logout</span>                     clear stored session                         <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index intent create "..."</span>        describe what you're looking for              <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index negotiation list</span>           see agent debates in progress                 <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index opportunity list</span>           see what was found for you                    <span class="c-gray">│</span>
+<span class="c-gray">╰────────────────────────────────────────────────────────╯</span>
 
-<span class="c-white bold">Options:</span>
-  --api-url &lt;url&gt;     Override the API server URL (default: https://protocol.index.network)
-  --app-url &lt;url&gt;     Override the app URL for login (default: https://index.network)
-  --token &lt;token&gt;, -t Provide a bearer token directly (skips browser flow)
-  --session &lt;id&gt;, -s  Resume a specific chat session
-  --archived          Include archived signals (intent list)
-  --status &lt;status&gt;   Filter opportunities by status
-  --limit &lt;n&gt;         Limit number of results</div>
+<span class="c-gray">╭─ common forms ─────────────────────────────────────────╮</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index conversation "message"</span>     send a one-shot agent message                 <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index conversation --session &lt;id&gt;</span> resume an agent chat session                 <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index sync --json</span>               print synced context as JSON                  <span class="c-gray">│</span>
+<span class="c-gray">│</span>                                                                                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index profile create</span>            use social URL flags                          <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index profile update</span>            use action text or --details                  <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index intent list</span>               supports --archived and --limit                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index negotiation list</span>          supports --since and --limit                   <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index opportunity list</span>          supports --status and --limit                  <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">index opportunity discover</span>      supports --target and --introduce              <span class="c-gray">│</span>
+<span class="c-gray">╰────────────────────────────────────────────────────────╯</span>
+
+<span class="c-gray">╭─ commands ─────────────────────────────────────────────╮</span>
+<span class="c-gray">│</span> <span class="c-gray">pattern      index &lt;command&gt; [args] [options]</span>                                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">example      index intent create "looking for a CTO"</span>                        <span class="c-gray">│</span>
+<span class="c-gray">│</span>                                                                                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">intent</span>       list · show · create · update · archive                          <span class="c-gray">│</span>
+<span class="c-gray">│</span>              link · unlink · links                                              <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">negotiation</span>  list · show                                                      <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">opportunity</span>  list · show · accept · reject · discover                         <span class="c-gray">│</span>
+<span class="c-gray">│</span>                                                                                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">profile</span>      show · sync · search · create · update                           <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">conversation</span> sessions · list · with · show · send · stream                   <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">network</span>      list · create · show · update · delete                            <span class="c-gray">│</span>
+<span class="c-gray">│</span>              join · leave · invite                                              <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">contact</span>      list · add · remove · import                                      <span class="c-gray">│</span>
+<span class="c-gray">│</span>                                                                                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">scrape</span>       extract content from a URL                                        <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">sync</span>         download your context locally                                      <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="bold c-cyan">onboarding</span>   finish account setup                                              <span class="c-gray">│</span>
+<span class="c-gray">╰────────────────────────────────────────────────────────╯</span>
+
+<span class="c-gray">╭─ options ──────────────────────────────────────────────╮</span>
+<span class="c-gray">│</span> <span class="c-gray">--api-url &lt;url&gt;     override API server URL</span>                                  <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--app-url &lt;url&gt;     override app URL for login</span>                               <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--token &lt;token&gt;     provide bearer token directly</span>                            <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--session &lt;id&gt;      resume a chat session</span>                                    <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--archived          include archived signals</span>                                 <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--status &lt;status&gt;   filter opportunities by status</span>                           <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--limit &lt;n&gt;         limit number of results</span>                                  <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--since &lt;date&gt;      filter by ISO date or duration</span>                           <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--json              output raw JSON</span>                                          <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--name &lt;name&gt;       name for contact add</span>                                     <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--gmail             import contacts from Gmail</span>                               <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--objective &lt;text&gt;  objective for scrape command</span>                              <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--target &lt;uid&gt;      target user for opportunity discovery</span>                    <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--introduce &lt;uid&gt;   source user for introduction discovery</span>                   <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--linkedin &lt;url&gt;    LinkedIn URL for profile create</span>                          <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--github &lt;url&gt;      GitHub URL for profile create</span>                            <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--twitter &lt;url&gt;     Twitter URL for profile create</span>                           <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--title &lt;text&gt;      title for network update</span>                                 <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--details &lt;text&gt;    details for profile update</span>                               <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--help              show help for any command</span>                                <span class="c-gray">│</span>
+<span class="c-gray">│</span> <span class="c-gray">--version           show version</span>                                             <span class="c-gray">│</span>
+<span class="c-gray">╰────────────────────────────────────────────────────────╯</span></div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index --version</span></div>
-      <div class="terminal-body">0.7.0</div>
+      <div class="terminal-body">0.10.3</div>
     </div>
 
     <div class="terminal">
@@ -294,10 +320,10 @@ body {
   <div class="output-grid">
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index login</span></div>
-      <div class="terminal-body"><span class="c-cyan">Authenticating with http://localhost:3000...</span>
+      <div class="terminal-body"><span class="c-cyan">Authenticating with https://protocol.index.network...</span>
 <span class="c-cyan">Opening browser for authentication...</span>
 <span class="c-gray">If the browser does not open, visit:
-  http://localhost:3000/cli-auth?callback=http%3A%2F%2Flocalhost%3A54321%2Fcallback</span>
+  https://index.network/cli-auth?callback=http%3A%2F%2Flocalhost%3A54321%2Fcallback</span>
 
 <span class="c-gray">Waiting for authentication callback...</span>
 <span class="c-green bold">+</span> Logged in as Seref Yalkn (seref@index.network)</div>
@@ -325,7 +351,7 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index login   (timeout)</span></div>
-      <div class="terminal-body"><span class="c-cyan">Authenticating with http://localhost:3000...</span>
+      <div class="terminal-body"><span class="c-cyan">Authenticating with https://protocol.index.network...</span>
 <span class="c-cyan">Opening browser for authentication...</span>
 <span class="c-gray">Waiting for authentication callback...</span>
 <span class="c-red"><span class="bold">error</span>: Login timed out. No callback received.</span></div>
@@ -342,7 +368,7 @@ body {
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation   (REPL mode)</span></div>
       <div class="terminal-body">
-  <span class="bold c-cyan">I N D E X</span>  <span class="c-gray">conversation</span>
+  <span class="bold c-cyan">I N D E X</span>  <span class="c-gray">chat</span>
   <span class="c-gray">─────────────────────────────────────</span>
   <span class="c-gray">Type your message. "exit" or Ctrl+C to quit.</span>
 
@@ -356,8 +382,6 @@ body {
 <span class="c-agent">  </span><span class="c-cyan">1.</span><span class="c-agent"> </span><span class="bold c-white">Alex Chen</span><span class="c-agent"> — both of you are exploring </span><span class="italic">decentralized identity</span>
 <span class="c-agent">  </span><span class="c-cyan">2.</span><span class="c-agent"> </span><span class="bold c-white">Maria Santos</span><span class="c-agent"> — she needs a </span><span class="c-cyan">TypeScript</span><span class="c-agent"> engineer for agent infra</span>
 <span class="c-agent">  </span><span class="c-cyan">3.</span><span class="c-agent"> </span><span class="bold c-white">David Kim</span><span class="c-agent"> — co-authoring opportunity on LLM evals</span>
-
-<span class="c-gray">Session: a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>
 
 <span class="c-cyan bold">&gt; </span>exit
 
@@ -407,12 +431,13 @@ body {
 <!-- ═══════ PROFILE ═══════ -->
 <div class="section" id="profile">
   <div class="section-title"><span class="dot" style="background:var(--cyan)"></span> Profile <span class="cmd-label chat">profile</span></div>
-  <div class="section-desc">Profile card with bordered layout, ghost tag, socials, and sync result.</div>
+  <div class="section-desc">Profile card with bordered layout, ghost tag, socials, search, create, update, and sync.</div>
 
   <div class="output-grid">
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index profile</span></div>
-      <div class="terminal-body">
+      <div class="terminal-body"><span class="c-cyan">Loading your profile...</span>
+
   <span class="c-cyan">+──────────────────────────────────────────────────────────+</span>
   <span class="c-cyan">|</span> <span class="bold c-white">Seref Yalkn</span>                                            <span class="c-cyan">|</span>
   <span class="c-cyan">|</span>                                                        <span class="c-cyan">|</span>
@@ -431,7 +456,8 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index profile show &lt;ghost-user-id&gt;</span></div>
-      <div class="terminal-body">
+      <div class="terminal-body"><span class="c-cyan">Loading profile...</span>
+
   <span class="c-cyan">+──────────────────────────────────────────────────────────+</span>
   <span class="c-cyan">|</span> <span class="bold c-white">(unnamed)</span>  <span class="c-yellow">[ghost]</span>                                    <span class="c-cyan">|</span>
   <span class="c-cyan">|</span>                                                        <span class="c-cyan">|</span>
@@ -441,7 +467,31 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index profile sync</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Profile synced successfully.</div>
+      <div class="terminal-body"><span class="c-cyan">Regenerating profile...</span>
+<span class="c-green bold">+</span> Profile regeneration triggered. It may take a moment to complete.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index profile create --linkedin &lt;url&gt;</span></div>
+      <div class="terminal-body"><span class="c-cyan">Creating profile...</span>
+<span class="c-green bold">+</span> Profile created.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index profile update "add my new job"</span></div>
+      <div class="terminal-body"><span class="c-cyan">Updating profile...</span>
+<span class="c-green bold">+</span> Profile updated.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index profile search "decentralized identity"</span></div>
+      <div class="terminal-body">
+<span class="bold">Search Results</span>
+
+  Alex Chen (a1b2c3d4)
+    <span class="c-gray">Cryptography researcher focused on zero-knowledge proofs and decentralized identity</span>
+  Sarah Park (b2c3d4e5)
+    <span class="c-gray">DID standards contributor and protocol engineer</span></div>
     </div>
   </div>
 </div>
@@ -449,17 +499,21 @@ body {
 <!-- ═══════ SIGNALS ═══════ -->
 <div class="section" id="signals">
   <div class="section-title"><span class="dot" style="background:var(--magenta)"></span> Signals (Intents) <span class="cmd-label data">intent</span></div>
-  <div class="section-desc">Table listing, detail card with all possible fields, create, and archive.</div>
+  <div class="section-desc">Table with short IDs, detail card, create, update, archive, link/unlink/links.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent list</span></div>
-      <div class="terminal-body">  <span class="bold">Signal                                              Status      Source            Created             </span>
-  <span class="c-gray">--------------------------------------------------  ----------  ----------------  --------------------</span>
-  Looking for collaborators on decentralized ident    <span class="c-green">ACTIVE    </span>  <span class="c-gray">discovery_form  </span>  <span class="c-gray">Mar 28, 2026</span>
-  Need a TypeScript engineer familiar with LangGra    <span class="c-green">ACTIVE    </span>  <span class="c-gray">link            </span>  <span class="c-gray">Mar 25, 2026</span>
-  Exploring investment opportunities in AI infra      <span class="c-green">ACTIVE    </span>  <span class="c-gray">integration     </span>  <span class="c-gray">Mar 20, 2026</span>
-  Want to co-author a paper on LLM evaluation met     <span class="c-gray">ARCHIVED  </span>  <span class="c-gray">file            </span>  <span class="c-gray">Mar 15, 2026</span></div>
+      <div class="terminal-body">
+<span class="bold">Signals</span>
+
+  <span class="bold">ID        Signal                                        Status      Source            Created             </span>
+  <span class="c-gray">--------  --------------------------------------------  ----------  ----------------  --------------------</span>
+  <span class="c-cyan">f47ac10b</span>  Looking for collaborators on decentralized ident  <span class="c-green">ACTIVE    </span>  <span class="c-gray">discovery_form  </span>  <span class="c-gray">Mar 28, 2026</span>
+  <span class="c-cyan">a23bc45d</span>  Need a TypeScript engineer familiar with LangGra  <span class="c-green">ACTIVE    </span>  <span class="c-gray">link            </span>  <span class="c-gray">Mar 25, 2026</span>
+  <span class="c-cyan">e67fg89h</span>  Exploring investment opportunities in AI infra    <span class="c-green">ACTIVE    </span>  <span class="c-gray">integration     </span>  <span class="c-gray">Mar 20, 2026</span>
+
+  <span class="c-gray">Page 1 of 1 (3 total)</span></div>
     </div>
 
     <div class="terminal full-width">
@@ -496,24 +550,116 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent create "Looking for ML engineers"</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal created.</div>
+      <div class="terminal-body"><span class="c-cyan">Processing signal...</span>
+<span class="c-green bold">+</span> Signal created.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent update &lt;id&gt; "new description"</span></div>
+      <div class="terminal-body"><span class="c-cyan">Updating signal...</span>
+<span class="c-green bold">+</span> Signal updated.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent archive &lt;id&gt;</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Signal archived.</div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Signal f47ac10b archived.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent link &lt;id&gt; &lt;network-id&gt;</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Signal linked to network.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent unlink &lt;id&gt; &lt;network-id&gt;</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Signal unlinked from network.</div>
     </div>
 
     <div class="terminal full-width">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent list --archived</span></div>
-      <div class="terminal-body">  <span class="bold">Signal                                              Status      Source            Created             </span>
-  <span class="c-gray">--------------------------------------------------  ----------  ----------------  --------------------</span>
-  Want to co-author a paper on LLM evaluation met     <span class="c-gray">ARCHIVED  </span>  <span class="c-gray">file            </span>  <span class="c-gray">Mar 15, 2026</span></div>
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent links &lt;id&gt;</span></div>
+      <div class="terminal-body">
+<span class="bold">Linked Networks</span>
+
+  AI Research Collaborations <span class="dim">f47ac10b (0.92)</span>
+  Crypto & Identity <span class="dim">a23bc45d (0.78)</span></div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index intent list   (empty)</span></div>
-      <div class="terminal-body">  <span class="c-gray">No signals found.</span></div>
+      <div class="terminal-body">
+<span class="bold">Signals</span>
+
+  <span class="c-gray">No signals found.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ NEGOTIATIONS ═══════ -->
+<div class="section" id="negotiations">
+  <div class="section-title"><span class="dot" style="background:var(--blue)"></span> Negotiations <span class="cmd-label network">negotiation</span></div>
+  <div class="section-desc">Table with short IDs and outcome/role, detail card with turn-by-turn breakdown.</div>
+
+  <div class="output-grid">
+    <div class="terminal full-width">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index negotiation list</span></div>
+      <div class="terminal-body">
+<span class="bold">Negotiations</span>
+
+  <span class="bold">ID        Counterparty            Outcome         Role      Turns   Created             </span>
+  <span class="c-gray">--------  ----------------------  --------------  --------  ------  --------------------</span>
+  <span class="c-cyan">a1b2c3d4</span>  Alex Chen               <span class="c-green">opportunity</span>     <span class="c-green">helper</span>    3       <span class="c-gray">Mar 28, 2026</span>
+  <span class="c-cyan">e5f6a7b8</span>  Maria Santos            <span class="c-gray">no match</span>        <span class="c-yellow">seeker</span>    2       <span class="c-gray">Mar 25, 2026</span>
+  <span class="c-cyan">c9d0e1f2</span>  David Kim               <span class="c-green">opportunity</span>     <span class="c-cyan">peer</span>      4       <span class="c-gray">Mar 20, 2026</span></div>
+    </div>
+
+    <div class="terminal full-width">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index negotiation show &lt;id&gt;</span></div>
+      <div class="terminal-body">
+  <span class="bold c-cyan">Negotiation Details</span>
+  <span class="c-gray">────────────────────────────────────────────────────────────────</span>
+  <span class="bold">ID</span>             <span class="c-gray">a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>
+  <span class="bold">Counterparty</span>   Alex Chen
+  <span class="bold">Outcome</span>        <span class="c-green">opportunity</span>
+  <span class="bold">Your Role</span>      <span class="c-green">helper</span>
+  <span class="bold">Turns</span>          3
+  <span class="bold">Created</span>        <span class="c-gray">3/28/2026, 2:15:00 PM</span>
+
+  <span class="bold">Turn-by-Turn</span>
+  <span class="c-gray">────────────────────────────────────────────────────────────────</span>
+  <span class="dim">Turn 1</span>  <span class="c-cyan">Seref's Agent</span>  <span class="c-blue">propose</span>  <span class="c-gray">02:15:30 PM</span>
+  <span class="dim">  roles: own=agent other=patient</span>
+  <span class="dim">  Both users share interest in decentralized identity protocols.</span>
+  <span class="dim">  Seref has infrastructure expertise that complements Alex's research.</span>
+
+  <span class="dim">Turn 2</span>  <span class="c-cyan">Alex's Agent</span>  <span class="c-blue">counter</span>  <span class="c-gray">02:15:45 PM</span>
+  <span class="dim">  roles: own=patient other=agent</span>
+  <span class="dim">  Agreed on the overlap. Suggesting peer collaboration instead of</span>
+  <span class="dim">  a helper-seeker dynamic given equal expertise levels.</span>
+
+  <span class="dim">Turn 3</span>  <span class="c-cyan">Seref's Agent</span>  <span class="c-green">accept</span>  <span class="c-gray">02:16:00 PM</span>
+  <span class="dim">  roles: own=agent other=patient</span>
+  <span class="dim">  Accepted. Strong alignment on verification mechanisms for</span>
+  <span class="dim">  autonomous agent identity.</span>
+
+  <span class="c-gray">────────────────────────────────────────────────────────────────</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index negotiation list   (empty)</span></div>
+      <div class="terminal-body">
+<span class="bold">Negotiations</span>
+
+  <span class="c-gray">No negotiations found.</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index negotiation list --since 1d</span></div>
+      <div class="terminal-body">
+<span class="bold">Negotiations</span>
+
+  <span class="bold">ID        Counterparty            Outcome         Role      Turns   Created             </span>
+  <span class="c-gray">--------  ----------------------  --------------  --------  ------  --------------------</span>
+  <span class="c-cyan">a1b2c3d4</span>  Alex Chen               <span class="c-green">opportunity</span>     <span class="c-green">helper</span>    3       <span class="c-gray">Mar 28, 2026</span></div>
     </div>
   </div>
 </div>
@@ -521,25 +667,28 @@ body {
 <!-- ═══════ OPPORTUNITIES ═══════ -->
 <div class="section" id="opportunities">
   <div class="section-title"><span class="dot" style="background:var(--yellow)"></span> Opportunities <span class="cmd-label opp">opportunity</span></div>
-  <div class="section-desc">Table with status colors, full detail card with actors/roles/reasoning/presentation, accept/reject.</div>
+  <div class="section-desc">Table with short IDs and status colors, full detail card with actors/roles/reasoning/presentation, accept/reject, discover.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity list</span></div>
-      <div class="terminal-body">  <span class="bold">Counterparty              Category              Status      Conf      Created             </span>
-  <span class="c-gray">------------------------  --------------------  ----------  --------  --------------------</span>
-  Alex Chen                 <span class="c-gray">Research Collaboration</span>  <span class="c-yellow">pending   </span>  <span class="c-gray">87%     </span>  <span class="c-gray">Mar 28, 2026</span>
-  Maria Santos              <span class="c-gray">Hiring                </span>  <span class="c-green">accepted  </span>  <span class="c-gray">92%     </span>  <span class="c-gray">Mar 25, 2026</span>
-  David Kim                 <span class="c-gray">Co-authoring          </span>  <span class="c-red">rejected  </span>  <span class="c-gray">65%     </span>  <span class="c-gray">Mar 20, 2026</span>
-  Unknown                   <span class="c-gray">Networking            </span>  <span class="c-gray">expired   </span>  <span class="c-gray">45%     </span>  <span class="c-gray">Mar 15, 2026</span></div>
+      <div class="terminal-body">
+<span class="bold">Opportunities</span>
+
+  <span class="bold">ID        Counterparty          Category            Status      Conf      Created             </span>
+  <span class="c-gray">--------  --------------------  ------------------  ----------  --------  --------------------</span>
+  <span class="c-cyan">a1b2c3d4</span>  Alex Chen             <span class="c-gray">Research Collab.  </span>  <span class="c-yellow">pending   </span>  <span class="c-gray">87%     </span>  <span class="c-gray">Mar 28, 2026</span>
+  <span class="c-cyan">e5f6a7b8</span>  Maria Santos          <span class="c-gray">Hiring            </span>  <span class="c-green">accepted  </span>  <span class="c-gray">92%     </span>  <span class="c-gray">Mar 25, 2026</span>
+  <span class="c-cyan">c9d0e1f2</span>  David Kim             <span class="c-gray">Co-authoring      </span>  <span class="c-red">rejected  </span>  <span class="c-gray">65%     </span>  <span class="c-gray">Mar 20, 2026</span>
+  <span class="c-cyan">f3a4b5c6</span>  Unknown               <span class="c-gray">Networking        </span>  <span class="c-gray">expired   </span>  <span class="c-gray">45%     </span>  <span class="c-gray">Mar 15, 2026</span></div>
     </div>
 
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity show &lt;id&gt;   (all fields populated)</span></div>
       <div class="terminal-body">
-  <span class="c-blue">+──────────────────────────────────────────────────────────+</span>
-  <span class="c-blue">|</span> <span class="bold c-blue">Opportunity</span>                                              <span class="c-blue">|</span>
-  <span class="c-blue">+──────────────────────────────────────────────────────────+</span>
+  <span class="c-blue">+──────────────────────────────────────────────────────────────+</span>
+  <span class="c-blue">|</span> <span class="bold c-blue">Opportunity</span>                                                <span class="c-blue">|</span>
+  <span class="c-blue">+──────────────────────────────────────────────────────────────+</span>
   <span class="c-blue">|</span> <span class="bold">Status:</span>  <span class="c-yellow">pending</span>
   <span class="c-blue">|</span> <span class="bold">Category:</span>  Research Collaboration
   <span class="c-blue">|</span> <span class="bold">Confidence:</span>  <span class="c-green">########</span><span class="c-gray">--</span> <span class="c-gray">87%</span>
@@ -561,7 +710,7 @@ body {
   <span class="c-blue">|</span>   <span class="c-agent">interest in applying ZK to decentralized identity.</span>
   <span class="c-blue">|</span>
   <span class="c-blue">|</span> <span class="c-gray">Created: Mar 28, 2026, 02:15 PM</span>
-  <span class="c-blue">+──────────────────────────────────────────────────────────+</span></div>
+  <span class="c-blue">+──────────────────────────────────────────────────────────────+</span></div>
     </div>
 
     <div class="terminal">
@@ -575,15 +724,26 @@ body {
     </div>
 
     <div class="terminal">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity list --status pending</span></div>
-      <div class="terminal-body">  <span class="bold">Counterparty              Category              Status      Conf      Created             </span>
-  <span class="c-gray">------------------------  --------------------  ----------  --------  --------------------</span>
-  Alex Chen                 <span class="c-gray">Research Collaboration</span>  <span class="c-yellow">pending   </span>  <span class="c-gray">87%     </span>  <span class="c-gray">Mar 28, 2026</span></div>
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity discover "AI agent infra"</span></div>
+      <div class="terminal-body"><span class="c-cyan">Discovering opportunities...</span>
+<span class="c-green bold">+</span> Discovery complete.
+  <span class="c-gray">Found 2 potential opportunities based on your query.</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity discover --introduce &lt;a&gt; &lt;b&gt;</span></div>
+      <div class="terminal-body"><span class="c-cyan">Gathering data for introduction...</span>
+  <span class="c-gray">Found shared network: f47ac10b</span>
+  <span class="c-gray">Profiles and intents gathered. Creating introduction...</span>
+<span class="c-green bold">+</span> Introduction created.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index opportunity list   (empty)</span></div>
-      <div class="terminal-body">  <span class="c-gray">No opportunities found.</span></div>
+      <div class="terminal-body">
+<span class="bold">Opportunities</span>
+
+  <span class="c-gray">No opportunities found.</span></div>
     </div>
   </div>
 </div>
@@ -591,28 +751,34 @@ body {
 <!-- ═══════ NETWORKS ═══════ -->
 <div class="section" id="networks">
   <div class="section-title"><span class="dot" style="background:var(--blue)"></span> Networks <span class="cmd-label network">network</span></div>
-  <div class="section-desc">Network table, detail card with members, create/join/leave/invite.</div>
+  <div class="section-desc">Network table with keys, detail card with members, create/show/update/delete/join/leave/invite.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network list</span></div>
-      <div class="terminal-body">  <span class="bold">Title                           Members   Role        Join Policy    Created           </span>
-  <span class="c-gray">------------------------------  --------  ----------  ------------  ------------------</span>
-  AI Research Collaborations      12        owner       invite only   <span class="c-gray">Jan 15, 2025</span>
-  Crypto & Identity               8         member      open          <span class="c-gray">Feb 20, 2025</span>
-  Agent Protocol Builders         24        admin       invite only   <span class="c-gray">Mar 1, 2026</span></div>
+      <div class="terminal-body">
+<span class="bold">Networks</span>
+
+  <span class="bold">Key                       Title                       Members   Role        Join Policy    Created           </span>
+  <span class="c-gray">------------------------  --------------------------  --------  ----------  ------------  ------------------</span>
+  <span class="c-cyan">ai-research</span>               AI Research Collaborations  12        owner       invite only   <span class="c-gray">Jan 15, 2025</span>
+  <span class="c-cyan">crypto-identity</span>           Crypto & Identity           8         member      open          <span class="c-gray">Feb 20, 2025</span>
+  <span class="c-cyan">agent-builders</span>            Agent Protocol Builders     24        admin       invite only   <span class="c-gray">Mar 1, 2026</span></div>
     </div>
 
     <div class="terminal full-width">
-      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network show &lt;id&gt;</span></div>
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network show &lt;id|key&gt;</span></div>
       <div class="terminal-body">
   <span class="bold">AI Research Collaborations</span>
   <span class="c-gray">────────────────────────────────────────</span>
+  <span class="c-gray">Key:</span>         <span class="c-cyan">ai-research</span>
   <span class="c-gray">ID:</span>          f47ac10b-58cc-4372-a567-0e02b2c3d479
   <span class="c-gray">Prompt:</span>      Connect researchers working on AI safety and alignment
   <span class="c-gray">Join Policy:</span> invite only
   <span class="c-gray">Members:</span>     12
   <span class="c-gray">Owner:</span>       Seref Yalkn (seref@index.network)
+
+<span class="bold">Members</span>
 
   <span class="bold">Name                      Email                           Role        Joined            </span>
   <span class="c-gray">------------------------  ------------------------------  ----------  ------------------</span>
@@ -625,12 +791,24 @@ body {
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network create "New Network" -p "prompt"</span></div>
       <div class="terminal-body"><span class="c-green bold">+</span> Network created: New Network
-<span class="c-gray">ID: e5f6a7b8-c9d0-1234-ef01-56789abcdef0</span></div>
+  <span class="c-gray">Key: new-network</span>
+  <span class="c-gray">ID: e5f6a7b8-c9d0-1234-ef01-56789abcdef0</span>
+  <span class="c-gray">Join Policy: invite only</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network update &lt;id&gt; --title "New Title"</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Network updated.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network delete &lt;id&gt;</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Network deleted.</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network invite &lt;id&gt; alex@mit.edu</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Invited alex@mit.edu to AI Research Collaborations.</div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Invited Alex Chen (alex@mit.edu) to the network.</div>
     </div>
 
     <div class="terminal">
@@ -645,7 +823,56 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index network list   (empty)</span></div>
-      <div class="terminal-body">  <span class="c-gray">No networks found.</span></div>
+      <div class="terminal-body">
+<span class="bold">Networks</span>
+
+  <span class="c-gray">No networks found.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ CONTACTS ═══════ -->
+<div class="section" id="contacts">
+  <div class="section-title"><span class="dot" style="background:var(--green)"></span> Contacts <span class="cmd-label auth">contact</span></div>
+  <div class="section-desc">Contact table, add/remove by email, Gmail import.</div>
+
+  <div class="output-grid">
+    <div class="terminal full-width">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index contact list</span></div>
+      <div class="terminal-body">
+<span class="bold">Contacts</span>
+
+  <span class="bold">Name                Email</span>
+  Alex Chen           alex@mit.edu
+  Maria Santos        maria@stanford.edu
+  David Kim           david@berkeley.edu <span class="dim">(ghost)</span>
+
+  <span class="c-gray">3 contacts</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index contact add alex@mit.edu --name "Alex"</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Added alex@mit.edu as a contact.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index contact remove alex@mit.edu</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Removed alex@mit.edu from contacts.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index contact import --gmail</span></div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Imported 47 contacts from Gmail.</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index contact list   (empty)</span></div>
+      <div class="terminal-body">
+<span class="bold">Contacts</span>
+
+  No contacts yet.
+
+  <span class="c-gray">0 contacts</span></div>
     </div>
   </div>
 </div>
@@ -653,15 +880,18 @@ body {
 <!-- ═══════ CONVERSATIONS ═══════ -->
 <div class="section" id="conversations">
   <div class="section-title"><span class="dot" style="background:var(--orange)"></span> Conversations <span class="cmd-label msg">conversation</span></div>
-  <div class="section-desc">Conversation table, DM card, message list, send, and SSE stream.</div>
+  <div class="section-desc">Conversation table with short IDs, DM card, message list, send, and SSE stream.</div>
 
   <div class="output-grid">
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation list</span></div>
-      <div class="terminal-body">  <span class="bold">ID                                    Participants                              Created             </span>
-  <span class="c-gray">------------------------------------  ----------------------------------------  --------------------</span>
-  <span class="c-gray">a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>  Seref Yalkn, Alex Chen                    <span class="c-gray">Mar 28, 2026</span>
-  <span class="c-gray">b2c3d4e5-f6a7-8901-bcde-f12345678901</span>  Seref Yalkn, Maria Santos                 <span class="c-gray">Mar 25, 2026</span></div>
+      <div class="terminal-body">
+<span class="bold">Conversations</span>
+
+  <span class="bold">ID        Participants                                        Created             </span>
+  <span class="c-gray">--------  --------------------------------------------------  --------------------</span>
+  <span class="c-cyan">a1b2c3d4</span>  Seref Yalkn, Alex Chen                                <span class="c-gray">Mar 28, 2026</span>
+  <span class="c-cyan">b2c3d4e5</span>  Seref Yalkn, Maria Santos                             <span class="c-gray">Mar 25, 2026</span></div>
     </div>
 
     <div class="terminal">
@@ -677,7 +907,10 @@ body {
 
     <div class="terminal full-width">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation show &lt;id&gt;</span></div>
-      <div class="terminal-body">  <span class="c-cyan">Seref Yalkn</span>  <span class="c-gray">Mar 28 02:15 PM</span>
+      <div class="terminal-body">
+<span class="bold">Messages</span>
+
+  <span class="c-cyan">Seref Yalkn</span>  <span class="c-gray">Mar 28 02:15 PM</span>
   Hey Alex, saw your paper on ZK identity proofs. Would love to chat.
 
   <span class="c-cyan">Alex Chen</span>  <span class="c-gray">Mar 28 03:30 PM</span>
@@ -689,24 +922,70 @@ body {
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation send &lt;id&gt; "Hey!"</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> Message sent.</div>
+      <div class="terminal-body"><span class="c-green bold">+</span> Message sent (e5f6a7b8-c9d0-1234-ef01-56789abcdef0)</div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation stream</span></div>
-      <div class="terminal-body"><span class="c-green bold">+</span> connected
-<span class="c-gray">{"type":"message","conversationId":"a1b2..."}</span>
-<span class="c-gray">{"type":"typing","userId":"c3d4..."}</span></div>
+      <div class="terminal-body"><span class="c-cyan">Connecting to conversation stream...</span>
+<span class="c-gray">Press Ctrl+C to stop.</span>
+
+<span class="c-green bold">+</span> Connected to conversation stream.
+<span class="c-gray">[message] {"type":"message","conversationId":"a1b2..."}</span>
+<span class="c-gray">[typing] {"type":"typing","userId":"c3d4..."}</span></div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation show &lt;id&gt;   (empty)</span></div>
-      <div class="terminal-body">  <span class="c-gray">No messages found.</span></div>
+      <div class="terminal-body">
+<span class="bold">Messages</span>
+
+  <span class="c-gray">No messages found.</span></div>
     </div>
 
     <div class="terminal">
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index conversation list   (empty)</span></div>
-      <div class="terminal-body">  <span class="c-gray">No conversations found.</span></div>
+      <div class="terminal-body">
+<span class="bold">Conversations</span>
+
+  <span class="c-gray">No conversations found.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ SCRAPE & SYNC ═══════ -->
+<div class="section" id="scrape">
+  <div class="section-title"><span class="dot" style="background:var(--green)"></span> Scrape &amp; Sync <span class="cmd-label auth">utility</span></div>
+  <div class="section-desc">URL content extraction, context sync to local file, onboarding completion.</div>
+
+  <div class="output-grid">
+    <div class="terminal full-width">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index scrape https://example.com --objective "get main content"</span></div>
+      <div class="terminal-body"><span class="c-cyan">Scraping https://example.com...</span>
+
+<span class="bold">Content from https://example.com</span>
+
+Example Domain
+This domain is for use in illustrative examples in documents...
+
+  <span class="c-gray">1256 characters extracted</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index sync</span></div>
+      <div class="terminal-body"><span class="c-cyan">Syncing context...</span>
+<span class="c-green bold">+</span> Context synced to ~/.index/context.json</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index sync --json</span></div>
+      <div class="terminal-body">{"syncedAt":"2026-03-29T14:30:00Z","profile":{...},"networks":{...},"intents":{...},"contacts":{...}}</div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">$ index onboarding complete</span></div>
+      <div class="terminal-body"><span class="c-cyan">Completing onboarding...</span>
+<span class="c-green bold">+</span> Onboarding marked as complete.</div>
     </div>
   </div>
 </div>
@@ -751,7 +1030,7 @@ body {
       <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">Code block (no language tag)</span></div>
       <div class="terminal-body">
   <span class="c-gray">──────────────────────────────────────────────────</span>
-  <span class="c-gray">|</span> <span class="c-cyan">bun install @index-network/sdk</span>
+  <span class="c-gray">|</span> <span class="c-cyan">bun install @indexnetwork/cli</span>
   <span class="c-gray">──────────────────────────────────────────────────</span></div>
     </div>
 
@@ -820,7 +1099,12 @@ body {
 <span class="c-red"><span class="bold">error</span>: Login timed out. No callback received.</span>
 <span class="c-red"><span class="bold">error</span>: Login cancelled.</span>
 <span class="c-red"><span class="bold">error</span>: No session token received in callback.</span>
-<span class="c-red"><span class="bold">error</span>: Unknown command: foobar</span></div>
+<span class="c-red"><span class="bold">error</span>: Unknown command: foobar</span>
+<span class="c-red"><span class="bold">error</span>: Missing signal ID. Usage: index intent show &lt;id&gt;</span>
+<span class="c-red"><span class="bold">error</span>: Usage: index profile update &lt;action&gt; [--details &lt;text&gt;]</span>
+<span class="c-red"><span class="bold">error</span>: Negotiation not found: abc123</span>
+<span class="c-red"><span class="bold">error</span>: No shared indexes found between these users.</span>
+<span class="c-red"><span class="bold">error</span>: `--json` requires an explicit conversation subcommand.</span></div>
     </div>
 
     <div class="terminal">
@@ -828,22 +1112,56 @@ body {
       <div class="terminal-body"><span class="c-green bold">+</span> Logged in as Seref Yalkn (seref@index.network)
 <span class="c-green bold">+</span> Login successful! Token stored.
 <span class="c-green bold">+</span> Logged out. Session cleared.
-<span class="c-green bold">+</span> Profile synced successfully.
+<span class="c-green bold">+</span> Profile regeneration triggered. It may take a moment to complete.
+<span class="c-green bold">+</span> Profile created.
+<span class="c-green bold">+</span> Profile updated.
 <span class="c-green bold">+</span> Signal created.
-<span class="c-green bold">+</span> Signal archived.
+<span class="c-green bold">+</span> Signal updated.
+<span class="c-green bold">+</span> Signal f47ac10b archived.
+<span class="c-green bold">+</span> Signal linked to network.
+<span class="c-green bold">+</span> Signal unlinked from network.
 <span class="c-green bold">+</span> Opportunity accepted.
 <span class="c-green bold">+</span> Opportunity rejected.
-<span class="c-green bold">+</span> Message sent.
+<span class="c-green bold">+</span> Discovery complete.
+<span class="c-green bold">+</span> Introduction created.
+<span class="c-green bold">+</span> Message sent (e5f6a7b8-c9d0-1234-ef01-56789abcdef0)
+<span class="c-green bold">+</span> Network created: New Network
+<span class="c-green bold">+</span> Network updated.
+<span class="c-green bold">+</span> Network deleted.
+<span class="c-green bold">+</span> Joined network: Agent Protocol Builders
+<span class="c-green bold">+</span> Left network.
+<span class="c-green bold">+</span> Invited Alex Chen (alex@mit.edu) to the network.
+<span class="c-green bold">+</span> Added alex@mit.edu as a contact.
+<span class="c-green bold">+</span> Removed alex@mit.edu from contacts.
+<span class="c-green bold">+</span> Context synced to ~/.index/context.json
+<span class="c-green bold">+</span> Onboarding marked as complete.
 <span class="c-green bold">+</span> Token stored. Could not verify — check with `index conversation`.
+<span class="c-green bold">+</span> Connected to conversation stream.
 
-<span class="c-cyan">Authenticating with http://localhost:3000...</span>
+<span class="c-cyan">Authenticating with https://protocol.index.network...</span>
 <span class="c-cyan">Opening browser for authentication...</span>
+<span class="c-cyan">Loading your profile...</span>
+<span class="c-cyan">Loading profile...</span>
+<span class="c-cyan">Regenerating profile...</span>
+<span class="c-cyan">Creating profile...</span>
+<span class="c-cyan">Updating profile...</span>
+<span class="c-cyan">Processing signal...</span>
+<span class="c-cyan">Updating signal...</span>
+<span class="c-cyan">Discovering opportunities...</span>
+<span class="c-cyan">Gathering data for introduction...</span>
+<span class="c-cyan">Scraping https://example.com...</span>
+<span class="c-cyan">Syncing context...</span>
+<span class="c-cyan">Completing onboarding...</span>
+<span class="c-cyan">Connecting to conversation stream...</span>
 
 <span class="c-yellow">Warning: rate limit approaching.</span>
 
 <span class="c-gray">Waiting for authentication callback...</span>
 <span class="c-gray">Goodbye!</span>
-<span class="c-gray">Session: a1b2c3d4-e5f6-7890-abcd-ef1234567890</span></div>
+<span class="c-gray">Session: a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>
+<span class="c-gray">Press Ctrl+C to stop.</span>
+<span class="c-gray">Found shared network: f47ac10b</span>
+<span class="c-gray">Profiles and intents gathered. Creating introduction...</span></div>
     </div>
 
     <div class="terminal">
@@ -852,7 +1170,7 @@ body {
   <span class="c-gray">Processing your request...</span><span class="dim">     ← status: replaces previous</span>
 <span class="c-orange">&gt; Reading your profile...</span><span class="dim">       ← toolActivity: persistent</span>
 <span class="c-orange">&gt; Creating a new signal...</span><span class="dim">      ← toolActivity: persistent</span>
-<span class="c-orange">&gt; Searching for relevant connections...</span></div>
+<span class="c-orange">&gt; Proposing a new signal for game development</span><span class="dim">  ← tool_activity w/ description</span></div>
     </div>
 
     <div class="terminal">
@@ -860,9 +1178,27 @@ body {
       <div class="terminal-body">
 <span class="bold">Chat Sessions</span>
 
-<span class="bold">Your Opportunities</span>
+<span class="bold">Signals</span>
 
-<span class="bold">Network Members</span></div>
+<span class="bold">Negotiations</span>
+
+<span class="bold">Opportunities</span>
+
+<span class="bold">Networks</span>
+
+<span class="bold">Members</span>
+
+<span class="bold">Contacts</span>
+
+<span class="bold">Conversations</span>
+
+<span class="bold">Messages</span>
+
+<span class="bold">Search Results</span>
+
+<span class="bold">Linked Networks</span>
+
+<span class="bold">Content from https://example.com</span></div>
     </div>
 
     <div class="terminal full-width">
@@ -930,6 +1266,21 @@ body {
   <span class="c-red">rejected</span>    <span class="dim">← red</span>
   <span class="c-gray">expired</span>     <span class="dim">← gray</span>
   unknown     <span class="dim">← no color (default)</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">Negotiation outcome labels</span></div>
+      <div class="terminal-body">  <span class="c-green">opportunity</span>  <span class="dim">← hasOpportunity: true</span>
+  <span class="c-gray">no match</span>     <span class="dim">← hasOpportunity: false</span>
+  <span class="c-gray">unknown</span>      <span class="dim">← no outcome</span></div>
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><div class="dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></div><span class="cmd">Negotiation role labels</span></div>
+      <div class="terminal-body">  <span class="c-green">helper</span>    <span class="dim">← agent role</span>
+  <span class="c-yellow">seeker</span>    <span class="dim">← patient role</span>
+  <span class="c-cyan">peer</span>      <span class="dim">← peer role</span>
+  <span class="c-gray">-</span>         <span class="dim">← unrecognized role</span></div>
     </div>
   </div>
 </div>
