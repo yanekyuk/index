@@ -15,32 +15,21 @@ Index helps you find the right people—and helps the right people find you—ba
 The flow below is one complete story—shape a room, invite people, publish what you need, run discovery inside that context, watch broker negotiations, then accept a match.
 
 ```bash
+# login + setup
 index login
 index profile
 
-# 1. Create a network scoped to a specific domain
-index network create "AI Privacy Research" --prompt "Researchers working on privacy-preserving ML"
+# 1. express intent (signals)
+index intent create "federated learning collaboration"
 
-# 2. Invite collaborators
-index network invite <network-id> alice@example.com
-index network invite <network-id> bob@example.com
-
-# 3. Create signals that describe what you are looking for
-index intent create "Looking for someone experienced in federated learning"
-index intent create "Need a collaborator for differential privacy benchmarks"
-
-# 4. Link your signals to the network so discovery can find them
-index intent link <intent-id-1> <network-id>
-index intent link <intent-id-2> <network-id>
-
-# 5. Discovery across the network (no fixed counterpart—who fits depends on members and signals)
+# 2. discovery = sourcing + negotiations
 index opportunity discover "federated learning collaboration"
 
-# 6. Check what the broker agents negotiated
+# 3. check what the agents negotiated
 index negotiation list --since 1h
 index negotiation show <negotiation-id>
 
-# 7. Review the resulting opportunity and accept
+# 4. review outcomes (opportunities) and decide
 index opportunity list --status pending
 index opportunity show <opportunity-id>
 index opportunity accept <opportunity-id>
