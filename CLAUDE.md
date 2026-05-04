@@ -282,6 +282,17 @@ Model settings centralized in `packages/protocol/src/shared/agent/model.config.t
 
 See `docs/guides/getting-started.md` for full setup guide.
 
+### Neon Database Topology
+
+Two Neon projects exist:
+
+1. **Protocol-dev-europe** (`patient-pine-89907813`, `aws-eu-central-1`) — local development database. Developers connect here from their machines.
+2. **Protocol** (`shiny-cloud-34341469`, `aws-us-east-1`) — has two branches:
+   - **`production`** (`br-fragrant-brook-ahexgsek`) — production data. **Never touch.**
+   - **`dev`** (`br-late-tooth-ahlsfgdb`) — used by the Railway `dev` environment. Database name: `protocol_prod`.
+
+Railway dev deployments run `db:migrate` against the `dev` branch of the Protocol project.
+
 ### Required Environment Variables
 
 ```bash
