@@ -1,12 +1,13 @@
 /**
  * Index Network — OpenClaw plugin entry point.
  *
- * Registers three HTTP routes across four polling domains and starts their
+ * Registers four HTTP routes across five polling domains and starts their
  * respective schedulers:
  *
- *   POST /index/poll/negotiator         — negotiation turn pickup
- *   POST /index/poll/ambient-discovery  — opportunity batch evaluation
- *   POST /index/poll/test-message       — test message pickup
+ *   POST /index/poll/negotiator              — negotiation turn pickup
+ *   POST /index/poll/ambient-discovery       — opportunity batch evaluation
+ *   POST /index/poll/test-message            — test message pickup
+ *   POST /index/poll/accepted-opportunity    — accepted opportunity notification
  *
  * Daily digest is scheduled directly (no HTTP route needed).
  *
@@ -23,6 +24,8 @@ import * as ambientDiscoveryPoller from './polling/ambient-discovery/ambient-dis
 import * as ambientDiscoveryScheduler from './polling/ambient-discovery/ambient-discovery.scheduler.js';
 import * as testMessagePoller from './polling/test-message/test-message.poller.js';
 import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
+import * as acceptedOpportunityPoller from './polling/accepted-opportunity/accepted-opportunity.poller.js';
+import * as acceptedOpportunityScheduler from './polling/accepted-opportunity/accepted-opportunity.scheduler.js';
 import { registerSetupCli } from './setup/setup.cli.js';
 import { deriveUrls } from './lib/utils/url.js';
 
@@ -242,6 +245,34 @@ export function register(api: OpenClawPluginApi): void {
 
   ambientDiscoveryScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
 
+  // Accepted opportunity notifications
+  api.registerHttpRoute({
+    path: '/index/poll/accepted-opportunity',
+    auth: 'gateway',
+    match: 'exact',
+    handler: async (_req, res) => {
+      try {
+        const outcome = await acceptedOpportunityPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
+        if (outcome === 'error') {
+          acceptedOpportunityScheduler.increaseBackoff(api.logger);
+        } else {
+          acceptedOpportunityScheduler.resetBackoff();
+        }
+        res.statusCode = 200;
+        res.end('ok');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        api.logger.error(`Accepted opportunity poll handler error: ${msg}`);
+        acceptedOpportunityScheduler.increaseBackoff(api.logger);
+        res.statusCode = 500;
+        res.end(msg);
+      }
+      return true;
+    },
+  });
+
+  acceptedOpportunityScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
+
   api.logger.info('Index Network polling started', {
     plugin: api.id,
     agentId,
@@ -308,4 +339,6 @@ export function _resetForTesting(): void {
   ambientDiscoveryPoller._resetForTesting();
   ambientDiscoveryScheduler._resetForTesting();
   testMessageScheduler._resetForTesting();
+  acceptedOpportunityPoller._resetForTesting();
+  acceptedOpportunityScheduler._resetForTesting();
 }
