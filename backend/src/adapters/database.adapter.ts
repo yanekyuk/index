@@ -18,9 +18,16 @@ import type {
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { NetworkMembershipEvents } from '../events/network_membership.event';
-import { detectSocialLabel } from '@indexnetwork/protocol/shared/utils/social-label';
-
 const logger = log.lib.from('database.adapter');
+
+function detectSocialLabel(value: string): string {
+  const lower = value.toLowerCase();
+  if (lower.includes('linkedin.com')) return 'linkedin';
+  if (lower.includes('x.com') || lower.includes('twitter.com')) return 'twitter';
+  if (lower.includes('github.com')) return 'github';
+  if (lower.includes('t.me') || lower.includes('telegram.me')) return 'telegram';
+  return 'custom';
+}
 
 /** Sentinel participant ID for the built-in chat agent. */
 export const SYSTEM_AGENT_ID = 'system-agent';
@@ -611,6 +618,9 @@ export class IntentDatabaseAdapter {
       .limit(1);
     const user = result[0];
     if (!user) return null;
+    const socialRows = await db.select()
+      .from(schema.userSocials)
+      .where(eq(schema.userSocials.userId, userId));
     return {
       id: user.id,
       name: user.name ?? '',
@@ -618,7 +628,7 @@ export class IntentDatabaseAdapter {
       intro: user.intro ?? null,
       avatar: user.avatar ?? null,
       location: user.location ?? null,
-      socials: user.socials ?? null,
+      socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       onboarding: user.onboarding ?? null,
       isGhost: user.isGhost ?? false,
       deletedAt: user.deletedAt ?? null,
