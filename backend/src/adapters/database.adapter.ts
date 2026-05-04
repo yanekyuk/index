@@ -18,6 +18,7 @@ import type {
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { NetworkMembershipEvents } from '../events/network_membership.event';
+import { detectSocialLabel } from '@indexnetwork/protocol/shared/utils/social-label';
 
 const logger = log.lib.from('database.adapter');
 
@@ -180,7 +181,7 @@ interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions } = schema;
+const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -956,21 +957,27 @@ export class ChatDatabaseAdapter {
     }
   }
 
-  async getUser(userId: string): Promise<User | null> {
-    const result = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-    return result[0] ?? null;
+  async getUser(userId: string) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.getUser(userId);
   }
 
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
+    data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }
   ) {
-    // Delegate to ProfileDatabaseAdapter which has the merge logic
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.updateUser(userId, data);
+  }
+
+  async getUserSocials(userId: string) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.getUserSocials(userId);
+  }
+
+  async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.setUserSocials(userId, socials);
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
@@ -1014,7 +1021,7 @@ export class ChatDatabaseAdapter {
    */
   async findDuplicateUser(
     userId: string,
-    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+    socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.findDuplicateUser(userId, socials);
@@ -3417,24 +3424,24 @@ export class ProfileDatabaseAdapter {
       });
   }
 
-  async getUser(userId: string): Promise<User | null> {
+  async getUser(userId: string) {
     const result = await db.select()
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .limit(1);
-    return result[0] ?? null;
+    const user = result[0];
+    if (!user) return null;
+    const socials = await this.getUserSocials(userId);
+    return { ...user, socials };
   }
 
   /**
-   * Update user account fields (name, intro, location, socials).
-   * Merges socials with existing values so callers can set individual social
-   * fields (e.g. only linkedin) without overwriting the rest.
+   * Update user account fields (name, intro, location).
    */
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
-  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
-    // Load current user to merge socials
+    data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }
+  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; onboarding?: OnboardingState | null } | null> {
     const current = await this.getUser(userId);
     if (!current) return null;
 
@@ -3443,19 +3450,6 @@ export class ProfileDatabaseAdapter {
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.intro !== undefined) updateFields.intro = data.intro;
     if (data.location !== undefined) updateFields.location = data.location;
-    if (data.onboarding !== undefined) updateFields.onboarding = data.onboarding;
-
-    if (data.socials) {
-      // Merge with existing socials instead of overwriting
-      const existingSocials = current.socials ?? {};
-      const merged = { ...existingSocials };
-      if (data.socials.x !== undefined) merged.x = data.socials.x;
-      if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
-      if (data.socials.github !== undefined) merged.github = data.socials.github;
-      if (data.socials.telegram !== undefined) merged.telegram = data.socials.telegram;
-      if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
-      updateFields.socials = merged;
-    }
 
     if (data.onboarding !== undefined) {
       const existingOnboarding = current.onboarding ?? {};
@@ -3469,6 +3463,7 @@ export class ProfileDatabaseAdapter {
 
     const updated = result[0];
     if (!updated) return null;
+    const socials = await this.getUserSocials(userId);
     return {
       id: updated.id,
       name: updated.name,
@@ -3476,9 +3471,34 @@ export class ProfileDatabaseAdapter {
       intro: updated.intro,
       avatar: updated.avatar,
       location: updated.location,
-      socials: updated.socials as { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null,
+      socials,
       onboarding: (updated as { onboarding?: unknown }).onboarding as OnboardingState | null,
     };
+  }
+
+  async getUserSocials(userId: string): Promise<Array<{ id: string; userId: string; label: string; value: string }>> {
+    const rows = await db.select()
+      .from(schema.userSocials)
+      .where(eq(schema.userSocials.userId, userId));
+    return rows.map(r => ({ id: r.id, userId: r.userId, label: r.label, value: r.value }));
+  }
+
+  async setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, userId));
+      if (socials.length > 0) {
+        const filtered = socials.filter(s => s.value.trim() !== '');
+        if (filtered.length > 0) {
+          await tx.insert(schema.userSocials).values(
+            filtered.map(s => ({
+              userId,
+              label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
+              value: s.value.trim(),
+            })),
+          );
+        }
+      }
+    });
   }
 
   /**
@@ -3603,26 +3623,26 @@ export class ProfileDatabaseAdapter {
    */
   async findDuplicateUser(
     userId: string,
-    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+    socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
-    const handles: { field: string; value: string }[] = [];
-    if (socials.linkedin) handles.push({ field: 'linkedin', value: socials.linkedin.toLowerCase() });
-    if (socials.github) handles.push({ field: 'github', value: socials.github.toLowerCase() });
-    if (socials.x) handles.push({ field: 'x', value: socials.x.toLowerCase() });
+    const handles = socials
+      .filter(s => ['linkedin', 'github', 'twitter'].includes(s.label))
+      .map(s => ({ label: s.label, value: s.value.toLowerCase() }));
 
     if (handles.length === 0) return null;
 
     const conditions = handles.map(
-      (h) => sql`LOWER(${schema.users.socials}->>'${sql.raw(h.field)}') = ${h.value}`,
+      (h) => sql`(LOWER(${schema.userSocials.value}) = ${h.value} AND ${schema.userSocials.label} = ${h.label})`,
     );
 
     const results = await db
-      .select({ id: schema.users.id, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
-      .from(schema.users)
+      .selectDistinct({ id: schema.userSocials.userId, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
+      .from(schema.userSocials)
+      .innerJoin(schema.users, eq(schema.userSocials.userId, schema.users.id))
       .where(
         and(
           sql`(${sql.join(conditions, sql` OR `)})`,
-          not(eq(schema.users.id, userId)),
+          not(eq(schema.userSocials.userId, userId)),
           isNull(schema.users.deletedAt),
         ),
       )
@@ -4496,7 +4516,7 @@ interface UserWithGraph {
   name: string | null;
   intro: string | null;
   location: string | null;
-  socials: unknown;
+  socials: Array<{ id: string; userId: string; label: string; value: string }>;
   onboarding: unknown;
   avatar: string | null;
   timezone: string | null;
@@ -4557,22 +4577,36 @@ export class UserDatabaseAdapter {
   /**
    * Find multiple users by IDs. Returns public profile fields only (same shape as single-user API).
    */
-  async findByIds(userIds: string[]): Promise<Array<Pick<typeof users.$inferSelect, 'id' | 'name' | 'intro' | 'avatar' | 'location' | 'socials' | 'isGhost' | 'createdAt' | 'updatedAt'>>> {
+  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; isGhost: boolean; createdAt: Date; updatedAt: Date }>> {
     if (userIds.length === 0) return [];
-    const result = await db.select({
+    const userRows = await db.select({
       id: users.id,
       name: users.name,
       intro: users.intro,
       avatar: users.avatar,
       location: users.location,
-      socials: users.socials,
       isGhost: users.isGhost,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     })
       .from(users)
       .where(inArray(users.id, userIds));
-    return result;
+
+    const socialRows = await db.select()
+      .from(userSocials)
+      .where(inArray(userSocials.userId, userIds));
+
+    const socialsByUser = new Map<string, Array<{ id: string; userId: string; label: string; value: string }>>();
+    for (const s of socialRows) {
+      const arr = socialsByUser.get(s.userId) ?? [];
+      arr.push({ id: s.id, userId: s.userId, label: s.label, value: s.value });
+      socialsByUser.set(s.userId, arr);
+    }
+
+    return userRows.map(u => ({
+      ...u,
+      socials: socialsByUser.get(u.id) ?? [],
+    }));
   }
 
   /**
@@ -4594,7 +4628,6 @@ export class UserDatabaseAdapter {
     name?: string;
     intro?: string;
     location?: string;
-    socials?: Record<string, string>;
   }): Promise<typeof users.$inferSelect> {
     const [row] = await db.insert(users)
       .values({
@@ -4602,7 +4635,6 @@ export class UserDatabaseAdapter {
         name: data.name ?? data.email.split('@')[0],
         intro: data.intro ?? null,
         location: data.location ?? null,
-        socials: data.socials ?? null,
       })
       .returning();
     if (!row) throw new Error('User insert did not return a row');
@@ -4698,8 +4730,13 @@ export class UserDatabaseAdapter {
 
     const { user, settings, profile } = userResult[0];
 
+    const socialRows = await db.select()
+      .from(userSocials)
+      .where(eq(userSocials.userId, userId));
+
     return {
       ...user,
+      socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       profile,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
@@ -4715,9 +4752,10 @@ export class UserDatabaseAdapter {
    * Update user
    */
   async update(userId: string, data: Partial<User>): Promise<typeof users.$inferSelect | null> {
+    const { socials: _socials, ...rest } = data as Partial<User> & { socials?: unknown };
     const result = await db.update(users)
       .set({
-        ...data,
+        ...rest,
         updatedAt: new Date()
       })
       .where(eq(users.id, userId))
