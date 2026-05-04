@@ -8,7 +8,7 @@ const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { agentPermissions, agents, networkMembers, networks, userProfiles, users } from '../schemas/database.schema';
+import { agentPermissions, agents, networkMembers, networks, userProfiles, users, userSocials } from '../schemas/database.schema';
 import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { setLevel } from '../lib/log';
@@ -204,14 +204,8 @@ function parseArgs(): GlobalOpts {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 async function createUser(account: SeedAccount): Promise<{ id: string }> {
-  const socials = {
-    linkedin: account.linkedin ?? undefined,
-    github: account.github ?? undefined,
-    x: account.x ?? undefined,
-    websites: account.website ? [account.website] : [],
-  };
-
   const normalizedEmail = account.email.toLowerCase().trim();
+  let userId: string;
   try {
     const [user] = await db
       .insert(users)
@@ -219,16 +213,26 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
         email: normalizedEmail,
         name: account.name,
         intro: `Test account for ${account.name}`,
-        socials,
         onboarding: { completedAt: new Date().toISOString() },
       })
       .returning({ id: users.id });
-    return user!;
+    userId = user!.id;
   } catch {
     const [byEmail] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${normalizedEmail}`).limit(1);
     if (byEmail) return byEmail;
     throw new Error(`createUser failed for ${normalizedEmail}: insert failed and no existing user found by email`);
   }
+
+  const socialRows: { userId: string; label: string; value: string }[] = [];
+  if (account.linkedin) socialRows.push({ userId, label: 'linkedin', value: account.linkedin });
+  if (account.github) socialRows.push({ userId, label: 'github', value: account.github });
+  if (account.x) socialRows.push({ userId, label: 'twitter', value: account.x });
+  if (account.website) socialRows.push({ userId, label: 'custom', value: account.website });
+  if (socialRows.length > 0) {
+    await db.insert(userSocials).values(socialRows);
+  }
+
+  return { id: userId };
 }
 
 /**
