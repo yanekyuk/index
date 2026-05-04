@@ -20,12 +20,7 @@ export interface Member {
   isGhost?: boolean;
   intro?: string | null;
   location?: string | null;
-  socials?: {
-    x?: string;
-    linkedin?: string;
-    github?: string;
-    websites?: string[];
-  } | null;
+  socials?: Array<{ id: string; userId: string; label: string; value: string }>;
   permissions: string[];
   metadata?: Record<string, string | string[]> | null;
   createdAt?: string;
