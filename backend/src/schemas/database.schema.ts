@@ -546,6 +546,7 @@ export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
   memberOf: many(networkMembers),
+  socials: many(userSocials),
   notificationSettings: one(userNotificationSettings, {
     fields: [users.id],
     references: [userNotificationSettings.userId],
@@ -553,6 +554,13 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(userProfiles, {
     fields: [users.id],
     references: [userProfiles.userId],
+  }),
+}));
+
+export const userSocialsRelations = relations(userSocials, ({ one }) => ({
+  user: one(users, {
+    fields: [userSocials.userId],
+    references: [users.id],
   }),
 }));
 
