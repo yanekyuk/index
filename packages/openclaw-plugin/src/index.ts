@@ -252,7 +252,7 @@ export function register(api: OpenClawPluginApi): void {
     match: 'exact',
     handler: async (_req, res) => {
       try {
-        const outcome = await acceptedOpportunityPoller.handle(api, { baseUrl, agentId, apiKey, frontendUrl });
+        const outcome = await acceptedOpportunityPoller.handle(api, { baseUrl, agentId, apiKey });
         if (outcome === 'error') {
           acceptedOpportunityScheduler.increaseBackoff(api.logger);
         } else {

@@ -8,7 +8,6 @@ export interface AcceptedOpportunityConfig {
   baseUrl: string;
   agentId: string;
   apiKey: string;
-  frontendUrl: string;
 }
 
 const ACCEPTED_LIMIT = 10;
@@ -21,9 +20,7 @@ export async function handle(
   api: OpenClawPluginApi,
   config: AcceptedOpportunityConfig,
 ): Promise<AcceptedOpportunityOutcome> {
-  const acceptedUrl =
-    `${config.baseUrl}/api/agents/${config.agentId}/opportunities/accepted` +
-    `?limit=${ACCEPTED_LIMIT}&frontendUrl=${encodeURIComponent(config.frontendUrl)}`;
+  const acceptedUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/accepted?limit=${ACCEPTED_LIMIT}`;
 
   let res: Response;
   try {

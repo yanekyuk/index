@@ -4047,7 +4047,11 @@ export class OpportunityDatabaseAdapter {
     acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
     const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (acceptedBy) updates.acceptedBy = acceptedBy;
+    if (status === 'accepted' && acceptedBy) {
+      updates.acceptedBy = acceptedBy;
+    } else if (status !== 'accepted') {
+      updates.acceptedBy = null;
+    }
     const [row] = await db
       .update(opportunities)
       .set(updates)
@@ -7401,7 +7405,11 @@ export class ConversationDatabaseAdapter {
     acceptedBy?: string,
   ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
     const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (acceptedBy) updates.acceptedBy = acceptedBy;
+    if (status === 'accepted' && acceptedBy) {
+      updates.acceptedBy = acceptedBy;
+    } else if (status !== 'accepted') {
+      updates.acceptedBy = null;
+    }
     const [row] = await db
       .update(opportunities)
       .set(updates)

@@ -28,6 +28,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
+import { conversations } from '../schemas/conversation.schema';
 import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../schemas/database.schema';
 
 const logger = log.service.from('OpportunityDeliveryService');
@@ -398,7 +399,7 @@ export class OpportunityDeliveryService {
     const effectiveLimit = Math.min(20, Math.max(1, raw));
 
     const result = await db.execute(sql`
-      SELECT o.id, o.actors, o.accepted_by, o.interpretation
+      SELECT o.id, o.actors, o.accepted_by
       FROM opportunities o
       WHERE o.status = 'accepted'
         AND o.accepted_by IS NOT NULL
@@ -420,7 +421,6 @@ export class OpportunityDeliveryService {
       id: string;
       actors: Array<{ userId: string; role: string }>;
       accepted_by: string;
-      interpretation: unknown;
     }>;
 
     // Filter out rows where the polling user is the introducer
@@ -433,28 +433,32 @@ export class OpportunityDeliveryService {
       visible.map(async (row) => {
         const accepterUserId = row.accepted_by;
 
-        // Fetch accepter's name
-        const [accepterUser] = await db
-          .select({ name: users.name })
+        // Fetch accepter name and Telegram handle in a single query
+        const [userData] = await db
+          .select({
+            name: users.name,
+            telegramHandle: userSocials.value,
+          })
           .from(users)
-          .where(eq(users.id, accepterUserId))
-          .limit(1);
-        const accepterName = accepterUser?.name ?? '';
-
-        // Fetch accepter's Telegram handle
-        const [tgRow] = await db
-          .select({ value: userSocials.value })
-          .from(userSocials)
-          .where(and(
-            eq(userSocials.userId, accepterUserId),
+          .leftJoin(userSocials, and(
+            eq(userSocials.userId, users.id),
             eq(userSocials.label, 'telegram'),
           ))
+          .where(eq(users.id, accepterUserId))
           .limit(1);
-        const telegramHandle = tgRow?.value ?? null;
+        const accepterName = userData?.name ?? '';
+        const telegramHandle = userData?.telegramHandle ?? null;
 
-        // Resolve conversation URL from DM between the two users
-        const conversation = await chatDatabaseAdapter.getOrCreateDM(userId, accepterUserId);
-        const conversationUrl = `${frontendUrl}/conversations/${conversation.id}`;
+        // Resolve conversation URL from existing DM between the two users (read-only)
+        const dmPair = [userId, accepterUserId].sort().join(':');
+        const [existingConv] = await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.dmPair, dmPair))
+          .limit(1);
+        const conversationUrl = existingConv
+          ? `${frontendUrl}/conversations/${existingConv.id}`
+          : frontendUrl;
 
         const rendered = await this.renderOpportunityCard(row.id, userId);
 
