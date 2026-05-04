@@ -285,6 +285,19 @@ describe('fetchAcceptedCandidates', () => {
     expect(result).toHaveLength(1);
   });
 
+  test('respects notify_on_opportunity=false (muted agent)', async () => {
+    await seedAcceptedOpportunity(
+      [{ userId: userA, role: 'peer' }, { userId: userB, role: 'peer' }],
+      userA,
+    );
+
+    // Mute the agent
+    await db.execute(sql`UPDATE agents SET notify_on_opportunity = false WHERE id = ${agentB}`);
+
+    const result = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL);
+    expect(result).toEqual([]);
+  });
+
   test('clamps limit to [1, 20] range', async () => {
     // limit=0 should be clamped to 1
     await seedAcceptedOpportunity(

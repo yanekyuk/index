@@ -4046,10 +4046,13 @@ export class OpportunityDatabaseAdapter {
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
+    if (status === 'accepted' && !acceptedBy) {
+      throw new Error('acceptedBy is required when status is accepted');
+    }
     const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (status === 'accepted' && acceptedBy) {
+    if (status === 'accepted') {
       updates.acceptedBy = acceptedBy;
-    } else if (status !== 'accepted') {
+    } else {
       updates.acceptedBy = null;
     }
     const [row] = await db
@@ -5450,12 +5453,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
         throw new Error('Access denied: opportunity not visible to user');
       return opportunity;
     },
-    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1], acceptedBy?: string) => {
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
       if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
         throw new Error('Access denied: opportunity not visible to user');
-      return db.updateOpportunityStatus(id, status, acceptedBy);
+      return db.updateOpportunityStatus(id, status, status === 'accepted' ? authUserId : undefined);
     },
     getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
       db.getAcceptedOpportunitiesBetweenActors(authUserId, counterpartUserId),
@@ -7404,10 +7407,13 @@ export class ConversationDatabaseAdapter {
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
     acceptedBy?: string,
   ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+    if (status === 'accepted' && !acceptedBy) {
+      throw new Error('acceptedBy is required when status is accepted');
+    }
     const updates: Record<string, unknown> = { status, updatedAt: new Date() };
-    if (status === 'accepted' && acceptedBy) {
+    if (status === 'accepted') {
       updates.acceptedBy = acceptedBy;
-    } else if (status !== 'accepted') {
+    } else {
       updates.acceptedBy = null;
     }
     const [row] = await db

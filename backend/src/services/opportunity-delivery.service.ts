@@ -404,7 +404,12 @@ export class OpportunityDeliveryService {
       WHERE o.status = 'accepted'
         AND o.accepted_by IS NOT NULL
         AND o.accepted_by <> ${userId}
-        AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
+        AND o.actors::jsonb @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
+        AND EXISTS (
+          SELECT 1 FROM agents a
+          WHERE a.id = ${agentId}
+            AND a.notify_on_opportunity = true
+        )
         AND NOT EXISTS (
           SELECT 1 FROM opportunity_deliveries d
           WHERE d.opportunity_id = o.id
@@ -423,14 +428,8 @@ export class OpportunityDeliveryService {
       accepted_by: string;
     }>;
 
-    // Filter out rows where the polling user is the introducer
-    const visible = rows.filter((row) => {
-      const actor = row.actors.find((a) => a.userId === userId);
-      return actor && actor.role !== 'introducer';
-    });
-
     const candidates = await Promise.all(
-      visible.map(async (row) => {
+      rows.map(async (row) => {
         const accepterUserId = row.accepted_by;
 
         // Fetch accepter name and Telegram handle in a single query
