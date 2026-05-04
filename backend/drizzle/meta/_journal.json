@@ -421,6 +421,20 @@
       "when": 1777890807727,
       "tag": "0059_add_intent_felicity_clarity",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1746355200000,
+      "tag": "0060_migrate_socials_to_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1777896263537,
+      "tag": "0061_add_user_socials_unique_index",
+      "breakpoints": true
     }
   ]
 }
