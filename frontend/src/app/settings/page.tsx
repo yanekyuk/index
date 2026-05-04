@@ -38,11 +38,17 @@ export default function ProfilePage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
-  const [socialX, setSocialX] = useState("");
-  const [socialLinkedin, setSocialLinkedin] = useState("");
-  const [socialGithub, setSocialGithub] = useState("");
-  const [socialTelegram, setSocialTelegram] = useState("");
-  const [websites, setWebsites] = useState<string[]>([]);
+  const [socials, setSocials] = useState<Array<{ label: string; value: string }>>([]);
+  const getSocial = (label: string) => socials.find(s => s.label === label)?.value ?? '';
+  const setSocial = (label: string, value: string) => {
+    setSocials(prev => {
+      const without = prev.filter(s => s.label !== label);
+      return value ? [...without, { label, value }] : without;
+    });
+    mark();
+  };
+  const customSocials = socials.filter(s => !['linkedin', 'twitter', 'github', 'telegram'].includes(s.label));
+
   const [notificationPreferences, setNotificationPreferences] = useState({
     connectionUpdates: true,
     weeklyNewsletter: true,
@@ -74,17 +80,13 @@ export default function ProfilePage() {
     if (!authLoading && !isAuthenticated) navigate("/");
   }, [authLoading, isAuthenticated, navigate]);
 
-  const resetForm = useCallback((u: typeof user) => {
+  const resetForm = (u: typeof user) => {
     if (!u) return;
     setName(u.name || "");
     setIntro(u.intro || "");
     setLocation(u.location || "");
     setTimezone(u.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-    setSocialX(u.socials?.x || "");
-    setSocialLinkedin(u.socials?.linkedin || "");
-    setSocialGithub(u.socials?.github || "");
-    setSocialTelegram(u.socials?.telegram || "");
-    setWebsites(u.socials?.websites || []);
+    setSocials((u.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })));
     setNotificationPreferences(
       u.notificationPreferences || { connectionUpdates: true, weeklyNewsletter: true }
     );
@@ -92,12 +94,10 @@ export default function ProfilePage() {
     setAvatarPreview(null);
     setAvatarError(null);
     setIsDirty(false);
-  }, []);
+  };
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetForm mirrors server-fetched user into editable form fields; legitimate sync-from-external-state pattern.
-    resetForm(user);
-  }, [user, resetForm]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs only when user changes; state setters are stable
+  useEffect(() => { resetForm(user); }, [user]); // eslint-disable-line react-hooks/set-state-in-effect -- resetForm mirrors server-fetched user into editable form fields; legitimate sync-from-external-state pattern.
 
   const mark = () => setIsDirty(true);
 
@@ -118,27 +118,13 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   }, []);
 
-  const addWebsite = () => {
-    if (websites.length < 3) { setWebsites([...websites, ""]); mark(); }
-  };
-  const removeWebsite = (i: number) => { setWebsites(websites.filter((_, idx) => idx !== i)); mark(); };
-  const updateWebsite = (i: number, val: string) => {
-    const updated = [...websites]; updated[i] = val; setWebsites(updated); mark();
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
       let avatarFilename = user?.avatar;
       if (avatarFile) avatarFilename = await authService.uploadAvatar(avatarFile);
 
-      const socials = {
-        ...(socialX && { x: socialX }),
-        ...(socialLinkedin && { linkedin: socialLinkedin }),
-        ...(socialGithub && { github: socialGithub }),
-        ...(socialTelegram && { telegram: socialTelegram }),
-        ...(websites.length > 0 && { websites: websites.filter((w) => w) }),
-      };
+      const socialsPayload = socials.filter(s => s.value.trim() !== '');
 
       await authService.updateProfile({
         name: name || undefined,
@@ -146,7 +132,7 @@ export default function ProfilePage() {
         location: location || undefined,
         avatar: avatarFilename || undefined,
         timezone: timezone || undefined,
-        socials: Object.keys(socials).length > 0 ? socials : undefined,
+        socials: socialsPayload.length > 0 ? socialsPayload : undefined,
         notificationPreferences,
       });
 
@@ -359,10 +345,10 @@ export default function ProfilePage() {
               </p>
 
               {[
-                { prefix: "x.com/", value: socialX, onChange: (v: string) => { setSocialX(v); mark(); } },
-                { prefix: "linkedin.com/in/", value: socialLinkedin, onChange: (v: string) => { setSocialLinkedin(v); mark(); } },
-                { prefix: "github.com/", value: socialGithub, onChange: (v: string) => { setSocialGithub(v); mark(); } },
-                { prefix: "t.me/", value: socialTelegram, onChange: (v: string) => { setSocialTelegram(v); mark(); } },
+                { prefix: "x.com/", label: "twitter", value: getSocial('twitter'), onChange: (v: string) => setSocial('twitter', v) },
+                { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial('linkedin'), onChange: (v: string) => setSocial('linkedin', v) },
+                { prefix: "github.com/", label: "github", value: getSocial('github'), onChange: (v: string) => setSocial('github', v) },
+                { prefix: "t.me/", label: "telegram", value: getSocial('telegram'), onChange: (v: string) => setSocial('telegram', v) },
               ].map(({ prefix, value, onChange }) => (
                 <div key={prefix} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
                   <span className="px-3 py-2 bg-gray-50 text-gray-400 font-ibm-plex-mono text-xs border-r border-gray-200 whitespace-nowrap select-none">
@@ -376,17 +362,23 @@ export default function ProfilePage() {
                 </div>
               ))}
 
-              {websites.map((website, i) => (
-                <div key={i} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
+              {customSocials.map((social, index) => (
+                <div key={index} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
                   <Input
-                    value={website}
-                    onChange={(e) => updateWebsite(i, e.target.value)}
+                    value={social.value}
+                    onChange={(e) => {
+                      setSocials(prev => prev.map(s => s === social ? { label: 'custom', value: e.target.value } : s));
+                      mark();
+                    }}
                     placeholder="https://example.com"
                     className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm"
                   />
                   <button
                     type="button"
-                    onClick={() => removeWebsite(i)}
+                    onClick={() => {
+                      setSocials(prev => prev.filter(s => s !== social));
+                      mark();
+                    }}
                     className="px-3 py-2 text-gray-400 hover:text-red-500 transition-colors border-l border-gray-200"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -394,10 +386,10 @@ export default function ProfilePage() {
                 </div>
               ))}
 
-              {websites.length < 3 && (
+              {customSocials.length < 3 && (
                 <button
                   type="button"
-                  onClick={addWebsite}
+                  onClick={() => { setSocials(prev => [...prev, { label: 'custom', value: '' }]); mark(); }}
                   className="w-full flex items-center justify-center px-3 py-2 border border-dashed border-gray-200 rounded-sm text-gray-400 hover:border-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors duration-150 text-sm"
                 >
                   + Add website
