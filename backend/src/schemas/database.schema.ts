@@ -298,6 +298,7 @@ export const opportunities = pgTable('opportunities', {
   context: jsonb('context').$type<OpportunityContext>().notNull(),
   confidence: numeric('confidence').notNull(),
   status: opportunityStatusEnum('status').notNull().default('pending'),
+  acceptedBy: text('accepted_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),

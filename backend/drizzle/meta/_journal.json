@@ -435,6 +435,13 @@
       "when": 1777896263537,
       "tag": "0061_add_user_socials_unique_index",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1777902442250,
+      "tag": "0062_add_accepted_by_to_opportunities",
+      "breakpoints": true
     }
   ]
 }
