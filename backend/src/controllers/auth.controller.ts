@@ -7,11 +7,11 @@ import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
 
-function hasAtLeastOneSocial(socials: unknown): boolean {
+export function hasAtLeastOneSocial(socials: unknown): boolean {
   return Array.isArray(socials) && socials.length > 0;
 }
 
-function shouldAutoGenerateProfile(user: {
+export function shouldAutoGenerateProfile(user: {
   name?: string | null;
   socials?: unknown;
   profile?: unknown;
