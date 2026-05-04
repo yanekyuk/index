@@ -4765,6 +4765,13 @@ export class UserDatabaseAdapter {
     };
   }
 
+  async getSocials(userId: string): Promise<Array<{ id: string; userId: string; label: string; value: string }>> {
+    const rows = await db.select()
+      .from(userSocials)
+      .where(eq(userSocials.userId, userId));
+    return rows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value }));
+  }
+
   async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.setUserSocials(userId, socials);
@@ -5319,6 +5326,8 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     deleteProfile: () => db.deleteProfile(authUserId),
     getUser: () => db.getUser(authUserId),
     updateUser: (data: Parameters<ChatDatabaseAdapter['updateUser']>[1]) => db.updateUser(authUserId, data),
+    getUserSocials: () => db.getUserSocials(authUserId),
+    setUserSocials: (socials: { label: string; value: string }[]) => db.setUserSocials(authUserId, socials),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Intent Operations

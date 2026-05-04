@@ -462,6 +462,7 @@ export class UserController {
     if (!user) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
+    const socials = await userService.getSocials(user.id);
     return Response.json({
       user: {
         id: user.id,
@@ -470,7 +471,7 @@ export class UserController {
         intro: user.intro,
         avatar: user.avatar,
         location: user.location,
-        socials: user.socials,
+        socials,
         isGhost: user.isGhost,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,

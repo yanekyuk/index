@@ -49,11 +49,10 @@ export class UserService {
         return this.db.update(userId, data);
     }
 
-    /**
-     * Replace all social links for a user.
-     * @param userId - Target user ID.
-     * @param socials - Social link rows to persist.
-     */
+    async getSocials(userId: string) {
+        return this.db.getSocials(userId);
+    }
+
     async setSocials(userId: string, socials: { label: string; value: string }[]) {
         logger.verbose('[UserService] Setting socials', { userId, count: socials.length });
         return this.db.setSocials(userId, socials);
