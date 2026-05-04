@@ -132,7 +132,7 @@ export default function ProfilePage() {
         location: location || undefined,
         avatar: avatarFilename || undefined,
         timezone: timezone || undefined,
-        socials: socialsPayload.length > 0 ? socialsPayload : undefined,
+        socials: socialsPayload,
         notificationPreferences,
       });
 

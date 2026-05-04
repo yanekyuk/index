@@ -3489,7 +3489,8 @@ export class ProfileDatabaseAdapter {
   async getUserSocials(userId: string): Promise<Array<{ id: string; userId: string; label: string; value: string }>> {
     const rows = await db.select()
       .from(schema.userSocials)
-      .where(eq(schema.userSocials.userId, userId));
+      .where(eq(schema.userSocials.userId, userId))
+      .orderBy(asc(schema.userSocials.createdAt), asc(schema.userSocials.id));
     return rows.map(r => ({ id: r.id, userId: r.userId, label: r.label, value: r.value }));
   }
 
@@ -3636,7 +3637,7 @@ export class ProfileDatabaseAdapter {
     socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
     const handles = socials
-      .filter(s => ['linkedin', 'github', 'twitter'].includes(s.label))
+      .filter(s => ['linkedin', 'github', 'twitter', 'telegram'].includes(s.label))
       .map(s => ({ label: s.label, value: s.value.toLowerCase() }));
 
     if (handles.length === 0) return null;
@@ -4759,21 +4760,8 @@ export class UserDatabaseAdapter {
   }
 
   async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
-    await db.transaction(async (tx) => {
-      await tx.delete(userSocials).where(eq(userSocials.userId, userId));
-      if (socials.length > 0) {
-        const filtered = socials.filter(s => s.value.trim() !== '');
-        if (filtered.length > 0) {
-          await tx.insert(userSocials).values(
-            filtered.map(s => ({
-              userId,
-              label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
-              value: s.value.trim(),
-            })),
-          );
-        }
-      }
-    });
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.setUserSocials(userId, socials);
   }
 
   /**

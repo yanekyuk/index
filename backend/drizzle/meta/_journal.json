@@ -421,6 +421,13 @@
       "when": 1746355200000,
       "tag": "0059_migrate_socials_to_table",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1777896263537,
+      "tag": "0060_add_user_socials_unique_index",
+      "breakpoints": true
     }
   ]
 }

@@ -23,10 +23,14 @@ SELECT id, 'telegram', socials->>'telegram'
 FROM "users"
 WHERE socials->>'telegram' IS NOT NULL AND socials->>'telegram' != '';--> statement-breakpoint
 INSERT INTO "user_socials" ("user_id", "label", "value")
-SELECT u.id, 'custom', w.value
-FROM "users" u,
-     jsonb_array_elements_text(u.socials::jsonb->'websites') AS w(value)
+SELECT u.id, 'custom', btrim(w.value)
+FROM "users" u
+CROSS JOIN LATERAL jsonb_array_elements_text(
+  CASE
+    WHEN jsonb_typeof(u.socials::jsonb->'websites') = 'array' THEN u.socials::jsonb->'websites'
+    ELSE '[]'::jsonb
+  END
+) AS w(value)
 WHERE u.socials IS NOT NULL
-  AND u.socials::jsonb->'websites' IS NOT NULL
-  AND jsonb_array_length(u.socials::jsonb->'websites') > 0;--> statement-breakpoint
+  AND btrim(w.value) <> '';--> statement-breakpoint
 ALTER TABLE "users" DROP COLUMN IF EXISTS "socials";

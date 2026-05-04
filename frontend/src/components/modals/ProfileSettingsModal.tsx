@@ -126,7 +126,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
         location: location || undefined,
         avatar: avatarFilename || undefined,
         timezone: timezone || undefined,
-        socials: socialsPayload.length > 0 ? socialsPayload : undefined,
+        socials: socialsPayload,
       });
 
       onUserUpdate(updatedUser);

@@ -74,6 +74,9 @@ export const userSocials = pgTable('user_socials', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   userSocialsUserIdIdx: index('idx_user_socials_user_id').on(table.userId),
+  userSocialsCanonicalUniqueIdx: uniqueIndex('uniq_user_socials_user_label')
+    .on(table.userId, table.label)
+    .where(sql`${table.label} <> 'custom'`),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════

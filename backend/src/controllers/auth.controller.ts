@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { Controller, Get, Patch, Delete, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -6,6 +8,24 @@ import { profileService } from '../services/profile.service';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
+
+const updateProfileSchema = z.object({
+  name: z.string().optional(),
+  intro: z.string().optional(),
+  avatar: z.string().optional(),
+  location: z.string().optional(),
+  timezone: z.string().optional(),
+  socials: z.array(
+    z.object({
+      label: z.string().min(1),
+      value: z.string().min(1),
+    }),
+  ).optional(),
+  notificationPreferences: z.object({
+    connectionUpdates: z.boolean().optional(),
+    weeklyNewsletter: z.boolean().optional(),
+  }).optional(),
+});
 
 export function hasAtLeastOneSocial(socials: unknown): boolean {
   return Array.isArray(socials) && socials.length > 0;
@@ -73,16 +93,11 @@ export class AuthController {
   @Patch('/profile/update')
   @UseGuards(AuthGuard)
   async updateProfile(req: Request, user: AuthenticatedUser) {
-    const body = await req.json().catch(() => ({})) as {
-      name?: string;
-      intro?: string;
-      avatar?: string;
-      location?: string;
-      timezone?: string;
-      socials?: Array<{ label: string; value: string }>;
-      notificationPreferences?: { connectionUpdates?: boolean; weeklyNewsletter?: boolean };
-    };
-    const { notificationPreferences, socials, ...userFields } = body;
+    const parsed = updateProfileSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return Response.json({ error: 'Invalid profile update payload' }, { status: 400 });
+    }
+    const { notificationPreferences, socials, ...userFields } = parsed.data;
 
     if (Object.keys(userFields).length > 0) {
       await userService.update(user.id, userFields);
