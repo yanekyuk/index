@@ -28,7 +28,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
-import { agents, opportunities, opportunityDeliveries } from '../schemas/database.schema';
+import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../schemas/database.schema';
 
 const logger = log.service.from('OpportunityDeliveryService');
 
@@ -58,6 +58,18 @@ export interface PendingCandidate {
   opportunityId: string;
   counterpartUserId: string | null;
   rendered: RenderedCard;
+}
+
+export interface AcceptedCandidate {
+  opportunityId: string;
+  accepterUserId: string;
+  accepterName: string;
+  conversationUrl: string;
+  telegramHandle: string | null;
+  rendered: {
+    headline: string;
+    personalizedSummary: string;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -364,6 +376,98 @@ export class OpportunityDeliveryService {
           opportunityId: row.id,
           counterpartUserId: counterpart?.userId ?? null,
           rendered: await this.renderOpportunityCard(row.id, userId),
+        };
+      }),
+    );
+
+    return candidates;
+  }
+
+  /**
+   * Fetch accepted opportunities where the agent's owner is the counterparty
+   * (not the accepter) and no delivery with deliveredAtStatus='accepted' exists.
+   *
+   * @param agentId - The agent whose owner's accepted opportunities are fetched.
+   * @param frontendUrl - Base URL for constructing conversation links.
+   * @param limit - Optional maximum number of candidates to return. Clamped to [1, 20]. Defaults to 10.
+   * @returns Array of candidates with enriched accepter info and rendered cards.
+   */
+  async fetchAcceptedCandidates(agentId: string, frontendUrl: string, limit?: number): Promise<AcceptedCandidate[]> {
+    const userId = await this.resolveAgentOwner(agentId);
+    const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 10;
+    const effectiveLimit = Math.min(20, Math.max(1, raw));
+
+    const result = await db.execute(sql`
+      SELECT o.id, o.actors, o.accepted_by, o.interpretation
+      FROM opportunities o
+      WHERE o.status = 'accepted'
+        AND o.accepted_by IS NOT NULL
+        AND o.accepted_by <> ${userId}
+        AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
+        AND NOT EXISTS (
+          SELECT 1 FROM opportunity_deliveries d
+          WHERE d.opportunity_id = o.id
+            AND d.user_id = ${userId}
+            AND d.channel = ${CHANNEL}
+            AND d.delivered_at_status = 'accepted'
+            AND d.delivered_at IS NOT NULL
+        )
+      ORDER BY o.updated_at DESC
+      LIMIT ${effectiveLimit}
+    `);
+
+    const rows = result as unknown as Array<{
+      id: string;
+      actors: Array<{ userId: string; role: string }>;
+      accepted_by: string;
+      interpretation: unknown;
+    }>;
+
+    // Filter out rows where the polling user is the introducer
+    const visible = rows.filter((row) => {
+      const actor = row.actors.find((a) => a.userId === userId);
+      return actor && actor.role !== 'introducer';
+    });
+
+    const candidates = await Promise.all(
+      visible.map(async (row) => {
+        const accepterUserId = row.accepted_by;
+
+        // Fetch accepter's name
+        const [accepterUser] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, accepterUserId))
+          .limit(1);
+        const accepterName = accepterUser?.name ?? '';
+
+        // Fetch accepter's Telegram handle
+        const [tgRow] = await db
+          .select({ value: userSocials.value })
+          .from(userSocials)
+          .where(and(
+            eq(userSocials.userId, accepterUserId),
+            eq(userSocials.label, 'telegram'),
+          ))
+          .limit(1);
+        const telegramHandle = tgRow?.value ?? null;
+
+        // Resolve conversation URL from DM between the two users
+        const conversation = await chatDatabaseAdapter.getOrCreateDM(userId, accepterUserId);
+        const conversationUrl = `${frontendUrl}/conversations/${conversation.id}`;
+
+        const rendered = await this.renderOpportunityCard(row.id, userId);
+
+        return {
+          opportunityId: row.id,
+          accepterUserId,
+          accepterName,
+          conversationUrl,
+          telegramHandle,
+          rendered: {
+            headline: rendered.headline,
+            personalizedSummary: rendered.personalizedSummary,
+          },
         };
       }),
     );
