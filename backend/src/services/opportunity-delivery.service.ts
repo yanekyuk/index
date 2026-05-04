@@ -227,7 +227,8 @@ export class OpportunityDeliveryService {
    * @param userId - The user the opportunity was delivered to.
    * @param agentId - The agent performing the delivery.
    * @param trigger - Which dispatch path produced this delivery: 'ambient' for
-   *                  real-time critical alerts, 'digest' for the daily sweep.
+   *                  real-time critical alerts, 'digest' for the daily sweep,
+   *                  'accepted' for accepted-opportunity notifications to the counterparty.
    * @returns `'confirmed'` on first delivery, `'already_delivered'` on duplicates.
    * @throws Error `'opportunity_not_found'` when the opportunity does not exist.
    * @throws Error `'not_authorized'` when userId is not an actor on the opportunity.
@@ -236,7 +237,7 @@ export class OpportunityDeliveryService {
     opportunityId: string,
     userId: string,
     agentId: string | null,
-    trigger: 'ambient' | 'digest',
+    trigger: 'ambient' | 'digest' | 'accepted',
   ): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
