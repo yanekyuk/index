@@ -7,26 +7,8 @@ import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
 
-// `telegram` is intentionally excluded — it's a private contact channel,
-// not a public-web identity Parallel.ai can enrich from.
 function hasAtLeastOneSocial(socials: unknown): boolean {
-  if (!socials || typeof socials !== 'object') {
-    return false;
-  }
-
-  const socialRecord = socials as {
-    x?: string;
-    linkedin?: string;
-    github?: string;
-    websites?: string[];
-  };
-
-  return Boolean(
-    socialRecord.x ||
-      socialRecord.linkedin ||
-      socialRecord.github ||
-      (Array.isArray(socialRecord.websites) && socialRecord.websites.length > 0)
-  );
+  return Array.isArray(socials) && socials.length > 0;
 }
 
 function shouldAutoGenerateProfile(user: {
@@ -91,11 +73,22 @@ export class AuthController {
   @Patch('/profile/update')
   @UseGuards(AuthGuard)
   async updateProfile(req: Request, user: AuthenticatedUser) {
-    const body = await req.json().catch(() => ({})) as { name?: string; intro?: string; avatar?: string; location?: string; timezone?: string; socials?: object; notificationPreferences?: { connectionUpdates?: boolean; weeklyNewsletter?: boolean } };
-    const { notificationPreferences, ...userFields } = body;
+    const body = await req.json().catch(() => ({})) as {
+      name?: string;
+      intro?: string;
+      avatar?: string;
+      location?: string;
+      timezone?: string;
+      socials?: Array<{ label: string; value: string }>;
+      notificationPreferences?: { connectionUpdates?: boolean; weeklyNewsletter?: boolean };
+    };
+    const { notificationPreferences, socials, ...userFields } = body;
 
     if (Object.keys(userFields).length > 0) {
       await userService.update(user.id, userFields);
+    }
+    if (socials) {
+      await userService.setSocials(user.id, socials);
     }
     if (notificationPreferences) {
       await userService.updateNotificationPreferences(user.id, notificationPreferences);

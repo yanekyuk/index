@@ -4758,6 +4758,24 @@ export class UserDatabaseAdapter {
     };
   }
 
+  async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(userSocials).where(eq(userSocials.userId, userId));
+      if (socials.length > 0) {
+        const filtered = socials.filter(s => s.value.trim() !== '');
+        if (filtered.length > 0) {
+          await tx.insert(userSocials).values(
+            filtered.map(s => ({
+              userId,
+              label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
+              value: s.value.trim(),
+            })),
+          );
+        }
+      }
+    });
+  }
+
   /**
    * Update user
    */
