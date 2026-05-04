@@ -319,6 +319,7 @@ export const intents = pgTable('intents', {
   speechActType: speechActTypeEnum('speech_act_type'),
   felicityAuthority: integer('felicity_authority'),
   felicitySincerity: integer('felicity_sincerity'),
+  felicityClarity: integer('felicity_clarity'),
   status: intentStatusEnum('status').default('ACTIVE'),
 }, (table) => [
   index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
