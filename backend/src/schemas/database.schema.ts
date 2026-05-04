@@ -22,14 +22,6 @@ export interface OnboardingState {
   invitationCode?: string;
 }
 
-export interface UserSocials {
-  x?: string;
-  linkedin?: string;
-  github?: string;
-  telegram?: string;
-  websites?: string[];
-}
-
 export interface TelegramPrefs {
   chatId: string;
   sessionId?: string;       // lazily created on first outbound message
@@ -59,7 +51,6 @@ export const users = pgTable('users', {
   avatar: text('avatar'),
   intro: text('intro'),
   location: text('location'),
-  socials: json('socials').$type<UserSocials>(),
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
   timezone: text('timezone').default('UTC'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
@@ -73,6 +64,16 @@ export const users = pgTable('users', {
 }, (table) => ({
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
   usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
+}));
+
+export const userSocials = pgTable('user_socials', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  value: text('value').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  userSocialsUserIdIdx: index('idx_user_socials_user_id').on(table.userId),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════

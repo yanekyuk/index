@@ -414,6 +414,13 @@
 			"when": 1745280000000,
 			"tag": "0058_backfill_accepted_opportunity_dms",
 			"breakpoints": true
+		},
+		{
+			"idx": 59,
+			"version": "7",
+			"when": 1746355200000,
+			"tag": "0059_migrate_socials_to_table",
+			"breakpoints": true
 		}
 	]
 }

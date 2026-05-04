@@ -1,11 +1,10 @@
 import { ISODateString, UUID } from './common.types';
 
-export interface UserSocials {
-  x?: string;
-  linkedin?: string;
-  github?: string;
-  telegram?: string;
-  websites?: string[];
+export interface UserSocial {
+  id: string;
+  userId: string;
+  label: string;
+  value: string;
 }
 
 export interface NotificationPreferences {
@@ -30,7 +29,7 @@ export interface User {
   location?: string | null;
   timezone?: string | null;
   isGhost?: boolean;
-  socials?: UserSocials;
+  socials: UserSocial[];
   notificationPreferences?: NotificationPreferences;
   onboarding?: OnboardingState;
   createdAt: ISODateString;
@@ -44,11 +43,9 @@ export interface UpdateProfileRequest {
   avatar?: string;
   location?: string;
   timezone?: string;
-  socials?: UserSocials;
   notificationPreferences?: NotificationPreferences;
 }
 
-// Minimal user representation often used in other objects
 export interface UserSummary {
   id: UUID;
   name: string;
