@@ -571,6 +571,37 @@ export class AgentController {
     }
   }
 
+  @Get('/:id/opportunities/accepted')
+  @UseGuards(AuthOrApiKeyGuard)
+  async getAcceptedOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    const url = new URL(req.url);
+    const limitParam = url.searchParams.get('limit');
+    let limit: number | undefined;
+    if (limitParam !== null && limitParam !== '') {
+      const parsed = Number(limitParam);
+      if (!Number.isFinite(parsed)) {
+        return jsonError('limit must be a finite number', 400);
+      }
+      limit = parsed;
+    }
+
+    const frontendUrl = url.searchParams.get('frontendUrl') || process.env.APP_URL || 'https://index.network';
+
+    try {
+      await agentService.getById(agentId, user.id);
+      await agentService.touchLastSeen(agentId);
+      const opportunities = await opportunityDeliveryService.fetchAcceptedCandidates(agentId, frontendUrl, limit);
+      return Response.json({ opportunities });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
   @Get('/:id/opportunities/delivery-stats')
   @UseGuards(AuthOrApiKeyGuard)
   async getDeliveryStats(req: Request, user: AuthenticatedUser, params?: RouteParams) {
