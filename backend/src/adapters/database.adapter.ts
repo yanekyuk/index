@@ -2675,9 +2675,10 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityStatus(id, status);
+    return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy);
   }
   async updateOpportunityActorApproval(
     id: string,
@@ -4042,11 +4043,14 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
+    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (acceptedBy) updates.acceptedBy = acceptedBy;
     const [row] = await db
       .update(opportunities)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(opportunities.id, id))
       .returning();
     return row ? toOpportunityRow(row) : null;
@@ -5442,12 +5446,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
         throw new Error('Access denied: opportunity not visible to user');
       return opportunity;
     },
-    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1], acceptedBy?: string) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
       if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
         throw new Error('Access denied: opportunity not visible to user');
-      return db.updateOpportunityStatus(id, status);
+      return db.updateOpportunityStatus(id, status, acceptedBy);
     },
     getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
       db.getAcceptedOpportunitiesBetweenActors(authUserId, counterpartUserId),
@@ -5652,13 +5656,13 @@ export function createSystemDatabase(
       verifyScope(networkId);
       return db.getOpportunitiesForNetwork(networkId, options);
     },
-    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1], acceptedBy?: string) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
       const opportunityIndexId = opportunity.context?.networkId;
       if (!opportunityIndexId) throw new Error('Opportunity not found');
       verifyScope(opportunityIndexId);
-      return db.updateOpportunityStatus(id, status);
+      return db.updateOpportunityStatus(id, status, acceptedBy);
     },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);
@@ -7394,10 +7398,13 @@ export class ConversationDatabaseAdapter {
   async updateOpportunityStatus(
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
   ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (acceptedBy) updates.acceptedBy = acceptedBy;
     const [row] = await db
       .update(opportunities)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(opportunities.id, id))
       .returning({ id: opportunities.id, status: opportunities.status });
     return row ?? null;

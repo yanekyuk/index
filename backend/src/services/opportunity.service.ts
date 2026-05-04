@@ -347,7 +347,11 @@ export class OpportunityService {
       }
     }
 
-    const updated = await this.db.updateOpportunityStatus(opportunityId, status);
+    const updated = await this.db.updateOpportunityStatus(
+      opportunityId,
+      status,
+      status === 'accepted' ? userId : undefined,
+    );
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
     }
@@ -508,7 +512,7 @@ export class OpportunityService {
     });
 
     // Only flip status once we know the chat destination exists.
-    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted');
+    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted', userId);
     if (!updated) {
       return { error: 'Failed to accept opportunity', status: 500 };
     }
