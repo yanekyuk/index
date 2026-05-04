@@ -783,6 +783,48 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
 - `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
 - `403` if the agent is not owned by the authenticated user.
 
+### GET /api/agents/:id/opportunities/accepted
+
+Fetch accepted opportunities where the authenticated user is the counterparty (not the accepter, not an introducer) and no delivery record with `deliveredAtStatus = 'accepted'` exists yet. Used by the openclaw-plugin accepted-opportunity poller.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID.
+
+**Query params**:
+
+| Parameter | Type   | Required | Description |
+|-----------|--------|----------|-------------|
+| `limit`   | number | no       | Maximum number of opportunities to return. Server clamps to `[1, 20]`. Defaults to `10`. |
+
+**Response 200**:
+```json
+{
+  "opportunities": [
+    {
+      "opportunityId": "...",
+      "accepterUserId": "...",
+      "accepterName": "Alice",
+      "conversationUrl": "https://index.network/conversations/...",
+      "telegramHandle": "alice_tg",
+      "rendered": {
+        "headline": "...",
+        "personalizedSummary": "..."
+      }
+    }
+  ]
+}
+```
+
+- `telegramHandle` is `null` when the accepter has no `user_socials` entry with `label = 'telegram'`.
+- `conversationUrl` falls back to the frontend base URL if no DM exists.
+- Returns `{ "opportunities": [] }` when nothing is pending.
+
+**Errors**:
+- `400` if `limit` is present but does not parse to a finite number.
+- `403` if the agent is not owned by the authenticated user.
+
 ### GET /api/agents/:id/opportunities/delivery-stats
 
 Return committed delivery counts for an owned personal agent since a given timestamp, grouped by trigger type.

@@ -444,7 +444,7 @@ export class OpportunityDeliveryService {
             eq(userSocials.userId, users.id),
             eq(userSocials.label, 'telegram'),
           ))
-          .where(eq(users.id, accepterUserId))
+          .where(and(eq(users.id, accepterUserId), isNull(users.deletedAt)))
           .limit(1);
         const accepterName = userData?.name ?? '';
         const telegramHandle = userData?.telegramHandle ?? null;
