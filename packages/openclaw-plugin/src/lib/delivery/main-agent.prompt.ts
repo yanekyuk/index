@@ -17,7 +17,18 @@ export type MainAgentToolUse = 'disabled' | 'enabled';
 export type MainAgentContentType =
   | 'daily_digest'
   | 'ambient_discovery'
+  | 'accepted_opportunity'
   | 'test_message';
+
+/** A candidate from an accepted opportunity notification. */
+export interface AcceptedOpportunityCandidate {
+  opportunityId: string;
+  accepterName: string;
+  conversationUrl: string;
+  telegramHandle: string | null;
+  headline: string;
+  personalizedSummary: string;
+}
 
 /** A single discovered connection candidate surfaced to the main agent. */
 export interface OpportunityCandidate {
@@ -45,6 +56,10 @@ export type MainAgentPayload =
   | {
       contentType: 'daily_digest';
       candidates: OpportunityCandidate[];
+    }
+  | {
+      contentType: 'accepted_opportunity';
+      candidates: AcceptedOpportunityCandidate[];
     }
   | {
       contentType: 'test_message';
@@ -172,6 +187,26 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         "skip will appear in tonight's digest.",
       ].join('\n');
     }
+    case 'accepted_opportunity':
+      return [
+        'This is an ACCEPTED OPPORTUNITY notification. Someone has accepted a connection opportunity',
+        'with the user. Your job is to let the user know and give them a way to reach out.',
+        '',
+        'For each candidate:',
+        '- If `telegramHandle` is present, compose a contextual deep link in the format',
+        '  `https://t.me/{handle}?text={encodedMessage}` where `{encodedMessage}` is a URI-encoded',
+        '  greeting you compose based on the opportunity context (headline, summary, who they are).',
+        '  The message should feel natural — a warm intro referencing what they have in common.',
+        '  Embed this link on a verb phrase (e.g. "send Alex a message on Telegram").',
+        '- If `telegramHandle` is null, present the `conversationUrl` instead, embedded on a',
+        '  verb phrase (e.g. "continue the conversation on Index Network").',
+        '',
+        'Frame the notification warmly — this is good news. The user should feel excited to connect.',
+        '',
+        'For each opportunity you mention, you MUST first call the MCP tool',
+        "`confirm_opportunity_delivery` with `trigger: 'accepted'` and the opportunity's id.",
+        "Do not call confirm for opportunities you don't mention.",
+      ].join('\n');
     case 'test_message':
       return 'Delivery verification. Render the content below in your voice.';
   }
