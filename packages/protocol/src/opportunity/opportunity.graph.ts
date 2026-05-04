@@ -65,6 +65,7 @@ import type {
   ActiveIntent,
 } from '../shared/interfaces/database.interface.js';
 import { persistOpportunities } from './opportunity.persist.js';
+import { INTRODUCER_DISCOVERY_SOURCE } from './opportunity.introducer.js';
 import { negotiateCandidates, type NegotiationCandidate, type OnNegotiationResolved } from "../negotiation/negotiation.graph.js";
 import { AMBIENT_PARK_WINDOW_MS } from "../negotiation/negotiation.tools.js";
 import type { NegotiationGraphLike } from "../negotiation/negotiation.state.js";
@@ -2351,7 +2352,7 @@ export class OpportunityGraphFactory {
                 });
                 continue;
               }
-              // Introducer discovery path: manual detection, introducer is state.userId, target is onBehalfOfUserId.
+              // Introducer discovery path: introducer is state.userId, target is onBehalfOfUserId.
               const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
                 networkId: a.networkId ?? indexIdForActors,
                 userId: a.userId,
@@ -2436,7 +2437,7 @@ export class OpportunityGraphFactory {
 
               data = {
                 detection: {
-                  source: 'manual',
+                  source: INTRODUCER_DISCOVERY_SOURCE,
                   createdBy: state.userId,
                   createdByName: introducerUserForOnBehalf?.name ?? undefined,
                   timestamp: now,
@@ -2449,7 +2450,7 @@ export class OpportunityGraphFactory {
                   signals: [{
                     type: 'curator_judgment',
                     weight: 1,
-                    detail: `Discovery on behalf of another user by ${introducerUserForOnBehalf?.name ?? 'a member'} via chat`,
+                    detail: `Introducer discovery for ${introducerUserForOnBehalf?.name ?? 'a member'} via background maintenance`,
                   }],
                 },
                 context: {
@@ -2738,6 +2739,7 @@ export class OpportunityGraphFactory {
             manual: 'Manual',
             cron: 'Scheduled',
             member_added: 'Member added',
+            introducer_discovery: 'Suggested by contact',
           };
 
           const enriched = await Promise.all(

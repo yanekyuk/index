@@ -108,6 +108,7 @@ interface CreateIntentInput {
   referentialAnchor?: string | null;
   felicityAuthority?: number | null;
   felicitySincerity?: number | null;
+  felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
@@ -120,6 +121,7 @@ interface UpdateIntentInput {
   referentialAnchor?: string | null;
   felicityAuthority?: number | null;
   felicitySincerity?: number | null;
+  felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
@@ -261,6 +263,7 @@ export class IntentDatabaseAdapter {
           referentialAnchor: data.referentialAnchor ?? undefined,
           felicityAuthority: data.felicityAuthority ?? undefined,
           felicitySincerity: data.felicitySincerity ?? undefined,
+          felicityClarity: data.felicityClarity ?? undefined,
           intentMode: data.intentMode ?? undefined,
           speechActType: data.speechActType ?? undefined,
         })
@@ -292,6 +295,7 @@ export class IntentDatabaseAdapter {
       if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
       if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
       if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.felicityClarity !== undefined) updateData.felicityClarity = data.felicityClarity;
       if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
       if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
@@ -1047,6 +1051,7 @@ export class ChatDatabaseAdapter {
           referentialAnchor: data.referentialAnchor ?? undefined,
           felicityAuthority: data.felicityAuthority ?? undefined,
           felicitySincerity: data.felicitySincerity ?? undefined,
+          felicityClarity: data.felicityClarity ?? undefined,
           intentMode: data.intentMode ?? undefined,
           speechActType: data.speechActType ?? undefined,
         })
@@ -1078,6 +1083,7 @@ export class ChatDatabaseAdapter {
       if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
       if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
       if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.felicityClarity !== undefined) updateData.felicityClarity = data.felicityClarity;
       if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
       if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 

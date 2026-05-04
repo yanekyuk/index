@@ -24,7 +24,7 @@ export interface UserSocials {
 
 /** Detection metadata recorded when an opportunity is created. */
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -131,6 +131,8 @@ export interface CreateIntentData {
   felicityAuthority?: number | null;
   /** Felicity sincerity score from verifier (0-100) */
   felicitySincerity?: number | null;
+  /** Felicity clarity score from verifier (0-100) */
+  felicityClarity?: number | null;
   /** Donnellan intent mode */
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
@@ -160,6 +162,8 @@ export interface UpdateIntentData {
   felicityAuthority?: number | null;
   /** Felicity sincerity score from verifier (0-100) */
   felicitySincerity?: number | null;
+  /** Felicity clarity score from verifier (0-100) */
+  felicityClarity?: number | null;
   /** Donnellan intent mode */
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */

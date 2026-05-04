@@ -251,7 +251,7 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -319,6 +319,7 @@ export const intents = pgTable('intents', {
   speechActType: speechActTypeEnum('speech_act_type'),
   felicityAuthority: integer('felicity_authority'),
   felicitySincerity: integer('felicity_sincerity'),
+  felicityClarity: integer('felicity_clarity'),
   status: intentStatusEnum('status').default('ACTIVE'),
 }, (table) => [
   index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
