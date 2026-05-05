@@ -30,6 +30,7 @@ export interface Network {
   prompt?: string | null;
   imageUrl?: string | null;
   isPersonal?: boolean;
+  isExperiment?: boolean;
   permissions?: NetworkPermissions | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
@@ -50,6 +51,7 @@ export interface CreateNetworkRequest {
   prompt?: string;
   imageUrl?: string | null;
   joinPolicy?: NetworkJoinPolicy;
+  isExperiment?: boolean;
 }
 
 export interface UpdateNetworkRequest {
