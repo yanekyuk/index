@@ -817,7 +817,7 @@ Fetch accepted opportunities where the authenticated user is the counterparty (n
 }
 ```
 
-- `telegramHandle` is `null` when the accepter has no `user_socials` entry with `label = 'telegram'`.
+- `telegramHandle` is `null` when the accepter has no `user_socials` entry with `label = 'telegram'` or when the stored value is not a valid Telegram username.
 - `conversationUrl` falls back to the frontend base URL if no DM exists.
 - Returns `{ "opportunities": [] }` when no undelivered accepted opportunities exist.
 

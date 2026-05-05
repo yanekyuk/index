@@ -590,7 +590,7 @@ export class AgentController {
       limit = parsed;
     }
 
-    const frontendUrl = process.env.APP_URL || 'https://index.network';
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
 
     try {
       await agentService.getById(agentId, user.id);
