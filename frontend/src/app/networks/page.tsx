@@ -1,7 +1,8 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, Users, Loader2 } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Plus, Users, Loader2, X, Copy, Check } from 'lucide-react';
 import NetworkAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
@@ -25,16 +26,14 @@ export default function NetworksPage() {
   const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
+  const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const allNetworks = [...(rawIndexes || [])].filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
     if (!a.isPersonal && b.isPersonal) return 1;
     return (a.title || '').localeCompare(b.title || '');
   });
-
-  useEffect(() => {
-    if (activeTab === 'discover') loadPublicNetworks();
-  }, [activeTab]);
 
   const loadPublicNetworks = async () => {
     try {
@@ -67,17 +66,22 @@ export default function NetworksPage() {
     }
   };
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => {
     try {
       const newIndex = await indexesService.createNetwork({
         title: indexData.name,
         prompt: indexData.prompt,
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
+        isExperiment: indexData.isExperiment,
       });
       addIndex(newIndex);
       setCreateNetworkModalOpen(false);
-      navigate(`/networks/${newIndex.id}`);
+      if (newIndex.masterKey) {
+        setMasterKeyModal({ networkId: newIndex.id, masterKey: newIndex.masterKey });
+      } else {
+        navigate(`/networks/${newIndex.id}`);
+      }
       success('Network created successfully');
     } catch (err) {
       console.error('Error creating network:', err);
@@ -104,7 +108,11 @@ export default function NetworksPage() {
               )}
             </div>
 
-            <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+            <Tabs.Root value={activeTab} onValueChange={(v) => {
+              const tab = v as typeof activeTab;
+              setActiveTab(tab);
+              if (tab === 'discover') loadPublicNetworks();
+            }}>
               <Tabs.List className="flex border-b border-gray-200 mb-8">
                 <Tabs.Trigger
                   value="my-networks"
@@ -222,6 +230,59 @@ export default function NetworksPage() {
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
       />
+
+      <Dialog.Root open={!!masterKeyModal} onOpenChange={(open) => {
+        if (!open) {
+          const networkId = masterKeyModal?.networkId;
+          setMasterKeyModal(null);
+          setCopied(false);
+          if (networkId) navigate(`/networks/${networkId}`);
+        }
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg w-full max-w-md z-[100] focus:outline-none">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <Dialog.Title className="text-lg font-bold text-black">Master Key</Dialog.Title>
+                <Dialog.Close className="p-1 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="h-4 w-4" />
+                </Dialog.Close>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Save this key now — it will not be shown again. Use it as the <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">x-api-key</code> header when calling the signup endpoint.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-sm p-3 font-mono break-all select-all">
+                  {masterKeyModal?.masterKey}
+                </code>
+                <button
+                  onClick={() => {
+                    if (masterKeyModal?.masterKey) {
+                      navigator.clipboard.writeText(masterKeyModal.masterKey);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }
+                  }}
+                  className="p-2 rounded-sm hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="flex justify-end mt-4">
+                <Button onClick={() => {
+                  const networkId = masterKeyModal?.networkId;
+                  setMasterKeyModal(null);
+                  setCopied(false);
+                  if (networkId) navigate(`/networks/${networkId}`);
+                }}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </ClientLayout>
   );
 }

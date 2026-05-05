@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Globe, Lock, Camera } from 'lucide-react';
+import { X, Globe, Lock, Camera, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,7 +10,7 @@ import NetworkAvatar from '@/components/IndexAvatar';
 interface CreateNetworkModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (index: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => Promise<void>;
+  onSubmit: (index: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => Promise<void>;
   uploadIndexImage?: (file: File) => Promise<string>;
 }
 
@@ -21,6 +21,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [isExperiment, setIsExperiment] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,10 +59,11 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
       if (imageFile && uploadIndexImage) {
         imageUrl = await uploadIndexImage(imageFile);
       }
-      await onSubmit({ name: name.trim(), prompt: prompt.trim() || undefined, imageUrl, joinPolicy });
+      await onSubmit({ name: name.trim(), prompt: prompt.trim() || undefined, imageUrl, joinPolicy: isExperiment ? 'invite_only' : joinPolicy, isExperiment: isExperiment || undefined });
       setName('');
       setPrompt('');
       setJoinPolicy('invite_only');
+      setIsExperiment(false);
       handleRemoveImage();
       onOpenChange(false);
     } catch (error) {
@@ -77,6 +79,7 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
         setName('');
         setPrompt('');
         setJoinPolicy('invite_only');
+        setIsExperiment(false);
         handleRemoveImage();
       }
       onOpenChange(open);
@@ -176,38 +179,57 @@ export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploa
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">Who can join</label>
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setJoinPolicy('anyone')}
-                    disabled={isSubmitting}
-                    className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
-                      joinPolicy === 'anyone' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
-                    } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <Globe className={`h-4 w-4 ${joinPolicy === 'anyone' ? 'text-black' : 'text-gray-400'}`} />
-                    <div>
-                      <p className="text-sm font-medium text-black">Public</p>
-                      <p className="text-xs text-gray-500">Anyone can discover and join</p>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setJoinPolicy('invite_only')}
-                    disabled={isSubmitting}
-                    className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
-                      joinPolicy === 'invite_only' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
-                    } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <Lock className={`h-4 w-4 ${joinPolicy === 'invite_only' ? 'text-black' : 'text-gray-400'}`} />
-                    <div>
-                      <p className="text-sm font-medium text-black">Private</p>
-                      <p className="text-xs text-gray-500">Only people with invitation link</p>
-                    </div>
-                  </button>
+              {!isExperiment && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">Who can join</label>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setJoinPolicy('anyone')}
+                      disabled={isSubmitting}
+                      className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
+                        joinPolicy === 'anyone' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <Globe className={`h-4 w-4 ${joinPolicy === 'anyone' ? 'text-black' : 'text-gray-400'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-black">Public</p>
+                        <p className="text-xs text-gray-500">Anyone can discover and join</p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJoinPolicy('invite_only')}
+                      disabled={isSubmitting}
+                      className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
+                        joinPolicy === 'invite_only' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+                      } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <Lock className={`h-4 w-4 ${joinPolicy === 'invite_only' ? 'text-black' : 'text-gray-400'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-black">Private</p>
+                        <p className="text-xs text-gray-500">Only people with invitation link</p>
+                      </div>
+                    </button>
+                  </div>
                 </div>
+              )}
+
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsExperiment(!isExperiment)}
+                  disabled={isSubmitting}
+                  className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
+                    isExperiment ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <FlaskConical className={`h-4 w-4 ${isExperiment ? 'text-black' : 'text-gray-400'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-black">Experiment</p>
+                    <p className="text-xs text-gray-500">Headless signup via API with a master key</p>
+                  </div>
+                </button>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
