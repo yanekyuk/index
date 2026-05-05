@@ -1244,6 +1244,15 @@ export class ChatDatabaseAdapter {
   }
 
   async getNetworksForUser(userId: string) {
+    // Check if user is an experiment user
+    const [userRow] = await db
+      .select({ experimentNetworkId: schema.users.experimentNetworkId })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+
+    const experimentNetworkId = userRow?.experimentNetworkId;
+
     const memberIndexIds = await db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
@@ -1273,6 +1282,11 @@ export class ChatDatabaseAdapter {
       .where(sql`'owner' = ANY(${schema.networkMembers.permissions})`)
       .as('owner_members');
 
+    // Experiment users can only see their personal network and their experiment network.
+    const experimentFilter = experimentNetworkId
+      ? or(eq(schema.networks.isPersonal, true), eq(schema.networks.id, experimentNetworkId))
+      : undefined;
+
     const rows = await db
       .select({
         id: schema.networks.id,
@@ -1300,7 +1314,8 @@ export class ChatDatabaseAdapter {
           or(
             eq(schema.networks.isPersonal, false),
             eq(ownerMembers.userId, userId)
-          )
+          ),
+          experimentFilter
         )
       )
       .orderBy(desc(schema.networks.isPersonal), desc(schema.networks.createdAt));
