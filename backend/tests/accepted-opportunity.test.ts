@@ -253,7 +253,7 @@ describe('fetchAcceptedCandidates', () => {
     expect(result).toHaveLength(1);
   });
 
-  test('filters out soft-deleted accepter users', async () => {
+  test('returns opportunity with empty accepterName when accepter is soft-deleted', async () => {
     await seedConversation(userA, userB);
     await seedAcceptedOpportunity(
       [{ userId: userA, role: 'peer' }, { userId: userB, role: 'peer' }],

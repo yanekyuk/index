@@ -5669,7 +5669,7 @@ export function createSystemDatabase(
       const opportunityIndexId = opportunity.context?.networkId;
       if (!opportunityIndexId) throw new Error('Opportunity not found');
       verifyScope(opportunityIndexId);
-      return db.updateOpportunityStatus(id, status, acceptedBy);
+      return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
     },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);

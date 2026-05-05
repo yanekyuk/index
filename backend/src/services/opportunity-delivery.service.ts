@@ -404,7 +404,8 @@ export class OpportunityDeliveryService {
       WHERE o.status = 'accepted'
         AND o.accepted_by IS NOT NULL
         AND o.accepted_by <> ${userId}
-        AND o.actors::jsonb @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
+        AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
+        AND NOT (o.actors::jsonb @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb)
         AND EXISTS (
           SELECT 1 FROM agents a
           WHERE a.id = ${agentId}
