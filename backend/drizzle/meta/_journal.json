@@ -442,6 +442,13 @@
       "when": 1777902442250,
       "tag": "0062_add_accepted_by_to_opportunities",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1777987642717,
+      "tag": "0063_add_experiment_network_columns",
+      "breakpoints": true
     }
   ]
 }

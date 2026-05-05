@@ -61,8 +61,11 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
+
+  // Experiment network scope — when set, this user belongs to a headless experiment network
+  experimentNetworkId: text('experiment_network_id').references(() => networks.id),
 }, (table) => ({
-  usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
+  usersEmailExperimentUnique: uniqueIndex('users_email_experiment_unique').on(table.email, table.experimentNetworkId),
   usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
 }));
 
@@ -337,6 +340,8 @@ export const networks = pgTable('networks', {
   prompt: text('prompt'),
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
+  isExperiment: boolean('is_experiment').default(false).notNull(),
+  experimentMasterKeyHash: text('experiment_master_key_hash'),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
