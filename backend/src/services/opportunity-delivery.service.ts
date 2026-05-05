@@ -446,7 +446,8 @@ export class OpportunityDeliveryService {
           .where(and(eq(users.id, accepterUserId), isNull(users.deletedAt)))
           .limit(1);
         const accepterName = userData?.name ?? '';
-        const telegramHandle = userData?.telegramHandle ?? null;
+        const rawTelegram = userData?.telegramHandle ?? null;
+        const telegramHandle = rawTelegram ? rawTelegram.replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '').replace(/^@/, '') : null;
 
         // Resolve conversation URL from existing DM between the two users (read-only)
         const dmPair = [userId, accepterUserId].sort().join(':');

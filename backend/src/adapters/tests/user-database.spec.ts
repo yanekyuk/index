@@ -501,7 +501,7 @@ describe('createUserDatabase', () => {
     it('updateOpportunityStatus succeeds when user is an actor', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(ownedOpportunity);
       await userDb.updateOpportunityStatus('opp-1', 'accepted' as never);
-      expect(mockDb.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'accepted');
+      expect(mockDb.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'accepted', AUTH_USER);
     });
 
     it('updateOpportunityStatus throws for missing opportunity', async () => {

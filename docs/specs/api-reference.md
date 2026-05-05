@@ -819,7 +819,7 @@ Fetch accepted opportunities where the authenticated user is the counterparty (n
 
 - `telegramHandle` is `null` when the accepter has no `user_socials` entry with `label = 'telegram'`.
 - `conversationUrl` falls back to the frontend base URL if no DM exists.
-- Returns `{ "opportunities": [] }` when nothing is pending.
+- Returns `{ "opportunities": [] }` when no undelivered accepted opportunities exist.
 
 **Errors**:
 - `400` if `limit` is present but does not parse to a finite number.
