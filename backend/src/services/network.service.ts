@@ -77,12 +77,14 @@ export class NetworkService {
       joinPolicy: 'invite_only',
     });
 
-    // Set experiment columns
+    // Set experiment columns and remove invitation link (experiment networks
+    // use master-key signup, not invitation codes)
     await db
       .update(schema.networks)
       .set({
         isExperiment: true,
         experimentMasterKeyHash: masterKeyHash,
+        permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false },
       })
       .where(eq(schema.networks.id, network.id));
 
