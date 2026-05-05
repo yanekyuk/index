@@ -2762,12 +2762,12 @@ export class ChatDatabaseAdapter {
         isGhost: true,
       })
       .onConflictDoUpdate({
-        target: schema.users.email,
+        target: [schema.users.email, schema.users.experimentNetworkId],
         set: {
           name: sql`EXCLUDED."name"`,
           updatedAt: sql`now()`,
         },
-        setWhere: sql`${schema.users.isGhost} = true`,
+        setWhere: sql`${schema.users.isGhost} = true AND ${schema.users.experimentNetworkId} IS NULL`,
       })
       .returning({ id: schema.users.id });
 
@@ -2786,7 +2786,7 @@ export class ChatDatabaseAdapter {
     const [existing] = await db
       .select({ id: schema.users.id })
       .from(schema.users)
-      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)))
+      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)))
       .limit(1);
 
     if (!existing) {
@@ -2872,6 +2872,7 @@ export class ChatDatabaseAdapter {
         inArray(schema.users.email, emails),
         eq(schema.users.isGhost, true),
         isNotNull(schema.users.deletedAt),
+        isNull(schema.users.experimentNetworkId),
       ));
     return results.map(r => r.email);
   }
@@ -2914,6 +2915,7 @@ export class ChatDatabaseAdapter {
       .where(and(
         sql`lower(${schema.users.email}) = ${normalized}`,
         isNull(schema.users.deletedAt),
+        isNull(schema.users.experimentNetworkId),
       ))
       .limit(1);
     return row ?? null;
@@ -2934,7 +2936,7 @@ export class ChatDatabaseAdapter {
         isGhost: schema.users.isGhost,
       })
       .from(schema.users)
-      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt)));
+      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)));
     return rows;
   }
 
@@ -2984,6 +2986,7 @@ export class ChatDatabaseAdapter {
       .where(and(
         inArray(schema.users.email, [...insertedEmails]),
         isNull(schema.users.deletedAt),
+        isNull(schema.users.experimentNetworkId),
       ));
 
     // Map back to our generated IDs vs actual IDs
@@ -4643,7 +4646,7 @@ export class UserDatabaseAdapter {
   async findByEmail(email: string): Promise<typeof users.$inferSelect | null> {
     const result = await db.select()
       .from(users)
-      .where(eq(users.email, email))
+      .where(and(eq(users.email, email), isNull(users.experimentNetworkId)))
       .limit(1);
     return result[0] ?? null;
   }
