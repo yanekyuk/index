@@ -252,23 +252,32 @@ export default function NetworksPage() {
               <p className="text-sm text-gray-600 mb-4">
                 Save this key now — it will not be shown again. Use it as the <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">x-api-key</code> header when calling the signup endpoint.
               </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-sm p-3 font-mono break-all select-all">
-                  {masterKeyModal?.masterKey}
-                </code>
-                <button
-                  onClick={() => {
-                    if (masterKeyModal?.masterKey) {
-                      navigator.clipboard.writeText(masterKeyModal.masterKey);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }
-                  }}
-                  className="p-2 rounded-sm hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-                >
-                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!masterKeyModal?.masterKey) return;
+                  try {
+                    await navigator.clipboard.writeText(masterKeyModal.masterKey);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 800);
+                  } catch { /* silent */ }
+                }}
+                aria-label="Copy"
+                className={`relative w-full text-left group rounded-sm border p-3 transition-colors duration-300 ${
+                  copied
+                    ? 'bg-green-100 border-green-400'
+                    : 'bg-gray-50 border-gray-200 hover:bg-green-50 hover:border-green-300'
+                }`}
+              >
+                <code className="block text-xs text-gray-700 font-ibm-plex-mono whitespace-pre-wrap break-all pr-16 select-text">{masterKeyModal?.masterKey}</code>
+                <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+                  {copied ? (
+                    <><Check className="w-3 h-3" /> Copied</>
+                  ) : (
+                    <><Copy className="w-3 h-3" /> Copy</>
+                  )}
+                </span>
+              </button>
               <div className="flex justify-end mt-4">
                 <Button onClick={() => {
                   const networkId = masterKeyModal?.networkId;
