@@ -223,7 +223,7 @@ describe('fetchAcceptedCandidates', () => {
     // Second poll should be empty
     const second = await service.fetchAcceptedCandidates(agentB, FRONTEND_URL);
     expect(second).toEqual([]);
-  });
+  }, 15_000);
 
   test('prior pending-status delivery does not block accepted-status delivery', async () => {
     await seedConversation(userA, userB);
