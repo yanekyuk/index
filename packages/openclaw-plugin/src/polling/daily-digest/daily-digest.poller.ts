@@ -3,6 +3,7 @@ import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
+import { fetchConnectToken } from '../../lib/utils/connect-token.js';
 
 export interface DailyDigestConfig {
   baseUrl: string;
@@ -58,18 +59,26 @@ export async function handle(
     return false;
   }
 
-  const candidates = body.opportunities
-    .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
-    .map((o) => ({
-      opportunityId: o.opportunityId,
-      counterpartUserId: o.counterpartUserId,
-      headline: o.rendered.headline,
-      personalizedSummary: o.rendered.personalizedSummary,
-      suggestedAction: o.rendered.suggestedAction,
-      narratorRemark: o.rendered.narratorRemark,
-      profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-      acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
-    }));
+  const candidatesRaw = await Promise.all(
+    body.opportunities
+      .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
+      .map(async (o) => {
+        const token = await fetchConnectToken(api, config.baseUrl, config.apiKey, o.opportunityId);
+        if (!token) return null;
+
+        return {
+          opportunityId: o.opportunityId,
+          counterpartUserId: o.counterpartUserId,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+          profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
+          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}`,
+        };
+      }),
+  );
+  const candidates = candidatesRaw.filter((c): c is NonNullable<typeof c> => c !== null);
 
   if (!candidates.length) return false;
 

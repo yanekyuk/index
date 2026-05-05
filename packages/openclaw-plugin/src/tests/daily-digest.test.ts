@@ -42,6 +42,9 @@ function mockBackend(opportunities: unknown[], hookStatus = 200, confirmStatus =
   const sink: FetchSink = { pendingUrls: [], hookCalls: [], confirmCalls: [] };
   global.fetch = mock(async (input: RequestInfo, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/connect-token')) {
+      return new Response(JSON.stringify({ token: 'mock-jwt-token' }), { status: 200 });
+    }
     if (url.includes('/opportunities/pending')) {
       sink.pendingUrls.push(url);
       return new Response(JSON.stringify({ opportunities }), { status: 200 });

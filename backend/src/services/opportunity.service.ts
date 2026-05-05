@@ -3,10 +3,15 @@ import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
 import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, stripUuids, stripIntroducerMentions } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
+import { and, eq } from 'drizzle-orm';
+
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { opportunityQueue } from '../queues/opportunity.queue';
+import db from '../lib/drizzle/drizzle';
+import { userSocials } from '../schemas/database.schema';
+import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
 
 const logger = log.service.from("OpportunityService");
 
@@ -909,6 +914,20 @@ export class OpportunityService {
     if (isSelfIncluded) return { allowed: true };
     
     return { allowed: true };
+  }
+
+  /**
+   * Look up a user's Telegram handle from user_socials.
+   * Returns the normalized handle (no @ prefix, no URL) or null.
+   */
+  async getCounterpartTelegramHandle(userId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ value: userSocials.value })
+      .from(userSocials)
+      .where(and(eq(userSocials.userId, userId), eq(userSocials.label, 'telegram')))
+      .limit(1);
+
+    return normalizeTelegramHandle(row?.value);
   }
 }
 
