@@ -26,6 +26,7 @@ const PENDING_LIMIT = 20;
  * Returns the token string, or null on failure (candidate will be skipped).
  */
 async function fetchConnectToken(
+  api: OpenClawPluginApi,
   baseUrl: string,
   apiKey: string,
   opportunityId: string,
@@ -36,10 +37,17 @@ async function fetchConnectToken(
       headers: { 'x-api-key': apiKey },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      api.logger.warn('Connect token mint failed', { opportunityId, status: res.status });
+      return null;
+    }
     const body = (await res.json()) as { token?: string };
     return body.token ?? null;
-  } catch {
+  } catch (err) {
+    api.logger.warn('Connect token mint errored', {
+      opportunityId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
@@ -85,7 +93,7 @@ export async function handle(
     body.opportunities
       .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
       .map(async (o) => {
-        const token = await fetchConnectToken(config.baseUrl, config.apiKey, o.opportunityId);
+        const token = await fetchConnectToken(api, config.baseUrl, config.apiKey, o.opportunityId);
         if (!token) return null;
 
         return {

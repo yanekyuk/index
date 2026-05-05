@@ -65,6 +65,9 @@ function mockBackend(
   // surface it as a test failure rather than silently 200.
   global.fetch = mock(async (input: RequestInfo, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/connect-token')) {
+      return new Response(JSON.stringify({ token: 'mock-jwt-token' }), { status: 200 });
+    }
     if (url.includes('/opportunities/delivery-stats')) {
       sink.statsUrls.push(url);
       return new Response(JSON.stringify(statsBody), { status: statsStatus });
