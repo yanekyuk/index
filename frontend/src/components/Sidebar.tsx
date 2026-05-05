@@ -58,18 +58,24 @@ export default function Sidebar() {
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => {
     try {
       const createRequest = {
         title: indexData.name,
         prompt: indexData.prompt,
         imageUrl: indexData.imageUrl,
-        joinPolicy: indexData.joinPolicy
+        joinPolicy: indexData.joinPolicy,
+        isExperiment: indexData.isExperiment,
       };
       const newIndex = await indexesService.createNetwork(createRequest);
       addIndex(newIndex);
       setCreateIndexModalOpen(false);
-      success('Index created successfully');
+      if (newIndex.masterKey) {
+        navigator.clipboard.writeText(newIndex.masterKey);
+        success('Experiment network created — master key copied to clipboard');
+      } else {
+        success('Index created successfully');
+      }
     } catch (err) {
       console.error('Error creating index:', err);
       error('Failed to create index');
