@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
+import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+import { signConnectToken } from '../services/connect-token.service';
 import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
 
@@ -255,6 +256,27 @@ export class OpportunityController {
       return Response.json({ error: result.error }, { status: result.status });
     }
     return Response.json(result);
+  }
+
+  /**
+   * POST /opportunities/:id/connect-token — mint a short-lived JWT for the connect redirect.
+   * Requires x-api-key (agent polling) or session auth.
+   */
+  @Post('/:id/connect-token')
+  @UseGuards(AuthOrApiKeyGuard)
+  async createConnectToken(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const token = await signConnectToken(user.id, resolved.id);
+    return Response.json({ token });
   }
 
   /**
