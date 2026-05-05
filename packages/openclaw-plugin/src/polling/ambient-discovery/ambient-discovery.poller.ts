@@ -91,6 +91,30 @@ async function fetchAmbientDeliveredToday(
   }
 }
 
+/**
+ * Mint a connect token for an opportunity via the backend.
+ * Returns the token string, or null on failure (non-blocking — falls back to frontend URL).
+ */
+async function fetchConnectToken(
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+  opportunityId: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/api/opportunities/${opportunityId}/connect-token`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { token?: string };
+    return body.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handle(
   api: OpenClawPluginApi,
   config: AmbientDiscoveryConfig,
@@ -137,18 +161,27 @@ export async function handle(
     return 'empty';
   }
 
-  const candidates = body.opportunities
-    .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
-    .map((o) => ({
-      opportunityId: o.opportunityId,
-      counterpartUserId: o.counterpartUserId,
-      headline: o.rendered.headline,
-      personalizedSummary: o.rendered.personalizedSummary,
-      suggestedAction: o.rendered.suggestedAction,
-      narratorRemark: o.rendered.narratorRemark,
-      profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-      acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
-    }));
+  const candidates = await Promise.all(
+    body.opportunities
+      .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
+      .map(async (o) => {
+        const token = await fetchConnectToken(config.baseUrl, config.agentId, config.apiKey, o.opportunityId);
+        const acceptUrl = token
+          ? `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}`
+          : `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`;
+
+        return {
+          opportunityId: o.opportunityId,
+          counterpartUserId: o.counterpartUserId,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+          profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
+          acceptUrl,
+        };
+      }),
+  );
 
   if (!candidates.length) return 'empty';
 
