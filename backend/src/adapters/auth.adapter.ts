@@ -64,7 +64,8 @@ export class AuthDatabaseAdapter {
               .insert(schema.users)
               .values(data)
               .onConflictDoUpdate({
-                target: [schema.users.email, schema.users.experimentNetworkId],
+                target: [schema.users.email],
+                targetWhere: sql`${schema.users.experimentNetworkId} IS NULL`,
                 set: {
                   name: sql`EXCLUDED."name"`,
                   avatar: sql`EXCLUDED."avatar"`,

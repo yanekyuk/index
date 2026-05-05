@@ -81,7 +81,8 @@ export class ContactDatabaseAdapter {
       .insert(schema.users)
       .values({ id, name: data.name, email, isGhost: true })
       .onConflictDoUpdate({
-        target: [schema.users.email, schema.users.experimentNetworkId],
+        target: [schema.users.email],
+        targetWhere: sql`${schema.users.experimentNetworkId} IS NULL`,
         set: { name: sql`EXCLUDED."name"`, updatedAt: sql`now()` },
         setWhere: sql`${schema.users.isGhost} = true AND ${schema.users.experimentNetworkId} IS NULL`,
       })

@@ -1282,10 +1282,11 @@ export class ChatDatabaseAdapter {
       .where(sql`'owner' = ANY(${schema.networkMembers.permissions})`)
       .as('owner_members');
 
-    // Experiment users can only see their personal network and their experiment network.
+    // Experiment users only see their personal network and experiment network.
+    // Organic users never see experiment networks.
     const experimentFilter = experimentNetworkId
       ? or(eq(schema.networks.isPersonal, true), eq(schema.networks.id, experimentNetworkId))
-      : undefined;
+      : or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment));
 
     const rows = await db
       .select({
@@ -2863,7 +2864,8 @@ export class ChatDatabaseAdapter {
         isGhost: true,
       })
       .onConflictDoUpdate({
-        target: [schema.users.email, schema.users.experimentNetworkId],
+        target: [schema.users.email],
+        targetWhere: sql`${schema.users.experimentNetworkId} IS NULL`,
         set: {
           name: sql`EXCLUDED."name"`,
           updatedAt: sql`now()`,

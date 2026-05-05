@@ -107,40 +107,39 @@ beforeAll(async () => {
   signedUpEmail = `signup-${randomUUID()}@example.com`;
 }, 30_000);
 
+async function cleanupUser(userId: string) {
+  await db.delete(apikeys).where(eq(apikeys.userId, userId));
+  await db.delete(agents).where(eq(agents.ownerId, userId));
+  await db.delete(networkMembers).where(eq(networkMembers.userId, userId));
+  const pn = await db
+    .select({ networkId: personalNetworks.networkId })
+    .from(personalNetworks)
+    .where(eq(personalNetworks.userId, userId));
+  await db.delete(personalNetworks).where(eq(personalNetworks.userId, userId));
+  for (const p of pn) {
+    await db.delete(networks).where(eq(networks.id, p.networkId));
+  }
+  await db.delete(users).where(eq(users.id, userId));
+}
+
 afterAll(async () => {
-  if (!testNetworkId) return;
-
   try {
-    // Delete experiment users for this network
-    const experimentUsers = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.experimentNetworkId, testNetworkId));
+    if (testNetworkId) {
+      const experimentUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.experimentNetworkId, testNetworkId));
 
-    for (const u of experimentUsers) {
-      await db.delete(apikeys).where(eq(apikeys.userId, u.id));
-      await db.delete(agents).where(eq(agents.ownerId, u.id));
-      await db.delete(networkMembers).where(eq(networkMembers.userId, u.id));
-      await db.delete(personalNetworks).where(eq(personalNetworks.userId, u.id));
-      await db.delete(users).where(eq(users.id, u.id));
+      for (const u of experimentUsers) {
+        await cleanupUser(u.id);
+      }
+
+      await db.delete(networkMembers).where(eq(networkMembers.networkId, testNetworkId));
+      await db.delete(networks).where(eq(networks.id, testNetworkId));
     }
 
-    // Delete network members for the test network
-    await db.delete(networkMembers).where(eq(networkMembers.networkId, testNetworkId));
-
-    // Soft-delete the test network
-    await db
-      .update(networks)
-      .set({ deletedAt: new Date() })
-      .where(eq(networks.id, testNetworkId));
-
-    // Clean up the test owner user
     if (testOwnerId) {
-      await db.delete(agents).where(eq(agents.ownerId, testOwnerId));
-      await db.delete(apikeys).where(eq(apikeys.userId, testOwnerId));
-      await db.delete(networkMembers).where(eq(networkMembers.userId, testOwnerId));
-      await db.delete(personalNetworks).where(eq(personalNetworks.userId, testOwnerId));
-      await db.delete(users).where(eq(users.id, testOwnerId));
+      await cleanupUser(testOwnerId);
     }
   } catch (err) {
     console.warn('[experiment-signup] Cleanup error (non-fatal):', err);
