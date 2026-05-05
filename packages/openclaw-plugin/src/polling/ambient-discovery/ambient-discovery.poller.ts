@@ -152,8 +152,8 @@ export async function handle(
           personalizedSummary: o.rendered.personalizedSummary,
           suggestedAction: o.rendered.suggestedAction,
           narratorRemark: o.rendered.narratorRemark,
-          profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}`,
+          profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}?link_preview=false`,
+          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}&link_preview=false`,
         };
       }),
   );
