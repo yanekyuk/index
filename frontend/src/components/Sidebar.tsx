@@ -71,8 +71,13 @@ export default function Sidebar() {
       addIndex(newIndex);
       setCreateIndexModalOpen(false);
       if (newIndex.masterKey) {
-        navigator.clipboard.writeText(newIndex.masterKey);
-        success('Experiment network created — master key copied to clipboard');
+        try {
+          await navigator.clipboard.writeText(newIndex.masterKey);
+          success('Experiment network created — master key copied to clipboard');
+        } catch {
+          success('Experiment network created — copy the master key from the console');
+          console.log('Master key:', newIndex.masterKey);
+        }
       } else {
         success('Index created successfully');
       }
