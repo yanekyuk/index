@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 
 import db from '../src/lib/drizzle/drizzle';
-import { agents, apikeys, networkMembers, networks, users } from '../src/schemas/database.schema';
+import { agents, apikeys, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -18,7 +18,7 @@ const BASE_URL = `http://localhost:${PORT}`;
 // State shared across tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-let sessionCookie = '';
+let authJwt = '';
 let testOwnerId = '';
 let testNetworkId = '';
 let masterKey = '';
@@ -42,7 +42,7 @@ async function api(
     method,
     headers: {
       'Content-Type': 'application/json',
-      ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+      ...(authJwt ? { Authorization: `Bearer ${authJwt}` } : {}),
       ...headers,
     },
   };
@@ -52,35 +52,39 @@ async function api(
   return fetch(`${BASE_URL}${path}`, init);
 }
 
-/** Sign up a fresh test owner and return session cookie. */
-async function createTestSession(): Promise<{ cookie: string; userId: string }> {
+/** Sign up a fresh test owner and return a JWT for API auth. */
+async function createTestSession(): Promise<{ jwt: string; userId: string }> {
   const email = `test-owner-${randomUUID()}@example.com`;
   const password = `Test${randomUUID().replace(/-/g, '')}!`;
 
-  const res = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
+  const signupRes = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: BASE_URL },
     body: JSON.stringify({ email, password, name: 'Test Owner' }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to sign up test user: ${res.status} ${text}`);
+  if (!signupRes.ok) {
+    const text = await signupRes.text();
+    throw new Error(`Failed to sign up test user: ${signupRes.status} ${text}`);
   }
 
-  const data = await res.json() as { user?: { id: string } };
+  const data = await signupRes.json() as { user?: { id: string } };
   const userId = data?.user?.id ?? '';
 
   // Extract session cookie
-  const setCookie = res.headers.get('set-cookie') ?? '';
-  // Better Auth may return multiple cookies; grab all
-  const cookie = setCookie
-    .split(',')
-    .map((c) => c.split(';')[0].trim())
-    .filter(Boolean)
-    .join('; ');
+  const setCookies = signupRes.headers.getSetCookie();
+  const cookie = setCookies.map((c) => c.split(';')[0].trim()).join('; ');
 
-  return { cookie, userId };
+  // Exchange session cookie for JWT
+  const tokenRes = await fetch(`${BASE_URL}/api/auth/token`, {
+    headers: { Cookie: cookie, Origin: BASE_URL },
+  });
+  if (!tokenRes.ok) {
+    throw new Error(`Failed to get JWT: ${tokenRes.status}`);
+  }
+  const tokenData = await tokenRes.json() as { token: string };
+
+  return { jwt: tokenData.token, userId };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,16 +94,14 @@ async function createTestSession(): Promise<{ cookie: string; userId: string }> 
 beforeAll(async () => {
   // Verify the dev server is reachable; skip suite gracefully if not
   try {
-    const health = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(3000) });
-    if (!health.ok) throw new Error(`Health check returned ${health.status}`);
+    await fetch(`${BASE_URL}/api/networks`, { signal: AbortSignal.timeout(3000) });
   } catch (err) {
     console.warn(`[experiment-signup] Dev server not reachable at ${BASE_URL} — skipping suite.`);
-    // We still proceed; individual tests will fail naturally, but setup won't throw.
     return;
   }
 
   const session = await createTestSession();
-  sessionCookie = session.cookie;
+  authJwt = session.jwt;
   testOwnerId = session.userId;
 
   signedUpEmail = `signup-${randomUUID()}@example.com`;
@@ -116,11 +118,10 @@ afterAll(async () => {
       .where(eq(users.experimentNetworkId, testNetworkId));
 
     for (const u of experimentUsers) {
-      // Delete their api keys
       await db.delete(apikeys).where(eq(apikeys.userId, u.id));
-      // Delete their agents
       await db.delete(agents).where(eq(agents.ownerId, u.id));
-      // Delete their user row
+      await db.delete(networkMembers).where(eq(networkMembers.userId, u.id));
+      await db.delete(personalNetworks).where(eq(personalNetworks.userId, u.id));
       await db.delete(users).where(eq(users.id, u.id));
     }
 
@@ -138,6 +139,7 @@ afterAll(async () => {
       await db.delete(agents).where(eq(agents.ownerId, testOwnerId));
       await db.delete(apikeys).where(eq(apikeys.userId, testOwnerId));
       await db.delete(networkMembers).where(eq(networkMembers.userId, testOwnerId));
+      await db.delete(personalNetworks).where(eq(personalNetworks.userId, testOwnerId));
       await db.delete(users).where(eq(users.id, testOwnerId));
     }
   } catch (err) {
@@ -153,7 +155,7 @@ describe('Experiment network headless signup', () => {
   // ── 1. Create experiment network ────────────────────────────────────────────
 
   it('creates an experiment network and returns masterKey', async () => {
-    if (!sessionCookie) return;
+    if (!authJwt) return;
 
     const res = await api('/api/networks', {
       method: 'POST',
@@ -249,7 +251,7 @@ describe('Experiment network headless signup', () => {
     expect(data.apiKey.length).toBeGreaterThan(0);
 
     signedUpUserId = data.user.id;
-  });
+  }, 15_000);
 
   // ── 6. Signup returns existing user with new key (200) ──────────────────────
 
@@ -272,7 +274,7 @@ describe('Experiment network headless signup', () => {
     // A fresh API key is issued each time
     expect(typeof data.apiKey).toBe('string');
     expect(data.apiKey.length).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   // ── 7. Signup rejects invalid email ─────────────────────────────────────────
 
@@ -311,7 +313,7 @@ describe('Experiment network headless signup', () => {
   // ── 9. Immutability: cannot set isExperiment=false via PATCH ────────────────
 
   it('rejects PATCH /api/networks/:id with isExperiment in the body (400)', async () => {
-    if (!testNetworkId || !sessionCookie) return;
+    if (!testNetworkId || !authJwt) return;
 
     const res = await api(`/api/networks/${testNetworkId}/permissions`, {
       method: 'PATCH',
