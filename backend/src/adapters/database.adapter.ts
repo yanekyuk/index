@@ -1388,6 +1388,7 @@ export class ChatDatabaseAdapter {
         and(
           isNull(schema.networks.deletedAt),
           eq(schema.networks.isPersonal, false),
+          or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment)),
           inArray(schema.networks.id, currentUserIndexIds),
           inArray(schema.networks.id, targetUserIndexIds),
         )
