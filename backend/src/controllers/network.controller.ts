@@ -1,6 +1,8 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { experimentService } from '../services/experiment.service';
 import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
@@ -52,6 +54,48 @@ export class NetworkController {
     });
     logger.verbose('Network created', { networkId: result.id, userId: user.id });
     return Response.json({ network: result });
+  }
+
+  /**
+   * Headless signup for experiment networks. Authenticated via master key (x-api-key header).
+   */
+  @Post('/:id/signup')
+  async signup(req: Request, _user: unknown, params: Record<string, string>) {
+    let network: ExperimentNetwork;
+    try {
+      network = await ExperimentMasterKeyGuard(req, params);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => ({})) as { email?: string };
+    if (!body.email || typeof body.email !== 'string') {
+      return new Response(JSON.stringify({ error: 'email is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(body.email)) {
+      return new Response(JSON.stringify({ error: 'Invalid email format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    try {
+      const result = await experimentService.signup(network.id, body.email);
+      const status = result.created ? 201 : 200;
+      return Response.json({ user: result.user, apiKey: result.apiKey }, { status });
+    } catch (err: unknown) {
+      logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
+      return new Response(JSON.stringify({ error: 'Signup failed' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   /**
