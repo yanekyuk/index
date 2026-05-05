@@ -104,6 +104,7 @@ class ExperimentService {
       .where(and(
         eq(schema.agents.ownerId, userId),
         eq(schema.agents.type, 'personal'),
+        isNull(schema.agents.deletedAt),
       ))
       .limit(1);
 
