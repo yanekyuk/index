@@ -110,11 +110,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     if (!response.network) {
       throw new Error('Failed to create network');
     }
-    const result: Network & { masterKey?: string } = response.network;
-    if (response.masterKey) {
-      result.masterKey = response.masterKey;
-    }
-    return result;
+    return { ...response.network, ...(response.masterKey ? { masterKey: response.masterKey } : {}) };
   },
 
   // Update network

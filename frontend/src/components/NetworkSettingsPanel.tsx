@@ -134,7 +134,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   useEffect(() => {
     if (activeTab === 'access') loadMembers(); // eslint-disable-line react-hooks/set-state-in-effect -- load on tab switch
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, loadMembers]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
