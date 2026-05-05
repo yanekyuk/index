@@ -447,7 +447,8 @@ export class OpportunityDeliveryService {
           .limit(1);
         const accepterName = userData?.name ?? '';
         const rawTelegram = userData?.telegramHandle ?? null;
-        const telegramHandle = rawTelegram ? rawTelegram.replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '').replace(/^@/, '') : null;
+        const stripped = rawTelegram ? rawTelegram.replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '').replace(/^@/, '').split(/[/?#]/)[0] : null;
+        const telegramHandle = stripped && /^[A-Za-z0-9_]{5,32}$/.test(stripped) ? stripped : null;
 
         // Resolve conversation URL from existing DM between the two users (read-only)
         const dmPair = [userId, accepterUserId].sort().join(':');
