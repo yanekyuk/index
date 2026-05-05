@@ -313,7 +313,7 @@ export class OpportunityController {
       return new Response('Token does not match opportunity', { status: 403 });
     }
 
-    const result = await opportunityService.startChat(id, payload.sub);
+    const result = await opportunityService.startChat(payload.opp, payload.sub);
     if ('error' in result) {
       return new Response(result.error, { status: result.status });
     }

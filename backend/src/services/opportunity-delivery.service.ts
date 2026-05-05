@@ -28,6 +28,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
+import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
 import { conversations } from '../schemas/conversation.schema';
 import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../schemas/database.schema';
 
@@ -447,9 +448,7 @@ export class OpportunityDeliveryService {
           .where(and(eq(users.id, accepterUserId), isNull(users.deletedAt)))
           .limit(1);
         const accepterName = userData?.name ?? '';
-        const rawTelegram = userData?.telegramHandle ?? null;
-        const stripped = rawTelegram ? rawTelegram.replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '').replace(/^@/, '').split(/[/?#]/)[0] : null;
-        const telegramHandle = stripped && /^[A-Za-z0-9_]{5,32}$/.test(stripped) ? stripped : null;
+        const telegramHandle = normalizeTelegramHandle(userData?.telegramHandle);
 
         // Resolve conversation URL from existing DM between the two users (read-only)
         const dmPair = [userId, accepterUserId].sort().join(':');

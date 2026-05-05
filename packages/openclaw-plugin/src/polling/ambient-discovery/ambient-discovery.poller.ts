@@ -93,11 +93,10 @@ async function fetchAmbientDeliveredToday(
 
 /**
  * Mint a connect token for an opportunity via the backend.
- * Returns the token string, or null on failure (non-blocking — falls back to frontend URL).
+ * Returns the token string, or null on failure (candidate will be skipped).
  */
 async function fetchConnectToken(
   baseUrl: string,
-  agentId: string,
   apiKey: string,
   opportunityId: string,
 ): Promise<string | null> {
@@ -161,14 +160,12 @@ export async function handle(
     return 'empty';
   }
 
-  const candidates = await Promise.all(
+  const candidatesRaw = await Promise.all(
     body.opportunities
       .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
       .map(async (o) => {
-        const token = await fetchConnectToken(config.baseUrl, config.agentId, config.apiKey, o.opportunityId);
-        const acceptUrl = token
-          ? `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}`
-          : `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`;
+        const token = await fetchConnectToken(config.baseUrl, config.apiKey, o.opportunityId);
+        if (!token) return null;
 
         return {
           opportunityId: o.opportunityId,
@@ -178,10 +175,11 @@ export async function handle(
           suggestedAction: o.rendered.suggestedAction,
           narratorRemark: o.rendered.narratorRemark,
           profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-          acceptUrl,
+          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}`,
         };
       }),
   );
+  const candidates = candidatesRaw.filter((c): c is NonNullable<typeof c> => c !== null);
 
   if (!candidates.length) return 'empty';
 

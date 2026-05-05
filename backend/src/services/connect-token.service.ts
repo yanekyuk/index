@@ -1,6 +1,11 @@
 import { SignJWT, jwtVerify } from 'jose';
 
 const SECRET_KEY = new TextEncoder().encode(process.env.CONNECT_JWT_SECRET || 'dev-connect-secret');
+
+if (!process.env.CONNECT_JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('CONNECT_JWT_SECRET must be set in production');
+}
+
 const ISSUER = 'index-network';
 const TTL_SECONDS = 48 * 60 * 60; // 48 hours
 

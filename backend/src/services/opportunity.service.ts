@@ -11,6 +11,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { opportunityQueue } from '../queues/opportunity.queue';
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
+import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
 
 const logger = log.service.from("OpportunityService");
 
@@ -926,14 +927,7 @@ export class OpportunityService {
       .where(and(eq(userSocials.userId, userId), eq(userSocials.label, 'telegram')))
       .limit(1);
 
-    if (!row?.value) return null;
-
-    const stripped = row.value
-      .replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//, '')
-      .replace(/^@/, '')
-      .split(/[/?#]/)[0];
-
-    return stripped && /^[A-Za-z0-9_]{5,32}$/.test(stripped) ? stripped : null;
+    return normalizeTelegramHandle(row?.value);
   }
 }
 
