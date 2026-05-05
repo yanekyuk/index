@@ -36,6 +36,7 @@ export class NetworkController {
       imageUrl?: string | null;
       joinPolicy?: 'anyone' | 'invite_only';
       allowGuestVibeCheck?: boolean;
+      isExperiment?: boolean;
     };
 
     if (!body.title) {
@@ -43,6 +44,16 @@ export class NetworkController {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    if (body.isExperiment) {
+      const { network, masterKey } = await networkService.createExperimentNetwork(user.id, {
+        title: body.title,
+        prompt: body.prompt,
+        imageUrl: body.imageUrl,
+      });
+      logger.verbose('Experiment network created', { networkId: (network as { id: string }).id, userId: user.id });
+      return Response.json({ network, masterKey }, { status: 201 });
     }
 
     const result = await networkService.createNetwork(user.id, {

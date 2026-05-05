@@ -1,6 +1,10 @@
+import { eq } from 'drizzle-orm';
+
+import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { validateKey } from '../lib/keys';
+import * as schema from '../schemas/database.schema';
 
 const logger = log.service.from("NetworkService");
 
@@ -40,6 +44,55 @@ export class NetworkService {
       throw new Error('Failed to create index');
     }
     return fullIndex;
+  }
+
+  /**
+   * Create a new experiment network with a provisioned master key.
+   * Returns the network and the raw master key (shown once; only the hash is stored).
+   * @param userId - The creating user (becomes owner)
+   * @param data - Title, prompt, and imageUrl for the network
+   * @returns The created network detail and the plaintext master key
+   */
+  async createExperimentNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null }): Promise<{ network: unknown; masterKey: string }> {
+    logger.verbose('[NetworkService] Creating experiment network', { userId, title: data.title });
+
+    // Generate master key
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const bytes = crypto.getRandomValues(new Uint8Array(64));
+    let masterKey = '';
+    for (let i = 0; i < 64; i++) {
+      masterKey += chars[bytes[i] % chars.length];
+    }
+
+    // Hash the key
+    const encoded = new TextEncoder().encode(masterKey);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    const masterKeyHash = Buffer.from(hashBuffer).toString('base64url');
+
+    // Create network with experiment flags
+    const network = await this.adapter.createNetwork({
+      title: data.title,
+      prompt: data.prompt,
+      imageUrl: data.imageUrl,
+      joinPolicy: 'invite_only',
+    });
+
+    // Set experiment columns
+    await db
+      .update(schema.networks)
+      .set({
+        isExperiment: true,
+        experimentMasterKeyHash: masterKeyHash,
+      })
+      .where(eq(schema.networks.id, network.id));
+
+    // Add creator as owner
+    await this.adapter.addMemberToNetwork(network.id, userId, 'owner');
+
+    const fullNetwork = await this.adapter.getNetworkDetail(network.id, userId);
+    if (!fullNetwork) throw new Error('Failed to create experiment network');
+
+    return { network: fullNetwork, masterKey };
   }
 
   /**
