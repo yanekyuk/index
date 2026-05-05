@@ -237,6 +237,14 @@ export class NetworkController {
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
       };
+
+      if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
+        return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const result = await networkService.updateNetwork(params.id, user.id, body);
       logger.verbose('Network updated', { networkId: params.id });
       return Response.json({ network: result });
@@ -245,6 +253,12 @@ export class NetworkController {
       if (msg.includes('Access denied')) {
         return new Response(JSON.stringify({ error: msg }), {
           status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg.includes('Cannot modify join policy on experiment networks')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
       }
@@ -260,6 +274,14 @@ export class NetworkController {
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean };
+
+      if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
+        return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const result = await networkService.updatePermissions(params.id, user.id, body);
       logger.verbose('Permissions updated for network', { networkId: params.id });
       return Response.json({ network: result });
@@ -268,6 +290,12 @@ export class NetworkController {
       if (msg.includes('Access denied')) {
         return new Response(JSON.stringify({ error: msg }), {
           status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg.includes('Cannot modify join policy on experiment networks')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
       }

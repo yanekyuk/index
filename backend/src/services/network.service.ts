@@ -115,18 +115,26 @@ export class NetworkService {
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal index.
+   * @throws Error if attempting to change join policy on an experiment network.
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
     await this.assertNotPersonal(networkId);
+    if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
+      await this.assertJoinPolicyNotLockedByExperiment(networkId);
+    }
     return this.adapter.updateIndexSettings(networkId, userId, data);
   }
 
   /**
    * Update index permissions. Owner-only.
+   * @throws Error if attempting to change join policy on an experiment network.
    */
   async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     await this.assertNotPersonal(networkId);
+    if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
+      await this.assertJoinPolicyNotLockedByExperiment(networkId);
+    }
     logger.verbose('[NetworkService] Updating permissions', { networkId, userId });
     return this.adapter.updateIndexSettings(networkId, userId, data);
   }
@@ -340,6 +348,22 @@ export class NetworkService {
     const isPersonal = await this.adapter.isPersonalNetwork(networkId);
     if (isPersonal) {
       throw new Error('Access denied: personal indexes cannot be modified directly.');
+    }
+  }
+
+  /**
+   * Assert that join policy fields cannot be changed on experiment networks.
+   * Experiment networks enforce `joinPolicy: 'invite_only'` and `allowGuestVibeCheck: false` permanently.
+   * @throws Error if the network is an experiment network.
+   */
+  private async assertJoinPolicyNotLockedByExperiment(networkId: string): Promise<void> {
+    const [network] = await db
+      .select({ isExperiment: schema.networks.isExperiment })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+    if (network?.isExperiment) {
+      throw new Error('Cannot modify join policy on experiment networks');
     }
   }
 }
