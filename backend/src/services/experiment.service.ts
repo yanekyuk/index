@@ -23,7 +23,7 @@ class ExperimentService {
     const { user, created } = await this.findOrCreateUser(normalizedEmail, networkId);
     await ensurePersonalNetwork(user.id);
     await this.joinExperimentNetwork(user.id, networkId);
-    const apiKey = await this.createAgentAndToken(user.id);
+    const apiKey = await this.ensureAgentAndCreateToken(user.id);
 
     logger.info('[ExperimentService] Signup complete', {
       userId: user.id,
@@ -97,29 +97,46 @@ class ExperimentService {
       .onConflictDoNothing();
   }
 
-  private async createAgentAndToken(userId: string): Promise<string> {
-    const agent = await agentDatabaseAdapter.createAgent({
-      ownerId: userId,
-      name: 'Personal Agent',
-      type: 'personal',
-    });
+  private async ensureAgentAndCreateToken(userId: string): Promise<string> {
+    const existingAgents = await db
+      .select({ id: schema.agents.id })
+      .from(schema.agents)
+      .where(and(
+        eq(schema.agents.ownerId, userId),
+        eq(schema.agents.type, 'personal'),
+      ))
+      .limit(1);
 
-    await agentDatabaseAdapter.grantPermission({
-      agentId: agent.id,
-      userId,
-      scope: 'global',
-      actions: [
-        'manage:profile',
-        'manage:intents',
-        'manage:networks',
-        'manage:contacts',
-        'manage:opportunities',
-      ],
-    });
+    let agentId: string;
+
+    if (existingAgents.length > 0) {
+      agentId = existingAgents[0].id;
+    } else {
+      const agent = await agentDatabaseAdapter.createAgent({
+        ownerId: userId,
+        name: 'Personal Agent',
+        type: 'personal',
+      });
+
+      await agentDatabaseAdapter.grantPermission({
+        agentId: agent.id,
+        userId,
+        scope: 'global',
+        actions: [
+          'manage:profile',
+          'manage:intents',
+          'manage:networks',
+          'manage:contacts',
+          'manage:opportunities',
+        ],
+      });
+
+      agentId = agent.id;
+    }
 
     const token = await agentTokenAdapter.create(userId, {
       name: 'Personal Agent API Key',
-      agentId: agent.id,
+      agentId,
     });
 
     return token.key;

@@ -66,6 +66,7 @@ export const users = pgTable('users', {
   experimentNetworkId: text('experiment_network_id').references(() => networks.id),
 }, (table) => ({
   usersEmailExperimentUnique: uniqueIndex('users_email_experiment_unique').on(table.email, table.experimentNetworkId),
+  usersEmailOrganicUnique: uniqueIndex('users_email_organic_unique').on(table.email).where(sql`${table.experimentNetworkId} IS NULL`),
   usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
 }));
 

@@ -449,6 +449,13 @@
       "when": 1777987642717,
       "tag": "0063_add_experiment_network_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1777992206004,
+      "tag": "0064_add_organic_email_unique_index",
+      "breakpoints": true
     }
   ]
 }
