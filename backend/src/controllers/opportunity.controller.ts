@@ -4,11 +4,17 @@ import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
-import { signConnectToken } from '../services/connect-token.service';
+import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
 import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('opportunity');
+
+const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Link Expired</title></head>
+<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+<div style="text-align:center"><h1 style="font-size:1.5rem">This link has expired</h1>
+<p style="color:#666">Connect links are valid for 48 hours. Please check your latest notification for a fresh link.</p>
+</div></body></html>`;
 
 const discoverBodySchema = z.object({
   query: z.string().min(1),
@@ -277,6 +283,60 @@ export class OpportunityController {
 
     const token = await signConnectToken(user.id, resolved.id);
     return Response.json({ token });
+  }
+
+  /**
+   * GET /opportunities/:id/connect — verify JWT, accept opportunity, redirect to Telegram or web chat.
+   * No guard: authentication is via the token query parameter.
+   */
+  @Get('/:id/connect')
+  async connect(req: Request, _user: unknown, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return new Response('Missing opportunity id', { status: 400 });
+    }
+
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const token = url.searchParams.get('token');
+    if (!token) {
+      return new Response('Missing token', { status: 400 });
+    }
+
+    let payload: { sub: string; opp: string };
+    try {
+      payload = await verifyConnectToken(token);
+    } catch {
+      return new Response(EXPIRED_HTML, { status: 401, headers: { 'Content-Type': 'text/html' } });
+    }
+
+    if (payload.opp !== id) {
+      return new Response('Token does not match opportunity', { status: 403 });
+    }
+
+    const result = await opportunityService.startChat(id, payload.sub);
+    if ('error' in result) {
+      return new Response(result.error, { status: result.status });
+    }
+
+    const msg = url.searchParams.get('msg') || '';
+    const counterpartId = result.counterpartUserId;
+
+    // Look up counterpart's Telegram handle
+    const telegramHandle = await opportunityService.getCounterpartTelegramHandle(counterpartId);
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+
+    let redirectUrl: string;
+    if (telegramHandle) {
+      redirectUrl = msg
+        ? `https://t.me/${telegramHandle}?text=${encodeURIComponent(msg)}`
+        : `https://t.me/${telegramHandle}`;
+    } else {
+      redirectUrl = msg
+        ? `${frontendUrl}/u/${counterpartId}/chat?msg=${encodeURIComponent(msg)}`
+        : `${frontendUrl}/u/${counterpartId}/chat`;
+    }
+
+    return Response.redirect(redirectUrl, 302);
   }
 
   /**
