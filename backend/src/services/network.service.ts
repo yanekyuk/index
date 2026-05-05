@@ -174,7 +174,22 @@ export class NetworkService {
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Deleting index', { networkId, userId });
     await this.assertNotPersonal(networkId);
-    return this.adapter.deleteIndexForOwner(networkId, userId);
+
+    // Check if this is an experiment network
+    const [network] = await db
+      .select({ isExperiment: schema.networks.isExperiment })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+
+    if (network?.isExperiment) {
+      // Verify ownership first
+      const isOwner = await this.adapter.isIndexOwner(networkId, userId);
+      if (!isOwner) throw new Error('Access denied: Not an owner of this index');
+      await this.adapter.softDeleteExperimentNetwork(networkId);
+    } else {
+      await this.adapter.deleteIndexForOwner(networkId, userId);
+    }
   }
 
   /**

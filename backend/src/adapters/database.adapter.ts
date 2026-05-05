@@ -2097,6 +2097,92 @@ export class ChatDatabaseAdapter {
     await db.update(networks).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(networks.id, networkId));
   }
 
+  /**
+   * Cascading soft delete for an experiment network.
+   * Soft-deletes all experiment users scoped to this network and their data
+   * (intents, agents, API keys, personal networks, network memberships), then
+   * soft-deletes the experiment network itself.
+   * @param networkId - The experiment network to delete
+   */
+  async softDeleteExperimentNetwork(networkId: string): Promise<void> {
+    const now = new Date();
+
+    // Find all experiment users scoped to this network
+    const experimentUsers = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(
+        eq(schema.users.experimentNetworkId, networkId),
+        isNull(schema.users.deletedAt),
+      ));
+
+    const userIds = experimentUsers.map(u => u.id);
+
+    if (userIds.length > 0) {
+      // Soft-delete users
+      await db
+        .update(schema.users)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(schema.users.id, userIds));
+
+      // Archive their intents (intents use archivedAt, not deletedAt)
+      await db
+        .update(schema.intents)
+        .set({ archivedAt: now, updatedAt: now })
+        .where(inArray(schema.intents.userId, userIds));
+
+      // Delete their intent_networks (hard delete, same as existing softDeleteNetwork)
+      await db
+        .delete(schema.intentNetworks)
+        .where(inArray(schema.intentNetworks.intentId,
+          db.select({ id: schema.intents.id }).from(schema.intents).where(inArray(schema.intents.userId, userIds))
+        ));
+
+      // Soft-delete their network memberships
+      await db
+        .update(schema.networkMembers)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(schema.networkMembers.userId, userIds));
+
+      // Soft-delete their personal networks
+      const personalNetworkIds = await db
+        .select({ networkId: schema.personalNetworks.networkId })
+        .from(schema.personalNetworks)
+        .where(inArray(schema.personalNetworks.userId, userIds));
+
+      if (personalNetworkIds.length > 0) {
+        await db
+          .update(schema.networks)
+          .set({ deletedAt: now, updatedAt: now })
+          .where(inArray(schema.networks.id, personalNetworkIds.map(p => p.networkId)));
+      }
+
+      // Soft-delete their agents
+      await db
+        .update(schema.agents)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(schema.agents.ownerId, userIds));
+
+      // Disable their API keys
+      await db
+        .update(schema.apikeys)
+        .set({ enabled: false, updatedAt: now })
+        .where(inArray(schema.apikeys.userId, userIds));
+    }
+
+    // Delete experiment network memberships (hard delete, same pattern as existing)
+    await db.delete(schema.networkMembers).where(eq(schema.networkMembers.networkId, networkId));
+
+    // Delete intent_networks for the experiment network
+    await db.delete(schema.intentNetworks).where(eq(schema.intentNetworks.networkId, networkId));
+
+    // Soft-delete the experiment network itself
+    await db
+      .update(schema.networks)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(eq(schema.networks.id, networkId));
+  }
+
   async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
     const result = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).limit(1);
     const profile = result[0];
