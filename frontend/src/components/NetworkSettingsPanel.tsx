@@ -74,6 +74,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [pendingToolkit, setPendingToolkit] = useState<string | null>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- syncs local form state from prop changes */
   useEffect(() => {
     setTitle(currentIndex.title);
     setPrompt(currentIndex.prompt || '');
@@ -93,6 +94,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setInvitationLink(null);
     }
   }, [currentIndex.id, currentIndex.title, currentIndex.prompt, currentIndex.imageUrl, currentIndex.permissions]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -109,7 +111,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       reader.onload = (ev) => setImagePreview(ev.target?.result as string);
       reader.readAsDataURL(file);
     }
-  }, []);
+  }, [error]);
 
   const handleRemoveImage = useCallback(() => {
     setImageFile(null);
@@ -131,8 +133,8 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   }, [indexesService, index.id]);
 
   useEffect(() => {
-    if (activeTab === 'access') loadMembers();
-  }, [activeTab]);
+    if (activeTab === 'access') loadMembers(); // eslint-disable-line react-hooks/set-state-in-effect -- load on tab switch
+  }, [activeTab, loadMembers]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -153,8 +155,10 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   }, [indexesService, index.id]);
 
+  const [contactsPage, setContactsPage] = useState(1);
+
   useEffect(() => {
-    setContactsPage(1);
+    setContactsPage(1); // eslint-disable-line react-hooks/set-state-in-effect -- reset page on search change
     const timeoutId = setTimeout(() => {
       if (memberSearchQuery) searchUsers(memberSearchQuery);
       else { setSuggestedUsers([]); setSearchHasQueried(false); }
@@ -186,7 +190,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   }, [api, index.id]);
 
   useEffect(() => {
-    if (activeTab === 'integrations') loadConnections();
+    if (activeTab === 'integrations') loadConnections(); // eslint-disable-line react-hooks/set-state-in-effect -- load on tab switch
   }, [activeTab, loadConnections]);
 
   const handleSaveSettings = async () => {
@@ -298,7 +302,6 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   const [isAddingContact, setIsAddingContact] = useState(false);
   const CONTACTS_PAGE_SIZE = 10;
-  const [contactsPage, setContactsPage] = useState(1);
 
   const handleAddContact = async (email: string) => {
     if (isAddingContact) return;
@@ -537,8 +540,8 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       {activeTab === 'access' && (
         <div className="space-y-8">
 
-          {/* Who can join */}
-          {!index.isPersonal && (
+          {/* Who can join — experiment networks are always private */}
+          {!index.isPersonal && !currentIndex.isExperiment && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
               <div className="grid grid-cols-2 gap-2">
@@ -568,8 +571,8 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             </div>
           )}
 
-          {/* Share link */}
-          {!index.isPersonal && (
+          {/* Share link — not applicable for experiment networks */}
+          {!index.isPersonal && !currentIndex.isExperiment && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
                 {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}

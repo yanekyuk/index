@@ -105,12 +105,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Create new network
-  createNetwork: async (data: CreateNetworkRequest): Promise<Network> => {
-    const response = await api.post<APIResponse<Network>>('/networks', data);
+  createNetwork: async (data: CreateNetworkRequest): Promise<Network & { masterKey?: string }> => {
+    const response = await api.post<APIResponse<Network> & { masterKey?: string }>('/networks', data);
     if (!response.network) {
       throw new Error('Failed to create network');
     }
-    return response.network;
+    return { ...response.network, ...(response.masterKey ? { masterKey: response.masterKey } : {}) };
   },
 
   // Update network
