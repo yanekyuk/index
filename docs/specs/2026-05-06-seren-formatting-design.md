@@ -203,7 +203,7 @@ Add branding fields to `setup.cli.ts` as optional prompts during plugin setup. A
 
 ### 6. MSG_PARAM_CLAUSE Update
 
-The existing `MSG_PARAM_CLAUSE` (greeting composition) applies only to `connection` candidates. The prompt instructions above make this explicit: "Compose a &msg= greeting" for connection, "Do NOT compose a &msg= greeting for connector candidates." The clause itself doesn't need modification.
+The `MSG_PARAM_CLAUSE` has been updated to explicitly scope greeting composition to `connection` candidates and prohibit `&msg=` for `connector-flow` candidates. The clause now reads: compose a short greeting (1–2 sentences) for each `connection` candidate, and do NOT compose a greeting for connector-flow candidates (their approve-introduction links take no `&msg=` parameter).
 
 ## Files Touched
 

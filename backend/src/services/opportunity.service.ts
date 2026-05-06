@@ -402,6 +402,59 @@ export class OpportunityService {
   }
 
   /**
+   * Approve an introduction: validate the user is an introducer with
+   * `approved: false`, flip the approved flag, and transition the
+   * opportunity to `pending` (which triggers negotiation).
+   *
+   * @param opportunityId - The opportunity ID
+   * @param userId - The user approving (must be an introducer)
+   * @returns Success object or error with status
+   */
+  async approveIntroduction(
+    opportunityId: string,
+    userId: string,
+  ): Promise<{ success: true } | { error: string; status: number }> {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+
+    const actor = opp.actors.find((a) => a.userId === userId);
+    if (!actor || actor.role !== 'introducer') {
+      return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
+    }
+
+    const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);
+
+    if (actor.approved === true) {
+      // Approval already flipped — only retry the status transition if it hasn't landed yet.
+      // This handles the case where a prior call flipped approved but failed to transition status.
+      if (TERMINAL_STATUSES.has(opp.status)) {
+        return { success: true };
+      }
+    } else {
+      // Flip approved flag
+      const updated = await this.db.updateOpportunityActorApproval(opportunityId, userId, true);
+      if (!updated) {
+        return { error: 'Failed to update approval', status: 500 };
+      }
+    }
+
+    // Transition to pending (triggers negotiation)
+    const statusResult = await this.updateOpportunityStatus(opportunityId, 'pending', userId);
+    if (statusResult && 'error' in statusResult) {
+      logger.error('[OpportunityService.approveIntroduction] status transition failed', {
+        opportunityId,
+        userId,
+        error: statusResult.error,
+      });
+      return { error: 'Failed to trigger negotiation after approval', status: 500 };
+    }
+
+    return { success: true };
+  }
+
+  /**
    * Transition a `pending`/`draft` opportunity to `accepted` and surface the
    * h2h conversation to navigate to. Used by the frontend's "Start Chat"
    * button on both ambient and orchestrator opportunity cards.

@@ -16,6 +16,12 @@ const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Li
 <p style="color:#666">Connect links are valid for 48 hours. Please check your latest notification for a fresh link.</p>
 </div></body></html>`;
 
+const INTRODUCTION_APPROVED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Introduction Approved</title></head>
+<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+<div style="text-align:center"><h1 style="font-size:1.5rem">Introduction approved</h1>
+<p style="color:#666">You approved the introduction. Both parties will be connected shortly.</p>
+</div></body></html>`;
+
 const discoverBodySchema = z.object({
   query: z.string().min(1),
   limit: z.number().int().positive().optional(),
@@ -337,6 +343,52 @@ export class OpportunityController {
     }
 
     return Response.redirect(redirectUrl, 302);
+  }
+
+  /**
+   * GET /opportunities/:id/approve-introduction — verify JWT, validate
+   * introducer role, flip approved flag, trigger negotiation, return HTML.
+   *
+   * Used by connector-flow Telegram notifications: the introducer clicks
+   * an approve link, the system marks their actor as approved, transitions
+   * the opportunity to pending (triggering negotiation), and returns an
+   * inline HTML confirmation page (200, no redirect).
+   *
+   * No guard: authentication is via the token query parameter (same
+   * mechanism as the `/connect` endpoint).
+   */
+  @Get('/:id/approve-introduction')
+  async approveIntroduction(req: Request, _user: unknown, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return new Response('Missing opportunity id', { status: 400 });
+    }
+
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const token = url.searchParams.get('token');
+    if (!token) {
+      return new Response('Missing token', { status: 400 });
+    }
+
+    let payload: { sub: string; opp: string };
+    try {
+      payload = await verifyConnectToken(token);
+    } catch {
+      return new Response(EXPIRED_HTML, { status: 401, headers: { 'Content-Type': 'text/html' } });
+    }
+
+    if (payload.opp !== id) {
+      return new Response('Token does not match opportunity', { status: 403 });
+    }
+
+    // Validate: the token's user must be an introducer on this opportunity
+    const result = await opportunityService.approveIntroduction(payload.opp, payload.sub);
+
+    if ('error' in result) {
+      return new Response(result.error, { status: result.status });
+    }
+
+    return new Response(INTRODUCTION_APPROVED_HTML, { status: 200, headers: { 'Content-Type': 'text/html' } });
   }
 
   /**
