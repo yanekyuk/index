@@ -80,6 +80,35 @@ export async function ensurePersonalNetwork(userId: string): Promise<string> {
 }
 
 /**
+ * Throws if the user is bound to an experiment network and the target network
+ * is anything other than (a) their experiment network or (b) their personal
+ * index. Used to keep headless-signup users scoped to their experiment.
+ */
+async function assertExperimentMembershipScope(userId: string, networkId: string): Promise<void> {
+  const [user] = await db
+    .select({ experimentNetworkId: schema.users.experimentNetworkId })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+
+  const experimentNetworkId = user?.experimentNetworkId;
+  if (!experimentNetworkId) return;
+  if (networkId === experimentNetworkId) return;
+
+  const [personal] = await db
+    .select({ networkId: schema.personalNetworks.networkId })
+    .from(schema.personalNetworks)
+    .where(and(
+      eq(schema.personalNetworks.userId, userId),
+      eq(schema.personalNetworks.networkId, networkId),
+    ))
+    .limit(1);
+  if (personal) return;
+
+  throw new Error('Experiment users cannot join networks outside their experiment scope.');
+}
+
+/**
  * Returns the personal index ID for a user.
  * @param userId - The user to look up
  * @returns The personal index ID, or null if not found
@@ -2299,6 +2328,8 @@ export class ChatDatabaseAdapter {
     userId: string,
     role: 'owner' | 'admin' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
+    await assertExperimentMembershipScope(userId, networkId);
+
     let memberPrompt: string | null = null;
     const [indexRow] = await db.select({ prompt: networks.prompt }).from(networks).where(eq(networks.id, networkId)).limit(1);
     if (indexRow) memberPrompt = indexRow.prompt;
