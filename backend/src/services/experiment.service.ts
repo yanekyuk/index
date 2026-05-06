@@ -81,7 +81,7 @@ class ExperimentService {
             const identity = (existing.identity as { name?: string; bio?: string; location?: string } | null) ?? {};
             await db
               .update(schema.userProfiles)
-              .set({ identity: { ...identity, ...patch }, updatedAt: new Date() })
+              .set({ identity: { name: identity.name ?? '', bio: identity.bio ?? '', location: identity.location ?? '', ...patch }, updatedAt: new Date() })
               .where(eq(schema.userProfiles.id, existing.id));
           } else {
             await db
