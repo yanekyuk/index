@@ -1,0 +1,85 @@
+import { config } from 'dotenv';
+config({ path: '.env.test' });
+
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { eq, inArray } from 'drizzle-orm';
+
+import db from '../../lib/drizzle/drizzle';
+import * as schema from '../../schemas/database.schema';
+import { agentDatabaseAdapter } from '../../adapters/agent.database.adapter';
+import { agentTokenAdapter } from '../../adapters/agent-token.adapter';
+import { resolveAgentNetworkScope, assertAgentNetworkScope } from '../agent-scope.guard';
+
+describe('agent-scope.guard', () => {
+  let userId: string;
+  let networkId: string;
+  let unrelatedNetworkId: string;
+  let scopedKey: string;
+  let globalKey: string;
+
+  beforeAll(async () => {
+    const [u] = await db.insert(schema.users)
+      .values({ email: `scope-${Date.now()}@test.dev`, name: 'Scope Test', emailVerified: true })
+      .returning({ id: schema.users.id });
+    userId = u.id;
+
+    const [n1] = await db.insert(schema.networks)
+      .values({ title: 'Scoped Net', isPersonal: false })
+      .returning({ id: schema.networks.id });
+    networkId = n1.id;
+
+    const [n2] = await db.insert(schema.networks)
+      .values({ title: 'Unrelated Net', isPersonal: false })
+      .returning({ id: schema.networks.id });
+    unrelatedNetworkId = n2.id;
+
+    const scopedAgent = await agentDatabaseAdapter.createAgent({
+      ownerId: userId, name: 'Scoped Agent', type: 'personal',
+    });
+    await agentDatabaseAdapter.grantPermission({
+      agentId: scopedAgent.id, userId, scope: 'network', scopeId: networkId,
+      actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
+    });
+    scopedKey = (await agentTokenAdapter.create(userId, { name: 'scoped', agentId: scopedAgent.id })).key;
+
+    const globalAgent = await agentDatabaseAdapter.createAgent({
+      ownerId: userId, name: 'Global Agent', type: 'personal',
+    });
+    await agentDatabaseAdapter.grantPermission({
+      agentId: globalAgent.id, userId, scope: 'global',
+      actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
+    });
+    globalKey = (await agentTokenAdapter.create(userId, { name: 'global', agentId: globalAgent.id })).key;
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.networks).where(inArray(schema.networks.id, [networkId, unrelatedNetworkId]));
+    await db.delete(schema.users).where(eq(schema.users.id, userId));
+  });
+
+  const reqWithKey = (k: string) => new Request('http://localhost/test', { headers: { 'x-api-key': k } });
+
+  test('returns null for global agent', async () => {
+    expect(await resolveAgentNetworkScope(reqWithKey(globalKey))).toBeNull();
+  });
+
+  test('returns scopeId for network-scoped agent', async () => {
+    expect(await resolveAgentNetworkScope(reqWithKey(scopedKey))).toBe(networkId);
+  });
+
+  test('returns null when no x-api-key is present', async () => {
+    expect(await resolveAgentNetworkScope(new Request('http://localhost/test'))).toBeNull();
+  });
+
+  test('assert passes when scope matches', async () => {
+    await expect(assertAgentNetworkScope(reqWithKey(scopedKey), networkId)).resolves.toBeUndefined();
+  });
+
+  test('assert throws when scope differs', async () => {
+    await expect(assertAgentNetworkScope(reqWithKey(scopedKey), unrelatedNetworkId)).rejects.toThrow(/network scope/i);
+  });
+
+  test('assert is no-op for global agent', async () => {
+    await expect(assertAgentNetworkScope(reqWithKey(globalKey), unrelatedNetworkId)).resolves.toBeUndefined();
+  });
+});

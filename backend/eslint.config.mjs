@@ -121,11 +121,11 @@ export default tseslint.config(
               from: { type: "events" },
               allow: { to: { type: ["events", "types"] } },
             },
-            // Guards → adapters, schemas, types
+            // Guards → adapters, schemas, types, sibling guards
             {
               from: { type: "guards" },
               allow: {
-                to: { type: ["adapters", "schemas", "types"] },
+                to: { type: ["adapters", "guards", "schemas", "types"] },
               },
             },
             // Schemas → sibling schemas, types
