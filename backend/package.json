@@ -27,7 +27,6 @@
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
-    "maintenance:generate-opportunities": "bun ./src/cli/generate-opportunities.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bun test"
   },
