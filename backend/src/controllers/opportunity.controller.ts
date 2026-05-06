@@ -340,6 +340,53 @@ export class OpportunityController {
   }
 
   /**
+   * GET /opportunities/:id/approve-introduction — verify JWT, validate
+   * introducer role, flip approved flag, trigger negotiation, redirect.
+   *
+   * Used by connector-flow Telegram notifications: the introducer clicks
+   * an approve link, the system marks their actor as approved, transitions
+   * the opportunity to pending (triggering negotiation), and redirects to
+   * a success page.
+   *
+   * No guard: authentication is via the token query parameter (same
+   * mechanism as the `/connect` endpoint).
+   */
+  @Get('/:id/approve-introduction')
+  async approveIntroduction(req: Request, _user: unknown, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return new Response('Missing opportunity id', { status: 400 });
+    }
+
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const token = url.searchParams.get('token');
+    if (!token) {
+      return new Response('Missing token', { status: 400 });
+    }
+
+    let payload: { sub: string; opp: string };
+    try {
+      payload = await verifyConnectToken(token);
+    } catch {
+      return new Response(EXPIRED_HTML, { status: 401, headers: { 'Content-Type': 'text/html' } });
+    }
+
+    if (payload.opp !== id) {
+      return new Response('Token does not match opportunity', { status: 403 });
+    }
+
+    // Validate: the token's user must be an introducer on this opportunity
+    const result = await opportunityService.approveIntroduction(payload.opp, payload.sub);
+
+    if ('error' in result) {
+      return new Response(result.error, { status: result.status });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    return Response.redirect(`${frontendUrl}/introduction-approved`, 302);
+  }
+
+  /**
    * POST /opportunities/discover — discover opportunities via HyDE graph.
    */
   @Post('/discover')
