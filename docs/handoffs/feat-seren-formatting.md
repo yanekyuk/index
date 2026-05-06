@@ -16,6 +16,7 @@ linear-issue: IND-247
 - packages/openclaw-plugin/src/lib/utils/connect-token.ts
 - backend/src/controllers/opportunity.controller.ts
 - backend/src/services/opportunity.service.ts
+- packages/openclaw-plugin/src/setup/setup.cli.ts
 
 ## Relevant Docs
 - docs/specs/2026-05-06-seren-formatting-design.md
@@ -38,3 +39,5 @@ Design spec at `docs/specs/2026-05-06-seren-formatting-design.md`. Summary:
 3. **Plugin: Poller changes** — All three pollers (ambient, daily-digest, welcome) thread `feedCategory` and `totalPending` from API response. Connector-flow candidates get `/approve-introduction?token=...` URLs instead of `/connect?token=...`.
 
 4. **Prompt: Per-type instruction rewrite** — Welcome + daily use two-section layout ("Conversations waiting" for connection, "Help your community" for connector-flow) with section-aware CTAs. Ambient is flat (agent decides). Connection candidates get &msg= greeting; connector candidates don't. Overflow count when totalPending > shown.
+
+5. **Branding config** — Three optional fields in plugin config: `nodeName`, `nodeDescription`, `nodeContext`. Read via `readNodeBranding()` helper. Injected as a COMMUNITY CONTEXT clause into all prompts when `nodeName` is set. Added to setup wizard as optional prompts.
