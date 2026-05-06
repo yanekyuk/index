@@ -99,7 +99,7 @@ export class NetworkController {
     try {
       const result = await experimentService.signup(network.id, body.email);
       const status = result.created ? 201 : 200;
-      return Response.json({ user: result.user, apiKey: result.apiKey }, { status });
+      return Response.json({ user: result.user, apiKey: result.apiKey, connectCommand: result.connectCommand }, { status });
     } catch (err: unknown) {
       logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
       return new Response(JSON.stringify({ error: 'Signup failed' }), {

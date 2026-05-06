@@ -241,15 +241,13 @@ describe('Experiment network headless signup', () => {
 
     expect(res.status).toBe(201);
 
-    const data = await res.json() as { user: { id: string; email: string }; apiKey: string; agentId: string; connectCommand: string };
+    const data = await res.json() as { user: { id: string; email: string }; apiKey: string; connectCommand: string };
     expect(data).toHaveProperty('user');
     expect(data).toHaveProperty('apiKey');
     expect(data.user.email).toBe(signedUpEmail);
     expect(typeof data.user.id).toBe('string');
     expect(typeof data.apiKey).toBe('string');
     expect(data.apiKey.length).toBeGreaterThan(0);
-    expect(typeof data.agentId).toBe('string');
-    expect(data.agentId.length).toBeGreaterThan(0);
     expect(data.connectCommand).toContain('openclaw index connect --api-key');
 
     signedUpUserId = data.user.id;
