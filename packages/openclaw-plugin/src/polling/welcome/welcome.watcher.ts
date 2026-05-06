@@ -15,7 +15,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
-import { readMainAgentToolUse, readWelcomeSent, writeWelcomeSent } from '../../lib/delivery/config.js';
+import { readMainAgentToolUse, readWelcomeSent, writeWelcomeSent, readNodeBranding } from '../../lib/delivery/config.js';
 import { fetchConnectToken } from '../../lib/utils/connect-token.js';
 import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
@@ -113,9 +113,13 @@ async function dispatchWelcome(
     opportunities: Array<{
       opportunityId: string;
       counterpartUserId: string | null;
+      feedCategory?: 'connection' | 'connector-flow';
       rendered: { headline: string; personalizedSummary: string; suggestedAction: string; narratorRemark: string };
     }>;
+    totalPending?: number;
   };
+
+  const totalPending = body.totalPending ?? body.opportunities.length;
 
   // Build candidates from opportunities.
   const candidatesRaw = await Promise.all(
@@ -125,25 +129,31 @@ async function dispatchWelcome(
         const token = await fetchConnectToken(api, config.baseUrl, config.apiKey, o.opportunityId);
         if (!token) return null;
 
+        const feedCategory = o.feedCategory ?? 'connection';
+        const endpoint = feedCategory === 'connector-flow' ? 'approve-introduction' : 'connect';
+
         return {
           opportunityId: o.opportunityId,
           counterpartUserId: o.counterpartUserId,
+          feedCategory,
           headline: o.rendered.headline,
           personalizedSummary: o.rendered.personalizedSummary,
           suggestedAction: o.rendered.suggestedAction,
           narratorRemark: o.rendered.narratorRemark,
           profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}?link_preview=false`,
-          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/connect?token=${token}&link_preview=false`,
+          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/${endpoint}?token=${token}&link_preview=false`,
         };
       }),
   );
   const candidates = candidatesRaw.filter((c): c is NonNullable<typeof c> => c !== null);
 
   const mainAgentToolUse = readMainAgentToolUse(api);
+  const branding = readNodeBranding(api);
   const prompt = buildMainAgentPrompt({
     contentType: 'welcome',
     mainAgentToolUse,
-    payload: { contentType: 'welcome', candidates },
+    payload: { contentType: 'welcome', totalPending, candidates },
+    branding,
   });
 
   const dispatch = await dispatchToMainAgent(api, {
