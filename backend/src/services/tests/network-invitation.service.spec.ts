@@ -1,8 +1,13 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { and, eq, inArray } from 'drizzle-orm';
+
+const sendSpy = mock(async () => ({ data: null, skipped: false }));
+mock.module('../../lib/email/transport.helper', () => ({
+  executeSendEmail: sendSpy,
+}));
 
 import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
@@ -51,6 +56,7 @@ describe('networkInvitationService.invite', () => {
   });
 
   test('creates user, agent, network-scoped permissions, key, and membership for a new email', async () => {
+    sendSpy.mockClear();
     const email = `invitee-${Date.now()}@test.dev`;
     const result = await networkInvitationService.invite({ networkId, email });
 
@@ -60,6 +66,16 @@ describe('networkInvitationService.invite', () => {
     expect(result.agentProvisioned).toBe(true);
     expect(result.apiKey).toBeTruthy();
     expect(result.user.email).toBe(email);
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const call = sendSpy.mock.calls[0][0] as unknown as {
+      to: string;
+      subject: string;
+      html: string;
+      text: string;
+    };
+    expect(call.to).toBe(email);
+    expect(call.html).toContain(result.apiKey!);
 
     const [member] = await db
       .select({ networkId: schema.networkMembers.networkId })
@@ -85,12 +101,14 @@ describe('networkInvitationService.invite', () => {
       .returning({ id: schema.users.id });
     cleanupUserIds.push(existing.id);
 
+    sendSpy.mockClear();
     const result = await networkInvitationService.invite({ networkId, email });
 
     expect(result.created).toBe(false);
     expect(result.agentProvisioned).toBe(false);
     expect(result.apiKey).toBeNull();
     expect(result.user.id).toBe(existing.id);
+    expect(sendSpy).toHaveBeenCalledTimes(0);
 
     const [member] = await db
       .select({ networkId: schema.networkMembers.networkId })

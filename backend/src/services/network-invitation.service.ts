@@ -6,6 +6,8 @@ import * as schema from '../schemas/database.schema';
 import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { ensurePersonalNetwork } from '../adapters/database.adapter';
+import { networkInvitationTemplate } from '../lib/email/templates/network-invitation.template';
+import { executeSendEmail } from '../lib/email/transport.helper';
 
 const logger = log.service.from('network-invitation');
 
@@ -57,8 +59,69 @@ class NetworkInvitationService {
     }
 
     const apiKey = await this.provisionScopedAgent(user.id, params.networkId);
-    logger.info('[NetworkInvitation] Provisioned scoped agent', { userId: user.id, networkId: params.networkId });
+    const networkName = await this.lookupNetworkName(params.networkId);
+    const connectCommand = this.buildConnectCommand(apiKey);
+
+    await this.dispatchInvitationEmail({
+      to: email,
+      networkName,
+      apiKey,
+      connectCommand,
+    });
+
+    logger.info('[NetworkInvitation] Provisioned scoped agent + invited', {
+      userId: user.id,
+      networkId: params.networkId,
+    });
+
     return { user, apiKey, created: true, agentProvisioned: true };
+  }
+
+  private async lookupNetworkName(networkId: string): Promise<string> {
+    const [row] = await db
+      .select({ title: schema.networks.title })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+    return row?.title ?? 'your network';
+  }
+
+  private buildConnectCommand(apiKey: string): string {
+    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/+$/, '');
+    const urlFlag =
+      baseUrl && baseUrl !== 'https://index.network' ? ` --url ${baseUrl}` : '';
+    return `openclaw index connect --api-key ${apiKey}${urlFlag}`;
+  }
+
+  private async dispatchInvitationEmail(params: {
+    to: string;
+    networkName: string;
+    apiKey: string;
+    connectCommand: string;
+  }): Promise<void> {
+    const rendered = networkInvitationTemplate({
+      networkName: params.networkName,
+      apiKey: params.apiKey,
+      connectCommand: params.connectCommand,
+    });
+
+    try {
+      const result = (await executeSendEmail({
+        to: params.to,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      })) as { skipped?: boolean; reason?: string };
+      if (result.skipped) {
+        logger.info('[NetworkInvitation] Email send skipped', {
+          to: params.to,
+          reason: result.reason,
+        });
+      }
+    } catch (err) {
+      logger.error('[NetworkInvitation] Failed to send invitation email', { to: params.to, error: err });
+      // Fail-soft: provisioning succeeded; organizer can re-issue the invitation.
+    }
   }
 
   private async findOrCreateUser(
