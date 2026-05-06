@@ -1,7 +1,7 @@
 ---
 title: "Welcome Message (First Post-Onboarding Notification)"
 type: spec
-tags: [openclaw-plugin, welcome, onboarding, ambient-discovery, delivery]
+tags: [openclaw-plugin, welcome, onboarding, delivery]
 created: 2026-05-06
 updated: 2026-05-06
 ---
@@ -18,31 +18,52 @@ After the user completes onboarding, there is no immediate follow-up message. Th
 
 ## Solution
 
-Piggyback on the **ambient discovery poller** to detect the onboarding-just-completed transition and dispatch a welcome-variant prompt before the normal ambient pass. Track `welcomeSent` in plugin config to prevent re-fire.
+Add a **short-lived welcome watcher** that starts alongside the onboarding dispatch and polls `isOnboardingComplete()` every 15 seconds. The moment onboarding completes, it fetches pending opportunities, builds a welcome-variant prompt with connect links, dispatches it to the main agent, writes `welcomeSent` to plugin config, and self-terminates. No coupling to the ambient or daily digest pollers.
 
 ## Design
 
-### Trigger: Ambient Poller Pre-Check
+### Welcome Watcher
 
-At the top of `ambient-discovery.poller.ts` `handle()`, before the existing ambient logic:
+A new module `packages/openclaw-plugin/src/polling/welcome/welcome.watcher.ts` that exports a `start()` function.
 
-1. Check `isOnboardingComplete()` → must be `true`
-2. Check `api.pluginConfig['welcomeSent']` → must be falsy
-3. If both conditions met:
-   - Fetch pending opportunities (same endpoint as daily digest)
-   - Build `OpportunityCandidate[]` with connect tokens and URLs
-   - Build prompt with content type `'welcome'`
-   - Dispatch to main agent
-   - Set `api.pluginConfig['welcomeSent'] = true`
-   - Return early — skip normal ambient pass for this tick
+**Lifecycle:**
 
-If `welcomeSent` is already true, fall through to normal ambient logic.
+1. Called from `register()` in `index.ts`, right after `dispatchOnboardingIfNeeded()`.
+2. On start, checks `readWelcomeSent(api)` — if already true, returns immediately (no-op).
+3. Sets a `setInterval` at 15s that:
+   - Calls `isOnboardingComplete(api, config)`
+   - If false → no-op, wait for next tick
+   - If true → dispatch welcome, write `welcomeSent`, clear interval
+4. Self-terminates after successful dispatch or if `welcomeSent` is found true on any tick.
+
+**Integration in `index.ts`:**
+
+```typescript
+// After the onboarding dispatch (line ~303-305)
+setTimeout(() => {
+  dispatchOnboardingIfNeeded(api, { baseUrl, agentId, apiKey });
+  welcomeWatcher.start(api, { baseUrl, agentId, apiKey, frontendUrl });
+}, 5_000).unref();
+```
+
+### Welcome Dispatch Logic
+
+When the watcher detects onboarding completion:
+
+1. Fetch pending opportunities via `GET /api/agents/:agentId/opportunities/pending?limit=20` (same endpoint as daily digest)
+2. For each opportunity with a `counterpartUserId`, fetch a connect token via `POST /api/opportunities/:id/connect-token`
+3. Build `OpportunityCandidate[]` with `profileUrl` and `acceptUrl` (same shape as daily digest)
+4. Build prompt with content type `'welcome'` via `buildMainAgentPrompt()`
+5. Dispatch to main agent via `dispatchToMainAgent()`
+6. On successful dispatch, write `welcomeSent = true` to plugin config
+
+**Candidates may be empty.** The welcome always fires regardless of candidate count.
 
 ### New Content Type: `welcome`
 
 Add `'welcome'` to `MainAgentContentType` and `MainAgentPayload` in `main-agent.prompt.ts`.
 
-**Payload shape:** Same as `daily_digest` — `{ contentType: 'welcome', candidates: OpportunityCandidate[] }`. The candidates array may be empty.
+**Payload shape:** `{ contentType: 'welcome', candidates: OpportunityCandidate[] }`. The candidates array may be empty.
 
 **Prompt instructions (`perTypeInstruction`):**
 
@@ -56,7 +77,7 @@ Add `'welcome'` to `MainAgentContentType` and `MainAgentPayload` in `main-agent.
 - Key: `welcomeSent` in `api.pluginConfig`
 - Type: boolean
 - Written once after successful welcome dispatch
-- Read by the ambient poller pre-check
+- Read by the welcome watcher on each tick
 - Persistent across plugin restarts (plugin config is on disk)
 - One-way: once true, never reset
 
@@ -71,7 +92,8 @@ Add to `config.ts`:
 
 | File | Change |
 |------|--------|
-| `packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts` | Welcome pre-check at top of `handle()` |
+| `packages/openclaw-plugin/src/polling/welcome/welcome.watcher.ts` | New module — short-lived watcher that detects onboarding completion and dispatches welcome |
+| `packages/openclaw-plugin/src/index.ts` | Start welcome watcher alongside onboarding dispatch |
 | `packages/openclaw-plugin/src/lib/delivery/main-agent.prompt.ts` | Add `'welcome'` to `MainAgentContentType`, `MainAgentPayload`, and `perTypeInstruction` |
 | `packages/openclaw-plugin/src/lib/delivery/config.ts` | Add `readWelcomeSent` / `writeWelcomeSent` helpers |
 
@@ -79,8 +101,9 @@ Add to `config.ts`:
 
 | Test | Assertion |
 |------|-----------|
-| Welcome fires when onboarding complete + welcomeSent false | Dispatch called with content type `'welcome'`, `welcomeSent` written to config |
-| Welcome skipped when welcomeSent true | No dispatch, normal ambient pass proceeds |
+| Welcome fires when onboarding complete + welcomeSent false | Dispatch called with content type `'welcome'`, `welcomeSent` written to config, interval cleared |
+| Welcome skipped when welcomeSent already true | Watcher returns immediately, no interval started |
+| Watcher waits while onboarding incomplete | Multiple ticks pass with no dispatch, dispatch fires on first complete tick |
 | Welcome dispatches with zero candidates | Prompt built with empty candidates array, dispatch still fires |
 | Welcome dispatches with candidates | Same `OpportunityCandidate[]` shape as daily digest, connect tokens fetched |
-| Normal ambient pass unaffected after welcome sent | `welcomeSent = true` → ambient logic runs as before |
+| Watcher self-terminates after dispatch | Interval cleared, no further ticks |
