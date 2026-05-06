@@ -347,12 +347,12 @@ export class OpportunityController {
 
   /**
    * GET /opportunities/:id/approve-introduction — verify JWT, validate
-   * introducer role, flip approved flag, trigger negotiation, redirect.
+   * introducer role, flip approved flag, trigger negotiation, return HTML.
    *
    * Used by connector-flow Telegram notifications: the introducer clicks
    * an approve link, the system marks their actor as approved, transitions
-   * the opportunity to pending (triggering negotiation), and redirects to
-   * a success page.
+   * the opportunity to pending (triggering negotiation), and returns an
+   * inline HTML confirmation page (200, no redirect).
    *
    * No guard: authentication is via the token query parameter (same
    * mechanism as the `/connect` endpoint).

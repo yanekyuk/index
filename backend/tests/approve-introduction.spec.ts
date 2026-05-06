@@ -38,19 +38,22 @@ describe('connect-token helpers', () => {
 // OpportunityService.approveIntroduction unit tests
 // ---------------------------------------------------------------------------
 describe('OpportunityService.approveIntroduction', () => {
-  const makeDb = (overrides: Record<string, unknown> = {}) => ({
-    getOpportunityActors: mock(async () => [
-      { userId: INTRODUCER_ID, role: 'introducer', approved: false },
-    ]),
-    updateOpportunityActorApproval: mock(async () => true),
+  const makeOpp = (overrides: Record<string, unknown> = {}) => ({
+    id: OPP_ID,
+    status: 'draft',
+    actors: [{ userId: INTRODUCER_ID, role: 'introducer', approved: false }],
     ...overrides,
   });
 
+  const makeDb = (oppOverrides: Record<string, unknown> = {}, dbOverrides: Record<string, unknown> = {}) => ({
+    getOpportunity: mock(async () => makeOpp(oppOverrides)),
+    updateOpportunityActorApproval: mock(async () => true),
+    ...dbOverrides,
+  });
+
   const makeService = (db: ReturnType<typeof makeDb>) => {
-    // Dynamically import to avoid top-level env dependency
     const { OpportunityService } = require('../src/services/opportunity.service');
     const svc = new OpportunityService(db);
-    // Stub out updateOpportunityStatus so it doesn't hit real DB
     svc.updateOpportunityStatus = mock(async () => null);
     return svc;
   };
@@ -59,27 +62,43 @@ describe('OpportunityService.approveIntroduction', () => {
     mock.restore();
   });
 
-  it('returns error when user is not an introducer', async () => {
+  it('returns 404 when opportunity not found', async () => {
+    const db = makeDb({}, { getOpportunity: mock(async () => null) });
+    const svc = makeService(db);
+    const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
+    expect(result).toMatchObject({ error: expect.any(String), status: 404 });
+  });
+
+  it('returns 403 when user is not an introducer', async () => {
     const db = makeDb({
-      getOpportunityActors: mock(async () => [
-        { userId: NON_INTRODUCER_ID, role: 'candidate', approved: false },
-      ]),
+      actors: [{ userId: NON_INTRODUCER_ID, role: 'candidate', approved: false }],
     });
     const svc = makeService(db);
     const result = await svc.approveIntroduction(OPP_ID, NON_INTRODUCER_ID);
-    expect(result).toHaveProperty('error');
-    expect(result.status).toBe(403);
+    expect(result).toMatchObject({ error: expect.any(String), status: 403 });
   });
 
-  it('returns error when actor is already approved', async () => {
+  it('returns success idempotently when actor already approved and status is terminal', async () => {
     const db = makeDb({
-      getOpportunityActors: mock(async () => [
-        { userId: INTRODUCER_ID, role: 'introducer', approved: true },
-      ]),
+      status: 'pending',
+      actors: [{ userId: INTRODUCER_ID, role: 'introducer', approved: true }],
     });
     const svc = makeService(db);
     const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
-    expect(result).toHaveProperty('error');
+    expect(result).toEqual({ success: true });
+    expect(db.updateOpportunityActorApproval).not.toHaveBeenCalled();
+  });
+
+  it('retries status transition when actor already approved but status not terminal', async () => {
+    const db = makeDb({
+      status: 'draft',
+      actors: [{ userId: INTRODUCER_ID, role: 'introducer', approved: true }],
+    });
+    const svc = makeService(db);
+    const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
+    expect(result).toEqual({ success: true });
+    expect(db.updateOpportunityActorApproval).not.toHaveBeenCalled();
+    expect(svc.updateOpportunityStatus).toHaveBeenCalled();
   });
 
   it('flips approved flag and returns success', async () => {
@@ -90,22 +109,18 @@ describe('OpportunityService.approveIntroduction', () => {
     expect(result).toEqual({ success: true });
   });
 
-  it('returns error when DB approval update fails', async () => {
-    const db = makeDb({
-      updateOpportunityActorApproval: mock(async () => false),
-    });
+  it('returns 500 when DB approval update fails', async () => {
+    const db = makeDb({}, { updateOpportunityActorApproval: mock(async () => false) });
     const svc = makeService(db);
     const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
-    expect(result).toHaveProperty('error');
-    expect(result.status).toBe(500);
+    expect(result).toMatchObject({ error: expect.any(String), status: 500 });
   });
 
-  it('returns error when status transition fails', async () => {
+  it('returns 500 when status transition fails', async () => {
     const db = makeDb();
     const svc = makeService(db);
     svc.updateOpportunityStatus = mock(async () => ({ error: 'DB error', status: 500 }));
     const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
-    expect(result).toHaveProperty('error');
-    expect(result.status).toBe(500);
+    expect(result).toMatchObject({ error: expect.any(String), status: 500 });
   });
 });

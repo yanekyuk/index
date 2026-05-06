@@ -424,15 +424,20 @@ export class OpportunityService {
       return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
     }
 
-    if (actor.approved === true) {
-      // Idempotent: already approved
-      return { success: true };
-    }
+    const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);
 
-    // Flip approved flag
-    const updated = await this.db.updateOpportunityActorApproval(opportunityId, userId, true);
-    if (!updated) {
-      return { error: 'Failed to update approval', status: 500 };
+    if (actor.approved === true) {
+      // Approval already flipped — only retry the status transition if it hasn't landed yet.
+      // This handles the case where a prior call flipped approved but failed to transition status.
+      if (TERMINAL_STATUSES.has(opp.status)) {
+        return { success: true };
+      }
+    } else {
+      // Flip approved flag
+      const updated = await this.db.updateOpportunityActorApproval(opportunityId, userId, true);
+      if (!updated) {
+        return { error: 'Failed to update approval', status: 500 };
+      }
     }
 
     // Transition to pending (triggers negotiation)
