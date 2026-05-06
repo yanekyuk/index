@@ -3,6 +3,7 @@ import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
+import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
 export interface AcceptedOpportunityConfig {
   baseUrl: string;
@@ -20,6 +21,11 @@ export async function handle(
   api: OpenClawPluginApi,
   config: AcceptedOpportunityConfig,
 ): Promise<AcceptedOpportunityOutcome> {
+  if (!await isOnboardingComplete(api, config)) {
+    api.logger.debug('Accepted opportunity: onboarding not complete, skipping.');
+    return 'empty';
+  }
+
   const acceptedUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/accepted?limit=${ACCEPTED_LIMIT}`;
 
   let res: Response;
