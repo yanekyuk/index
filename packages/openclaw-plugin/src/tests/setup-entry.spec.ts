@@ -506,7 +506,7 @@ describe('setup wizard', () => {
     const prefixesWrite = fake.configWrites.find(
       (w) => w.path === 'hooks.allowedSessionKeyPrefixes',
     );
-    expect(prefixesWrite?.value).toEqual(['agent:main:']);
+    expect(prefixesWrite?.value).toEqual(['agent:main:', 'hook:']);
   });
 
   test('appends agent:main: to existing hooks.allowedSessionKeyPrefixes, preserving entries', async () => {
