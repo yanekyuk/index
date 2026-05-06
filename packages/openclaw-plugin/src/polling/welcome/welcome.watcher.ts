@@ -15,8 +15,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
-import { readMainAgentToolUse } from '../../lib/delivery/config.js';
-import { readWelcomeSent, writeWelcomeSent } from '../../lib/delivery/config.js';
+import { readMainAgentToolUse, readWelcomeSent, writeWelcomeSent } from '../../lib/delivery/config.js';
 import { fetchConnectToken } from '../../lib/utils/connect-token.js';
 import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
@@ -49,36 +48,38 @@ export async function start(
 
   api.logger.debug('Starting welcome watcher.');
 
-  // Poll every 15 seconds until onboarding completes.
-  intervalHandle = setInterval(async () => {
-    try {
-      const isComplete = await isOnboardingComplete(api, {
-        baseUrl: config.baseUrl,
-        agentId: config.agentId,
-        apiKey: config.apiKey,
-      });
-
-      if (!isComplete) {
-        api.logger.debug('Welcome watcher: onboarding not yet complete.');
-        return;
-      }
-
-      // Onboarding is complete — dispatch welcome
-      api.logger.info('Onboarding detected as complete, dispatching welcome.');
-      clearInterval(intervalHandle);
-      intervalHandle = undefined;
-
-      await dispatchWelcome(api, config);
-      writeWelcomeSent(api);
-    } catch (err) {
-      api.logger.warn(
-        `Welcome watcher tick errored: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      // Keep polling on error; welcome will retry next tick.
-    }
-  }, POLL_INTERVAL_MS);
-
+  intervalHandle = setInterval(() => void _tick(api, config), POLL_INTERVAL_MS);
   intervalHandle?.unref();
+}
+
+/** Single poll tick. Exported for tests. */
+export async function _tick(
+  api: OpenClawPluginApi,
+  config: WelcomeWatcherConfig,
+): Promise<void> {
+  try {
+    const isComplete = await isOnboardingComplete(api, {
+      baseUrl: config.baseUrl,
+      agentId: config.agentId,
+      apiKey: config.apiKey,
+    });
+
+    if (!isComplete) {
+      api.logger.debug('Welcome watcher: onboarding not yet complete.');
+      return;
+    }
+
+    api.logger.info('Onboarding detected as complete, dispatching welcome.');
+    clearInterval(intervalHandle);
+    intervalHandle = undefined;
+
+    const ok = await dispatchWelcome(api, config);
+    if (ok) writeWelcomeSent(api);
+  } catch (err) {
+    api.logger.warn(
+      `Welcome watcher tick errored: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 /**
@@ -87,7 +88,7 @@ export async function start(
 async function dispatchWelcome(
   api: OpenClawPluginApi,
   config: WelcomeWatcherConfig,
-): Promise<void> {
+): Promise<boolean> {
   const pendingUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/pending?limit=${PENDING_LIMIT}`;
 
   let res: Response;
@@ -99,13 +100,13 @@ async function dispatchWelcome(
     });
   } catch (err) {
     api.logger.warn(`Welcome fetch errored: ${err instanceof Error ? err.message : String(err)}`);
-    return;
+    return false;
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     api.logger.warn(`Welcome fetch failed: ${res.status} ${text}`);
-    return;
+    return false;
   }
 
   const body = (await res.json()) as {
@@ -155,12 +156,14 @@ async function dispatchWelcome(
       `Welcome dispatched: ${candidates.length} candidate(s); agent will confirm individually`,
       { agentId: config.agentId },
     );
-  } else {
-    api.logger.warn('Welcome dispatch failed', {
-      agentId: config.agentId,
-      error: dispatch.error,
-    });
+    return true;
   }
+
+  api.logger.warn('Welcome dispatch failed', {
+    agentId: config.agentId,
+    error: dispatch.error,
+  });
+  return false;
 }
 
 /** Reset module-level state. Exposed for tests only. */

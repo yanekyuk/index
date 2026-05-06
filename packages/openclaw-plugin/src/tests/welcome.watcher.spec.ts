@@ -5,10 +5,11 @@ import { _resetForTesting as _resetOnboardingStatus } from '../polling/onboardin
 import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
 const OPP_1 = '11111111-1111-1111-1111-111111111111';
+const OPP_2 = '22222222-2222-2222-2222-222222222222';
 
 interface FetchSink {
   pendingUrls: string[];
-  hookCalls: Array<{ url: string; body?: unknown }>;
+  hookCalls: Array<{ url: string; body?: Record<string, unknown> }>;
 }
 
 function makeApi(): OpenClawPluginApi {
@@ -62,14 +63,23 @@ function mockBackend(
       return new Response(JSON.stringify({ opportunities }), { status: 200 });
     }
     if (url.includes('/hooks/agent')) {
-      const body = init?.body ? (JSON.parse(init.body as string) as unknown) : undefined;
+      const body = init?.body
+        ? (JSON.parse(init.body as string) as Record<string, unknown>)
+        : undefined;
       sink.hookCalls.push({ url, body });
-      return new Response(JSON.stringify({ status: 'sent' }), { status: hookStatus });
+      return new Response(JSON.stringify({ ok: true, runId: 'r1' }), { status: hookStatus });
     }
     return new Response('not-found', { status: 404 });
   }) as unknown as typeof fetch;
   return sink;
 }
+
+const cfg = {
+  baseUrl: 'https://test.example.com',
+  agentId: 'agent-123',
+  apiKey: 'k',
+  frontendUrl: 'https://test.index.network',
+};
 
 describe('welcome watcher', () => {
   let mockApi: OpenClawPluginApi;
@@ -88,67 +98,51 @@ describe('welcome watcher', () => {
     welcomeWatcher._resetForTesting();
   });
 
-  const cfg = {
-    baseUrl: 'https://test.example.com',
-    agentId: 'agent-123',
-    apiKey: 'k',
-    frontendUrl: 'https://test.index.network',
-  };
-
   it('skips immediately if welcomeSent is already true', async () => {
     mockApi.pluginConfig['welcomeSent'] = true;
     mockBackend(false, []);
 
     await welcomeWatcher.start(mockApi, cfg);
 
-    // After start returns, no polling should happen (we never even look at onboarding status)
-    expect(mockApi.logger.debug.mock.calls.length).toBeGreaterThan(0);
     const debugCalls = mockApi.logger.debug.mock.calls.map((c) => c[0]);
     expect(debugCalls.some((c) => typeof c === 'string' && c.includes('already sent'))).toBe(true);
   });
 
-  it('should start and set up polling when welcomeSent is false', async () => {
+  it('starts polling when welcomeSent is false', async () => {
     mockBackend(false, []);
-    mockApi.pluginConfig['welcomeSent'] = false;
 
-    // This just verifies that start doesn't crash and doesn't write welcomeSent immediately
     await welcomeWatcher.start(mockApi, cfg);
 
-    // Should log that watcher started
-    expect(mockApi.logger.debug.mock.calls.length).toBeGreaterThan(0);
     const debugCalls = mockApi.logger.debug.mock.calls.map((c) => c[0]);
     expect(debugCalls.some((c) => typeof c === 'string' && c.includes('welcome watcher'))).toBe(true);
-
-    // welcomeSent should still be false at this point (polling hasn't fired yet)
     expect(mockApi.pluginConfig['welcomeSent']).not.toBe(true);
   });
 
-  it('should read from pluginConfig correctly', async () => {
-    mockBackend(true, []);
-    mockApi.pluginConfig['welcomeSent'] = false;
+  it('tick does nothing when onboarding is not complete', async () => {
+    mockBackend(false, []);
 
-    // Test that the config read works
-    const configValue = mockApi.pluginConfig['welcomeSent'];
-    expect(configValue).toBe(false);
+    await welcomeWatcher._tick(mockApi, cfg);
 
-    // And that it can be set
-    mockApi.pluginConfig['welcomeSent'] = true;
+    expect(mockApi.pluginConfig['welcomeSent']).not.toBe(true);
+    const debugCalls = mockApi.logger.debug.mock.calls.map((c) => c[0]);
+    expect(debugCalls.some((c) => typeof c === 'string' && c.includes('not yet complete'))).toBe(true);
+  });
+
+  it('dispatches welcome with zero candidates and writes welcomeSent', async () => {
+    const sink = mockBackend(true, []);
+
+    await welcomeWatcher._tick(mockApi, cfg);
+
+    expect(sink.pendingUrls).toHaveLength(1);
+    expect(sink.pendingUrls[0]).toContain('/opportunities/pending');
+    expect(sink.hookCalls).toHaveLength(1);
+    const msg = sink.hookCalls[0].body?.message;
+    expect(typeof msg).toBe('string');
+    expect(msg as string).toContain('WELCOME');
     expect(mockApi.pluginConfig['welcomeSent']).toBe(true);
   });
 
-  it('should build a welcome prompt with zero candidates', async () => {
-    mockBackend(true, []);
-    mockApi.pluginConfig['welcomeSent'] = false;
-
-    // The dispatch code should work even with empty opportunities
-    const opportunities = [];
-    const sink = mockBackend(true, opportunities);
-
-    // This verifies the implementation structure is correct
-    expect(sink.pendingUrls).toHaveLength(0); // Haven't polled yet
-  });
-
-  it('should handle opportunities with counterpartUserId', async () => {
+  it('dispatches welcome with candidates including connect tokens', async () => {
     const opportunities = [
       {
         opportunityId: OPP_1,
@@ -160,32 +154,72 @@ describe('welcome watcher', () => {
           narratorRemark: 'strong alignment',
         },
       },
+      {
+        opportunityId: OPP_2,
+        counterpartUserId: 'user-bob',
+        rendered: {
+          headline: 'Bob does ML',
+          personalizedSummary: 'Shared ML interest',
+          suggestedAction: 'chat about ML',
+          narratorRemark: 'good fit',
+        },
+      },
     ];
-    mockBackend(true, opportunities);
-    mockApi.pluginConfig['welcomeSent'] = false;
+    const sink = mockBackend(true, opportunities);
 
-    // Verify opportunities structure is parsed correctly by the mock
-    expect(opportunities[0].counterpartUserId).toBe('user-alice');
-    expect(opportunities[0].opportunityId).toBe(OPP_1);
+    await welcomeWatcher._tick(mockApi, cfg);
+
+    expect(sink.hookCalls).toHaveLength(1);
+    const msg = sink.hookCalls[0].body?.message as string;
+    expect(msg).toContain('Alice works on AI');
+    expect(msg).toContain('Bob does ML');
+    expect(msg).toContain('mock-jwt-token');
+    expect(msg).toContain('/u/user-alice');
+    expect(msg).toContain('/u/user-bob');
+    expect(mockApi.pluginConfig['welcomeSent']).toBe(true);
   });
 
-  it('should filter out opportunities without counterpartUserId', async () => {
+  it('filters out opportunities without counterpartUserId', async () => {
     const opportunities = [
       {
         opportunityId: OPP_1,
         counterpartUserId: null,
         rendered: {
-          headline: 'Invalid opportunity',
-          personalizedSummary: 'No counterpart',
+          headline: 'No counterpart',
+          personalizedSummary: 'skip',
           suggestedAction: 'skip',
-          narratorRemark: 'missing user',
+          narratorRemark: 'skip',
+        },
+      },
+      {
+        opportunityId: OPP_2,
+        counterpartUserId: 'user-bob',
+        rendered: {
+          headline: 'Bob does ML',
+          personalizedSummary: 'Shared ML interest',
+          suggestedAction: 'chat about ML',
+          narratorRemark: 'good fit',
         },
       },
     ];
-    mockBackend(true, opportunities);
-    mockApi.pluginConfig['welcomeSent'] = false;
+    const sink = mockBackend(true, opportunities);
 
-    // Verify the structure is correct even with null counterpartUserId
-    expect(opportunities[0].counterpartUserId).toBe(null);
+    await welcomeWatcher._tick(mockApi, cfg);
+
+    expect(sink.hookCalls).toHaveLength(1);
+    const msg = sink.hookCalls[0].body?.message as string;
+    expect(msg).toContain('Bob does ML');
+    expect(msg).not.toContain('No counterpart');
+    expect(mockApi.pluginConfig['welcomeSent']).toBe(true);
+  });
+
+  it('does not write welcomeSent when hook dispatch returns non-2xx', async () => {
+    mockBackend(true, [], 500);
+
+    await welcomeWatcher._tick(mockApi, cfg);
+
+    expect(mockApi.pluginConfig['welcomeSent']).not.toBe(true);
+    const warnCalls = mockApi.logger.warn.mock.calls.map((c) => c[0]);
+    expect(warnCalls.some((c) => typeof c === 'string' && c.includes('dispatch failed'))).toBe(true);
   });
 });
