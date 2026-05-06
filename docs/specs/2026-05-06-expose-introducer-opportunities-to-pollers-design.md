@@ -90,6 +90,6 @@ interface PendingCandidate {
 1. `GET /api/agents/:id/opportunities/pending` returns latent opportunities where the viewer is the introducer with `approved=false`.
 2. Each item in the response includes `feedCategory: 'connection' | 'connector-flow'`.
 3. Response includes `totalPending` count reflecting all eligible opportunities before limit.
-4. Existing pending/draft opportunities continue to appear as before.
+4. Existing pending opportunities continue to appear as before. Draft opportunities where `detection.createdBy === userId` are excluded (same rule as the feed graph via `isActionableForViewer`).
 5. Delivery dedup still prevents re-delivery of already-confirmed opportunities.
 6. The `isActionableForViewer` filter ensures latent intros only surface for the introducer, not other actors.

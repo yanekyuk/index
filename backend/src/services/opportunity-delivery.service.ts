@@ -324,15 +324,13 @@ export class OpportunityDeliveryService {
    * @returns Result with candidates (rendered cards + feedCategory), totalPending count, ordered oldest-first.
    */
   async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidatesResult> {
-    const userId = await this.resolveAgentOwner(agentId);
+    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
+    if (!agent) throw new Error('agent_not_found');
+    if (!agent.notifyOnOpportunity) return { opportunities: [], totalPending: 0 };
+
+    const userId = agent.ownerId;
     const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 20;
     const effectiveLimit = Math.min(20, Math.max(1, raw));
-
-    // Guard: bail early if the agent has notifications disabled
-    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
-    if (!agent?.notifyOnOpportunity) {
-      return { opportunities: [], totalPending: 0 };
-    }
 
     // Step 1: Fetch via adapter — same as feed graph
     const rows = await chatDatabaseAdapter.getOpportunitiesForUser(userId, {
