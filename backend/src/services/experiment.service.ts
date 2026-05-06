@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -8,6 +8,14 @@ import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 
 const logger = log.service.from('experiment');
+
+export interface ImportRow {
+  email: string;
+  name?: string;
+  bio?: string;
+  location?: string;
+  socials: { label: string; value: string }[];
+}
 
 export interface ExperimentSignupResult {
   user: { id: string; email: string };
@@ -39,6 +47,87 @@ class ExperimentService {
       connectCommand: this.buildConnectCommand(apiKey),
       created,
     };
+  }
+
+  async importMembers(networkId: string, rows: ImportRow[]): Promise<{ imported: number; skipped: number }> {
+    let imported = 0;
+    let skipped = 0;
+
+    for (const row of rows) {
+      try {
+        const { user } = await this.findOrCreateUser(row.email.toLowerCase().trim(), networkId);
+        await ensurePersonalNetwork(user.id);
+        await this.joinExperimentNetwork(user.id, networkId);
+
+        if (row.name) {
+          await db
+            .update(schema.users)
+            .set({ name: row.name })
+            .where(eq(schema.users.id, user.id));
+        }
+
+        if (row.bio || row.location) {
+          const [existing] = await db
+            .select({ id: schema.userProfiles.id, identity: schema.userProfiles.identity })
+            .from(schema.userProfiles)
+            .where(eq(schema.userProfiles.userId, user.id))
+            .limit(1);
+
+          const patch: { bio?: string; location?: string } = {};
+          if (row.bio) patch.bio = row.bio;
+          if (row.location) patch.location = row.location;
+
+          if (existing) {
+            const identity = (existing.identity as { name?: string; bio?: string; location?: string } | null) ?? {};
+            await db
+              .update(schema.userProfiles)
+              .set({ identity: { ...identity, ...patch }, updatedAt: new Date() })
+              .where(eq(schema.userProfiles.id, existing.id));
+          } else {
+            await db
+              .insert(schema.userProfiles)
+              .values({
+                userId: user.id,
+                identity: {
+                  name: row.name || '',
+                  bio: row.bio || '',
+                  location: row.location || '',
+                },
+              });
+          }
+        }
+
+        for (const social of row.socials) {
+          const [existing] = await db
+            .select({ id: schema.userSocials.id })
+            .from(schema.userSocials)
+            .where(and(
+              eq(schema.userSocials.userId, user.id),
+              eq(schema.userSocials.label, social.label),
+            ))
+            .limit(1);
+
+          if (existing) {
+            await db
+              .update(schema.userSocials)
+              .set({ value: social.value })
+              .where(eq(schema.userSocials.id, existing.id));
+          } else {
+            await db
+              .insert(schema.userSocials)
+              .values({ userId: user.id, label: social.label, value: social.value });
+          }
+        }
+
+        imported++;
+      } catch (err) {
+        logger.warn('[ExperimentService] Import row failed', { email: row.email, error: err });
+        skipped++;
+      }
+    }
+
+    logger.info('[ExperimentService] Import complete', { networkId, imported, skipped });
+    return { imported, skipped };
   }
 
   private async findOrCreateUser(

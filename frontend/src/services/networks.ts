@@ -328,7 +328,22 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   // Remove member intent from network (deprecated - kept for backwards compatibility)
   removeMemberIntent: async (networkId: string, intentId: string): Promise<void> => {
     await api.delete(`/networks/${networkId}/member-intents/${intentId}`);
-  }
+  },
+
+  // CSV Import — parse a large CSV file server-side
+  parseCsvImport: async (networkId: string, file: File): Promise<{
+    valid: Array<{ email: string; name?: string; bio?: string; socials: { label: string; value: string }[] }>;
+    invalid: Array<{ row: Record<string, string>; reason: string }>;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.uploadFile(`/networks/${networkId}/members/import/parse`, file, undefined, 'file');
+  },
+
+  // CSV Import — confirm import of parsed rows
+  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; socials: { label: string; value: string }[] }>): Promise<{ imported: number; skipped: number }> => {
+    return api.post(`/networks/${networkId}/members/import`, { members });
+  },
 });
 
 // Non-authenticated service for public endpoints

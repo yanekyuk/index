@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera, Upload, Download, X } from 'lucide-react';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,9 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
 import { Member } from '@/services/networks';
-import { validateFiles } from '@/lib/file-validation';
+import { validateFiles, validateFile } from '@/lib/file-validation';
+import { parseCsvText, type ImportRow, type ParsedCsvResult } from '@/lib/csv-import';
+import CsvPreviewModal from '@/components/modals/CsvPreviewModal';
 
 /** Toolkits available for connection. Add entries here when enabling new Composio integrations. */
 const AVAILABLE_TOOLKITS = ['gmail', 'slack'] as const;
@@ -73,6 +76,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const [connections, setConnections] = useState<ComposioConnection[]>([]);
   const [connectionsLoaded, setConnectionsLoaded] = useState(false);
   const [pendingToolkit, setPendingToolkit] = useState<string | null>(null);
+
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvPreview, setCsvPreview] = useState<ParsedCsvResult | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [showCsvModal, setShowCsvModal] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect -- syncs local form state from prop changes */
   useEffect(() => {
@@ -333,6 +341,42 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       error(`Failed to import ${toolkitLabel(toolkit)} contacts`);
     }
   };
+
+  const handleCsvFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (csvInputRef.current) csvInputRef.current.value = '';
+    if (!file) return;
+
+    const validation = validateFile(file);
+    if (!validation.isValid) {
+      setCsvError(validation.message || 'Invalid file');
+      return;
+    }
+
+    setCsvError(null);
+    try {
+      const text = await file.text();
+      const result = parseCsvText(text);
+      if (!result.hasEmailColumn) {
+        setCsvPreview(result);
+        return;
+      }
+      setCsvPreview(result);
+    } catch {
+      error('Failed to read CSV file');
+    }
+  }, []);
+
+  const handleCsvConfirm = useCallback(async (rows: ImportRow[]) => {
+    try {
+      const result = await indexesService.importMembers(index.id, rows);
+      setCsvPreview(null);
+      success(`Imported ${result.imported} member${result.imported !== 1 ? 's' : ''}${result.skipped > 0 ? ` · ${result.skipped} skipped` : ''}`);
+      await loadMembers();
+    } catch {
+      error('Import failed');
+    }
+  }, [indexesService, index.id, loadMembers]);
 
   const linkAndImport = async (toolkit: string) => {
     const svc = createIntegrationsService(api);
@@ -600,18 +644,44 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
             {/* Smart search input — at top */}
             <div ref={searchContainerRef} className="relative mb-3">
-              <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-              <Input
-                ref={searchInputRef}
-                placeholder="Search by name or add by email..."
-                value={memberSearchQuery}
-                onChange={(e) => {
-                  setMemberSearchQuery(e.target.value);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                className="pl-9"
-              />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="Search by name or add by email..."
+                    value={memberSearchQuery}
+                    onChange={(e) => {
+                      setMemberSearchQuery(e.target.value);
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    className="pl-9"
+                  />
+                </div>
+                {currentIndex.isExperiment && (
+                  <>
+                    <input
+                      ref={csvInputRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={handleCsvFile}
+                      className="hidden"
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowCsvModal(true)}
+                      className="flex-shrink-0 gap-1.5 h-10"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      Import CSV
+                    </Button>
+                  </>
+                )}
+              </div>
+              {csvError && (
+                <p className="text-xs text-red-600 mt-1">{csvError}</p>
+              )}
 
               {/* Dropdown: new users to add (not already in list) */}
               {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && filteredSuggestions.length > 0 && (
@@ -784,6 +854,66 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
           </AlertDialog.Content>
         </AlertDialog.Portal>
       </AlertDialog.Root>
+
+      <Dialog.Root open={showCsvModal} onOpenChange={setShowCsvModal}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg w-full max-w-sm z-[100] focus:outline-none">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <Dialog.Title className="text-lg font-bold text-gray-900">Import CSV</Dialog.Title>
+              <Dialog.Close asChild>
+                <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="h-4 w-4" />
+                </button>
+              </Dialog.Close>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-gray-600">
+                Upload a CSV file with member data. The file must have an <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">email</code> column. Optional columns: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">bio</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">location</code>, and any social links (e.g. <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">linkedin</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">github</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">twitter</code>, <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">website</code>).
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const csv = 'email,name,bio,location,linkedin,github,twitter,website\njane@example.com,Jane Doe,Product designer,Berlin,https://linkedin.com/in/janedoe,janedoe,@janedoe,https://janedoe.com\njohn@example.com,John Smith,Full-stack developer,San Francisco,,johnsmith,,\n';
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'example-import.csv';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-2 text-sm text-gray-600 hover:text-black transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download example CSV
+              </button>
+              <Button
+                className="w-full gap-2"
+                onClick={() => {
+                  setShowCsvModal(false);
+                  csvInputRef.current?.click();
+                }}
+              >
+                <Upload className="h-4 w-4" />
+                Choose file
+              </Button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {csvPreview && (
+        <CsvPreviewModal
+          open={!!csvPreview}
+          onOpenChange={(open) => { if (!open) setCsvPreview(null); }}
+          valid={csvPreview.valid}
+          invalid={csvPreview.invalid}
+          columns={csvPreview.columns}
+          hasEmailColumn={csvPreview.hasEmailColumn}
+          onConfirm={handleCsvConfirm}
+        />
+      )}
     </>
   );
 }
