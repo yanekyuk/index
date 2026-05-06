@@ -51,7 +51,7 @@ function mockBackend(opportunities: unknown[], hookStatus = 200, confirmStatus =
     }
     if (url.includes('/opportunities/pending')) {
       sink.pendingUrls.push(url);
-      return new Response(JSON.stringify({ opportunities }), { status: 200 });
+      return new Response(JSON.stringify({ opportunities, totalPending: opportunities.length }), { status: 200 });
     }
     if (url.includes('/hooks/agent')) {
       const body = init?.body ? (JSON.parse(init.body as string) as unknown) : undefined;
@@ -109,8 +109,8 @@ describe('handleDailyDigest (hooks-only path)', () => {
 
   it('dispatches via /hooks/agent with digest prompt', async () => {
     const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
-      { opportunityId: OPP_2, counterpartUserId: 'user-2', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', feedCategory: 'connection', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_2, counterpartUserId: 'user-2', feedCategory: 'connection', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ]);
 
     const result = await handleDailyDigest(mockApi, cfg);
@@ -124,7 +124,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
 
   it('returns false when dispatch fails', async () => {
     const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', feedCategory: 'connection', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ], 500);
 
     const result = await handleDailyDigest(mockApi, cfg);
@@ -134,7 +134,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
 
   it('returns true after successful dispatch (no confirm step)', async () => {
     const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'user-1', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_1, counterpartUserId: 'user-1', feedCategory: 'connection', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ], 200, 500);
 
     const result = await handleDailyDigest(mockApi, cfg);
@@ -145,7 +145,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
 
   it('skips opportunities with null counterpartUserId', async () => {
     const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: null, rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
+      { opportunityId: OPP_1, counterpartUserId: null, feedCategory: 'connection', rendered: { headline: 'H', personalizedSummary: 'S', suggestedAction: 'A', narratorRemark: '' } },
     ]);
     const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(false);
@@ -154,7 +154,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
 
   it('does NOT call /confirm-batch after successful dispatch', async () => {
     const sink = mockBackend([
-      { opportunityId: OPP_1, counterpartUserId: 'cp-1', rendered: { headline: 'h', personalizedSummary: 's', suggestedAction: 'a', narratorRemark: 'n' } },
+      { opportunityId: OPP_1, counterpartUserId: 'cp-1', feedCategory: 'connection', rendered: { headline: 'h', personalizedSummary: 's', suggestedAction: 'a', narratorRemark: 'n' } },
     ]);
     const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(true);

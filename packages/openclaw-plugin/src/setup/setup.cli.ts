@@ -154,6 +154,34 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   ]);
   await ctx.configSet(`${configPrefix}.mainAgentToolUse`, mainAgentToolUse || 'disabled');
 
+  // --- Community branding (optional) ---
+  const existingNodeName = existing('nodeName');
+  const nodeName = await ctx.prompt(
+    'Community name (optional, leave blank to skip)',
+    { default: existingNodeName || '' },
+  );
+  if (nodeName) {
+    await ctx.configSet(`${configPrefix}.nodeName`, nodeName);
+
+    const existingDesc = existing('nodeDescription');
+    const nodeDescription = await ctx.prompt(
+      'Community description (optional)',
+      { default: existingDesc || '' },
+    );
+    if (nodeDescription) {
+      await ctx.configSet(`${configPrefix}.nodeDescription`, nodeDescription);
+    }
+
+    const existingCtx = existing('nodeContext');
+    const nodeContext = await ctx.prompt(
+      'Community context / focus area (optional)',
+      { default: existingCtx || '' },
+    );
+    if (nodeContext) {
+      await ctx.configSet(`${configPrefix}.nodeContext`, nodeContext);
+    }
+  }
+
   // --- Bootstrap gateway hooks (required for /hooks/agent dispatch) ---
   // The plugin dispatches notifications via POST /hooks/agent, which requires
   // hooks.enabled=true and a non-empty hooks.token distinct from the gateway
@@ -242,6 +270,12 @@ export interface HeadlessSetupOptions {
   digestTime?: string;
   /** Main agent tool use mode. Defaults to 'disabled'. */
   mainAgentToolUse?: 'enabled' | 'disabled';
+  /** Optional community branding name. */
+  nodeName?: string;
+  /** Optional community branding description. */
+  nodeDescription?: string;
+  /** Optional community branding context/focus area. */
+  nodeContext?: string;
   /** Existing OpenClaw config snapshot. Defaults to empty. The object is deep-cloned; caller's copy is not mutated. */
   existingCfg?: Record<string, unknown>;
   /** Override the agentId resolution fetch. Useful for testing. */
@@ -276,6 +310,9 @@ export async function runHeadlessSetup(
       // Handles both "API key" and "API key (leave blank to keep existing)"
       if (label.startsWith('API key')) return opts.apiKey;
       if (label.startsWith('Digest time')) return digestTime;
+      if (label.startsWith('Community name')) return opts.nodeName ?? '';
+      if (label.startsWith('Community description')) return opts.nodeDescription ?? '';
+      if (label.startsWith('Community context')) return opts.nodeContext ?? '';
       return promptOpts?.default ?? '';
     },
     select: async (label, choices) => {

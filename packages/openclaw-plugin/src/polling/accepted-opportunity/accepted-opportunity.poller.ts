@@ -1,7 +1,7 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
-import { readMainAgentToolUse } from '../../lib/delivery/config.js';
+import { readMainAgentToolUse, readNodeBranding } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
@@ -89,11 +89,13 @@ export async function handle(
   }
 
   const mainAgentToolUse = readMainAgentToolUse(api);
+  const branding = readNodeBranding(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'accepted_opportunity',
     mainAgentToolUse,
     payload: { contentType: 'accepted_opportunity', candidates },
+    branding,
   });
 
   const dispatch = await dispatchToMainAgent(api, {
