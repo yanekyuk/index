@@ -541,7 +541,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         <div className="space-y-8">
 
           {/* Who can join — experiment networks are always private */}
-          {!index.isPersonal && !('isExperiment' in index && index.isExperiment) && (
+          {!index.isPersonal && !currentIndex.isExperiment && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
               <div className="grid grid-cols-2 gap-2">
@@ -572,7 +572,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
           )}
 
           {/* Share link — not applicable for experiment networks */}
-          {!index.isPersonal && !('isExperiment' in index && index.isExperiment) && (
+          {!index.isPersonal && !currentIndex.isExperiment && (
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
                 {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}

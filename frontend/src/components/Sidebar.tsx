@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, Library, History, Network, Bot } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Compass, MessagesSquare, ChevronDown, Settings, LogOut, Library, History, Network, Bot, X, Copy, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -42,6 +44,8 @@ export default function Sidebar() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
+  const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
@@ -68,16 +72,11 @@ export default function Sidebar() {
         isExperiment: indexData.isExperiment,
       };
       const newIndex = await indexesService.createNetwork(createRequest);
-      addIndex(newIndex);
+      const { masterKey, ...network } = newIndex;
+      addIndex(network);
       setCreateIndexModalOpen(false);
-      if (newIndex.masterKey) {
-        try {
-          await navigator.clipboard.writeText(newIndex.masterKey);
-          success('Experiment network created — master key copied to clipboard');
-        } catch {
-          success('Experiment network created — copy the master key from the console');
-          console.log('Master key:', newIndex.masterKey);
-        }
+      if (masterKey) {
+        setMasterKeyModal({ networkId: network.id, masterKey });
       } else {
         success('Index created successfully');
       }
@@ -366,6 +365,68 @@ export default function Sidebar() {
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
       />
+
+      <Dialog.Root open={!!masterKeyModal} onOpenChange={(open) => {
+        if (!open) {
+          const networkId = masterKeyModal?.networkId;
+          setMasterKeyModal(null);
+          setCopied(false);
+          if (networkId) navigate(`/networks/${networkId}`);
+        }
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg w-full max-w-md z-[100] focus:outline-none">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <Dialog.Title className="text-lg font-bold text-black">Master Key</Dialog.Title>
+                <Dialog.Close className="p-1 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="h-4 w-4" />
+                </Dialog.Close>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Save this key now — it will not be shown again. Use it as the <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">x-api-key</code> header when calling the signup endpoint.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!masterKeyModal?.masterKey) return;
+                  try {
+                    await navigator.clipboard.writeText(masterKeyModal.masterKey);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 800);
+                  } catch { /* silent */ }
+                }}
+                aria-label="Copy"
+                className={`relative w-full text-left group rounded-sm border p-3 transition-colors duration-300 ${
+                  copied
+                    ? 'bg-green-100 border-green-400'
+                    : 'bg-gray-50 border-gray-200 hover:bg-green-50 hover:border-green-300'
+                }`}
+              >
+                <code className="block text-xs text-gray-700 font-ibm-plex-mono whitespace-pre-wrap break-all pr-16 select-text">{masterKeyModal?.masterKey}</code>
+                <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
+                  {copied ? (
+                    <><Check className="w-3 h-3" /> Copied</>
+                  ) : (
+                    <><Copy className="w-3 h-3" /> Copy</>
+                  )}
+                </span>
+              </button>
+              <div className="flex justify-end mt-4">
+                <Button onClick={() => {
+                  const networkId = masterKeyModal?.networkId;
+                  setMasterKeyModal(null);
+                  setCopied(false);
+                  if (networkId) navigate(`/networks/${networkId}`);
+                }}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }
