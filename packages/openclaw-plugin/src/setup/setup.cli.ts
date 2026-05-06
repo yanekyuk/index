@@ -320,6 +320,59 @@ function setConfigValue(cfg: Record<string, unknown>, dotPath: string, value: un
   obj[parts[parts.length - 1]] = value;
 }
 
+/**
+ * Registers the `openclaw index connect` CLI command.
+ *
+ * Usage:
+ *   openclaw index connect --api-key <key> [--url <url>]
+ *
+ * Reads the existing ~/.openclaw/openclaw.json (if any), runs a headless
+ * setup with the supplied key, and writes the result back to disk. Idempotent
+ * — safe to re-run with the same or a new key.
+ */
+export function registerConnectCli(
+  program: Parameters<typeof registerSetupCli>[0],
+): void {
+  // Guard against duplicate registration.
+  if (program.commands?.some((c) => c.name() === 'connect')) return;
+
+  type ConnectOpts = { apiKey: string; url: string };
+
+  (
+    program as unknown as {
+      command(n: string): {
+        description(d: string): {
+          requiredOption(f: string, d: string): {
+            option(f: string, d: string, dflt: string): {
+              action(fn: (opts: ConnectOpts) => Promise<void>): void;
+            };
+          };
+        };
+      };
+    }
+  )
+    .command('connect')
+    .description('Non-interactive setup using an API key (e.g. from EdgeClaw signup)')
+    .requiredOption('--api-key <key>', 'API key returned by the headless signup endpoint')
+    .option('--url <url>', 'Index Network frontend URL', 'https://index.network')
+    .action(async (opts: ConnectOpts) => {
+      const cfg = readOpenClawConfig();
+      try {
+        const updated = await runHeadlessSetup({
+          url: opts.url,
+          apiKey: opts.apiKey,
+          existingCfg: cfg,
+        });
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
+        console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
+        console.log('Restart the gateway to apply changes: openclaw gateway restart');
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+    });
+}
+
 export function registerSetupCli(
   program: {
     command(name: string): { description(d: string): { action(fn: () => Promise<void>): void } };
