@@ -56,10 +56,10 @@ export async function handle(
     opportunities: Array<{
       opportunityId: string;
       counterpartUserId: string | null;
-      feedCategory: 'connection' | 'connector-flow';
+      feedCategory?: 'connection' | 'connector-flow';
       rendered: { headline: string; personalizedSummary: string; suggestedAction: string; narratorRemark: string };
     }>;
-    totalPending: number;
+    totalPending?: number;
   };
 
   if (!body.opportunities.length) {

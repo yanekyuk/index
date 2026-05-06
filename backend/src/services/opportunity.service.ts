@@ -438,12 +438,12 @@ export class OpportunityService {
     // Transition to pending (triggers negotiation)
     const statusResult = await this.updateOpportunityStatus(opportunityId, 'pending', userId);
     if (statusResult && 'error' in statusResult) {
-      logger.warn('[OpportunityService.approveIntroduction] status transition failed', {
+      logger.error('[OpportunityService.approveIntroduction] status transition failed', {
         opportunityId,
         userId,
         error: statusResult.error,
       });
-      // The approval flag was already flipped — this is non-blocking
+      return { error: 'Failed to trigger negotiation after approval', status: 500 };
     }
 
     return { success: true };

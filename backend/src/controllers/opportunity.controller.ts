@@ -16,6 +16,12 @@ const EXPIRED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Li
 <p style="color:#666">Connect links are valid for 48 hours. Please check your latest notification for a fresh link.</p>
 </div></body></html>`;
 
+const INTRODUCTION_APPROVED_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Introduction Approved</title></head>
+<body style="font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+<div style="text-align:center"><h1 style="font-size:1.5rem">Introduction approved</h1>
+<p style="color:#666">You approved the introduction. Both parties will be connected shortly.</p>
+</div></body></html>`;
+
 const discoverBodySchema = z.object({
   query: z.string().min(1),
   limit: z.number().int().positive().optional(),
@@ -382,8 +388,7 @@ export class OpportunityController {
       return new Response(result.error, { status: result.status });
     }
 
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
-    return Response.redirect(`${frontendUrl}/introduction-approved`, 302);
+    return new Response(INTRODUCTION_APPROVED_HTML, { status: 200, headers: { 'Content-Type': 'text/html' } });
   }
 
   /**

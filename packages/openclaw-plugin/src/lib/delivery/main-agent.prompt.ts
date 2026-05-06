@@ -124,13 +124,18 @@ export function buildMainAgentPrompt(input: MainAgentPromptInput): string {
  * Builds a COMMUNITY CONTEXT clause from branding config.
  * Injected when `nodeName` is set.
  */
+function normalizeBrandingField(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
 function buildBrandingClause(branding: { nodeName: string; nodeDescription?: string; nodeContext?: string }): string {
-  const parts = [`COMMUNITY CONTEXT: This notification comes from the "${branding.nodeName}" community.`];
+  const name = normalizeBrandingField(branding.nodeName);
+  const parts = [`COMMUNITY CONTEXT: This notification comes from the "${name}" community.`];
   if (branding.nodeDescription) {
-    parts.push(branding.nodeDescription);
+    parts.push(normalizeBrandingField(branding.nodeDescription));
   }
   if (branding.nodeContext) {
-    parts.push(branding.nodeContext);
+    parts.push(normalizeBrandingField(branding.nodeContext));
   }
   return parts.join(' ');
 }

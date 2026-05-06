@@ -48,6 +48,18 @@
         "pattern": "^([01]?[0-9]|2[0-3]):[0-5][0-9]$",
         "default": "08:00",
         "description": "Time to send digest in HH:MM format (24-hour, local timezone)."
+      },
+      "nodeName": {
+        "type": "string",
+        "description": "Community name injected as branding context into all notification prompts."
+      },
+      "nodeDescription": {
+        "type": "string",
+        "description": "Short description of the community, appended to the branding context clause."
+      },
+      "nodeContext": {
+        "type": "string",
+        "description": "Focus area or context for the community, appended to the branding context clause."
       }
     },
     "required": [],

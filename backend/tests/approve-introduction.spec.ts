@@ -1,17 +1,8 @@
 import { config } from 'dotenv';
 config({ path: '.env.development' });
 
-import { describe, it, expect, mock, beforeEach, afterAll } from 'bun:test';
-import { signConnectToken } from '../src/services/connect-token.service';
-
-/**
- * Unit tests for the approve-introduction endpoint logic.
- *
- * These tests verify the controller logic in isolation by testing the
- * core helper function directly (no HTTP server needed). The helper mirrors
- * the controller endpoint: verify token, validate introducer role + approval
- * status, call updateOpportunityStatus, and return the redirect URL.
- */
+import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { signConnectToken, verifyConnectToken } from '../src/services/connect-token.service';
 
 // ---------------------------------------------------------------------------
 // Fake IDs
@@ -21,9 +12,11 @@ const INTRODUCER_ID = '00000000-0000-4000-8000-000000000002';
 const NON_INTRODUCER_ID = '00000000-0000-4000-8000-000000000003';
 const OTHER_OPP_ID = '00000000-0000-4000-8000-000000000099';
 
-describe('approve-introduction endpoint logic', () => {
+// ---------------------------------------------------------------------------
+// Token helpers
+// ---------------------------------------------------------------------------
+describe('connect-token helpers', () => {
   it('signConnectToken produces a token verifiable by verifyConnectToken', async () => {
-    const { verifyConnectToken } = await import('../src/services/connect-token.service');
     const token = await signConnectToken(INTRODUCER_ID, OPP_ID);
     const payload = await verifyConnectToken(token);
     expect(payload.sub).toBe(INTRODUCER_ID);
@@ -31,15 +24,88 @@ describe('approve-introduction endpoint logic', () => {
   });
 
   it('verifyConnectToken rejects malformed tokens', async () => {
-    const { verifyConnectToken } = await import('../src/services/connect-token.service');
     await expect(verifyConnectToken('garbage.token.here')).rejects.toThrow();
   });
 
-  it('token opp mismatch is detected', async () => {
+  it('token opp mismatch is detectable', async () => {
     const token = await signConnectToken(INTRODUCER_ID, OTHER_OPP_ID);
-    const { verifyConnectToken } = await import('../src/services/connect-token.service');
     const payload = await verifyConnectToken(token);
-    // The controller should check payload.opp !== id
     expect(payload.opp).not.toBe(OPP_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OpportunityService.approveIntroduction unit tests
+// ---------------------------------------------------------------------------
+describe('OpportunityService.approveIntroduction', () => {
+  const makeDb = (overrides: Record<string, unknown> = {}) => ({
+    getOpportunityActors: mock(async () => [
+      { userId: INTRODUCER_ID, role: 'introducer', approved: false },
+    ]),
+    updateOpportunityActorApproval: mock(async () => true),
+    ...overrides,
+  });
+
+  const makeService = (db: ReturnType<typeof makeDb>) => {
+    // Dynamically import to avoid top-level env dependency
+    const { OpportunityService } = require('../src/services/opportunity.service');
+    const svc = new OpportunityService(db);
+    // Stub out updateOpportunityStatus so it doesn't hit real DB
+    svc.updateOpportunityStatus = mock(async () => null);
+    return svc;
+  };
+
+  beforeEach(() => {
+    mock.restore();
+  });
+
+  it('returns error when user is not an introducer', async () => {
+    const db = makeDb({
+      getOpportunityActors: mock(async () => [
+        { userId: NON_INTRODUCER_ID, role: 'candidate', approved: false },
+      ]),
+    });
+    const svc = makeService(db);
+    const result = await svc.approveIntroduction(OPP_ID, NON_INTRODUCER_ID);
+    expect(result).toHaveProperty('error');
+    expect(result.status).toBe(403);
+  });
+
+  it('returns error when actor is already approved', async () => {
+    const db = makeDb({
+      getOpportunityActors: mock(async () => [
+        { userId: INTRODUCER_ID, role: 'introducer', approved: true },
+      ]),
+    });
+    const svc = makeService(db);
+    const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
+    expect(result).toHaveProperty('error');
+  });
+
+  it('flips approved flag and returns success', async () => {
+    const db = makeDb();
+    const svc = makeService(db);
+    const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
+    expect(db.updateOpportunityActorApproval).toHaveBeenCalledWith(OPP_ID, INTRODUCER_ID, true);
+    expect(result).toEqual({ success: true });
+  });
+
+  it('returns error when DB approval update fails', async () => {
+    const db = makeDb({
+      updateOpportunityActorApproval: mock(async () => false),
+    });
+    const svc = makeService(db);
+    const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
+    expect(result).toHaveProperty('error');
+    expect(result.status).toBe(500);
+  });
+
+  it('returns error when status transition fails', async () => {
+    const db = makeDb();
+    const svc = makeService(db);
+    svc.updateOpportunityStatus = mock(async () => ({ error: 'DB error', status: 500 }));
+    const result = await svc.approveIntroduction(OPP_ID, INTRODUCER_ID);
+    expect(result).toHaveProperty('error');
+    expect(result.status).toBe(500);
   });
 });

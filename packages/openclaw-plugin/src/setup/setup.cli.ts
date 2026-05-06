@@ -156,30 +156,34 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 
   // --- Community branding (optional) ---
   const existingNodeName = existing('nodeName');
-  const nodeName = await ctx.prompt(
-    'Community name (optional, leave blank to skip)',
+  const nodeNameRaw = await ctx.prompt(
+    'Community name (optional, leave blank to clear)',
     { default: existingNodeName || '' },
   );
+  const nodeName = nodeNameRaw.trim();
   if (nodeName) {
     await ctx.configSet(`${configPrefix}.nodeName`, nodeName);
 
     const existingDesc = existing('nodeDescription');
-    const nodeDescription = await ctx.prompt(
-      'Community description (optional)',
+    const nodeDescriptionRaw = await ctx.prompt(
+      'Community description (optional, leave blank to clear)',
       { default: existingDesc || '' },
     );
-    if (nodeDescription) {
-      await ctx.configSet(`${configPrefix}.nodeDescription`, nodeDescription);
-    }
+    const nodeDescription = nodeDescriptionRaw.trim();
+    await ctx.configSet(`${configPrefix}.nodeDescription`, nodeDescription || undefined);
 
     const existingCtx = existing('nodeContext');
-    const nodeContext = await ctx.prompt(
-      'Community context / focus area (optional)',
+    const nodeContextRaw = await ctx.prompt(
+      'Community context / focus area (optional, leave blank to clear)',
       { default: existingCtx || '' },
     );
-    if (nodeContext) {
-      await ctx.configSet(`${configPrefix}.nodeContext`, nodeContext);
-    }
+    const nodeContext = nodeContextRaw.trim();
+    await ctx.configSet(`${configPrefix}.nodeContext`, nodeContext || undefined);
+  } else {
+    // Blank nodeName clears all branding fields
+    await ctx.configSet(`${configPrefix}.nodeName`, undefined);
+    await ctx.configSet(`${configPrefix}.nodeDescription`, undefined);
+    await ctx.configSet(`${configPrefix}.nodeContext`, undefined);
   }
 
   // --- Bootstrap gateway hooks (required for /hooks/agent dispatch) ---

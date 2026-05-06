@@ -113,10 +113,10 @@ async function dispatchWelcome(
     opportunities: Array<{
       opportunityId: string;
       counterpartUserId: string | null;
-      feedCategory: 'connection' | 'connector-flow';
+      feedCategory?: 'connection' | 'connector-flow';
       rendered: { headline: string; personalizedSummary: string; suggestedAction: string; narratorRemark: string };
     }>;
-    totalPending: number;
+    totalPending?: number;
   };
 
   const totalPending = body.totalPending ?? body.opportunities.length;
