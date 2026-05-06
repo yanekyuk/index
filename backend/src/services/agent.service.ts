@@ -13,6 +13,7 @@ import {
   agentTokenAdapter,
   type AgentTokenStore,
 } from '../adapters/agent-token.adapter';
+import { userDatabaseAdapter } from '../adapters/database.adapter';
 import { log } from '../lib/log';
 
 const logger = log.service.from('AgentService');
@@ -102,6 +103,15 @@ export class AgentService {
     }
 
     return this.sanitizeAgent(agent, userId);
+  }
+
+  async getMe(agentId: string, userId: string): Promise<{ agent: AgentWithRelations; onboardingCompletedAt: string | null }> {
+    const [agent, user] = await Promise.all([
+      this.getById(agentId, userId),
+      userDatabaseAdapter.findById(userId),
+    ]);
+    const onboardingCompletedAt = user?.onboarding?.completedAt ?? null;
+    return { agent, onboardingCompletedAt };
   }
 
   async listForUser(userId: string): Promise<AgentWithRelations[]> {

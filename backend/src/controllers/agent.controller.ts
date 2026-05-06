@@ -185,8 +185,8 @@ export class AgentController {
     }
 
     try {
-      const agent = await agentService.getById(agentId, user.id);
-      return Response.json({ agent });
+      const result = await agentService.getMe(agentId, user.id);
+      return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
     }

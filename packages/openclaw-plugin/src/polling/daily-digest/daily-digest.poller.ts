@@ -4,6 +4,7 @@ import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { fetchConnectToken } from '../../lib/utils/connect-token.js';
+import { isOnboardingComplete } from '../../polling/onboarding/onboarding.status.js';
 
 export interface DailyDigestConfig {
   baseUrl: string;
@@ -26,6 +27,11 @@ export async function handle(
   api: OpenClawPluginApi,
   config: DailyDigestConfig,
 ): Promise<boolean> {
+  if (!await isOnboardingComplete(api, config)) {
+    api.logger.debug('Daily digest: onboarding not complete, skipping.');
+    return false;
+  }
+
   const pendingUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/pending?limit=${PENDING_LIMIT}`;
 
   let res: Response;
