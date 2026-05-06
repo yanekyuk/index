@@ -28,6 +28,9 @@ import * as acceptedOpportunityPoller from './polling/accepted-opportunity/accep
 import * as acceptedOpportunityScheduler from './polling/accepted-opportunity/accepted-opportunity.scheduler.js';
 import { registerSetupCli, registerConnectCli } from './setup/setup.cli.js';
 import { deriveUrls } from './lib/utils/url.js';
+import { isOnboardingComplete, _resetForTesting as _resetOnboardingStatus } from './polling/onboarding/onboarding.status.js';
+import { buildOnboardingPrompt } from './polling/onboarding/onboarding.prompt.js';
+import { dispatchToMainAgent } from './lib/delivery/main-agent.dispatcher.js';
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
@@ -295,6 +298,11 @@ export function register(api: OpenClawPluginApi): void {
   setTimeout(() => {
     checkBackendReachability(api, baseUrl);
   }, 5_000).unref();
+
+  // Onboarding prompt dispatch — fires once per day while onboarding is pending.
+  setTimeout(() => {
+    dispatchOnboardingIfNeeded(api, { baseUrl, agentId, apiKey });
+  }, 5_000).unref();
 }
 
 // --- Plugin entry ---
@@ -323,6 +331,29 @@ function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void
   });
 }
 
+async function dispatchOnboardingIfNeeded(
+  api: OpenClawPluginApi,
+  config: { baseUrl: string; agentId: string; apiKey: string },
+): Promise<void> {
+  const complete = await isOnboardingComplete(api, config);
+  if (complete) return;
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const result = await dispatchToMainAgent(api, {
+    prompt: buildOnboardingPrompt(),
+    idempotencyKey: `index:onboarding:dispatch:${config.agentId}:${dateStr}`,
+  });
+
+  if (result.delivered) {
+    api.logger.info('Onboarding prompt dispatched to main agent.', { agentId: config.agentId });
+  } else {
+    api.logger.warn('Onboarding prompt dispatch failed — will retry on next gateway restart.', {
+      agentId: config.agentId,
+      error: result.error,
+    });
+  }
+}
+
 function readConfig(api: OpenClawPluginApi, key: string): string {
   const val = api.pluginConfig[key];
   return typeof val === 'string' ? val : '';
@@ -334,6 +365,7 @@ function readConfig(api: OpenClawPluginApi, key: string): string {
  */
 export function _resetForTesting(): void {
   registered = false;
+  _resetOnboardingStatus();
   negotiatorPoller._resetForTesting();
   negotiatorScheduler._resetForTesting();
   dailyDigestScheduler._resetForTesting();
