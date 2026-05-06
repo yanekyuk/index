@@ -149,10 +149,10 @@ class ExperimentService {
   }
 
   private buildConnectCommand(apiKey: string): string {
-    const appUrl = (process.env.APP_URL ?? '').replace(/\/+$/, '');
+    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/+$/, '');
     const urlFlag =
-      appUrl && appUrl !== 'https://index.network'
-        ? ` --url ${appUrl}`
+      baseUrl && baseUrl !== 'https://index.network'
+        ? ` --url ${baseUrl}`
         : '';
     return `openclaw index connect --api-key ${apiKey}${urlFlag}`;
   }

@@ -259,7 +259,7 @@ export interface HeadlessSetupOptions {
 export async function runHeadlessSetup(
   opts: HeadlessSetupOptions,
 ): Promise<Record<string, unknown>> {
-  const url = opts.url ?? 'https://index.network';
+  const url = opts.url ?? DEFAULT_URL;
   const digestEnabled = opts.digestEnabled ?? true;
   const digestTime = opts.digestTime ?? '08:00';
   const mainAgentToolUse = opts.mainAgentToolUse ?? 'disabled';
@@ -355,7 +355,7 @@ export function registerConnectCli(
     .command('connect')
     .description('Non-interactive setup using an API key (e.g. from EdgeClaw signup)')
     .requiredOption('--api-key <key>', 'API key returned by the headless signup endpoint')
-    .option('--url <url>', 'Index Network frontend URL', 'https://index.network')
+    .option('--url <url>', 'Index Network frontend URL', DEFAULT_URL)
     .action(async (opts: ConnectOpts) => {
       const cfg = readOpenClawConfig();
       try {
