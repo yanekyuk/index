@@ -12,6 +12,13 @@ function makeApi(): OpenClawPluginApi {
     name: 'Index Network',
     pluginConfig: {},
     config: {},
+    runtime: {
+      subagent: {
+        run: mock(async () => ({ runId: 'unused' })),
+        waitForRun: mock(async () => ({ result: null })),
+        getSessionMessages: mock(async () => ({ messages: [] })),
+      },
+    },
     logger: {
       debug: mock(() => {}),
       info: mock(() => {}),
