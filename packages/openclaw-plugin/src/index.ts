@@ -26,6 +26,7 @@ import * as testMessagePoller from './polling/test-message/test-message.poller.j
 import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
 import * as acceptedOpportunityPoller from './polling/accepted-opportunity/accepted-opportunity.poller.js';
 import * as acceptedOpportunityScheduler from './polling/accepted-opportunity/accepted-opportunity.scheduler.js';
+import * as welcomeWatcher from './polling/welcome/welcome.watcher.js';
 import { registerSetupCli, registerConnectCli } from './setup/setup.cli.js';
 import { deriveUrls } from './lib/utils/url.js';
 import { isOnboardingComplete, _resetForTesting as _resetOnboardingStatus } from './polling/onboarding/onboarding.status.js';
@@ -302,6 +303,7 @@ export function register(api: OpenClawPluginApi): void {
   // Onboarding prompt dispatch — fires once per day while onboarding is pending.
   setTimeout(() => {
     dispatchOnboardingIfNeeded(api, { baseUrl, agentId, apiKey });
+    welcomeWatcher.start(api, { baseUrl, agentId, apiKey, frontendUrl });
   }, 5_000).unref();
 }
 
@@ -374,4 +376,5 @@ export function _resetForTesting(): void {
   testMessageScheduler._resetForTesting();
   acceptedOpportunityPoller._resetForTesting();
   acceptedOpportunityScheduler._resetForTesting();
+  welcomeWatcher._resetForTesting();
 }
