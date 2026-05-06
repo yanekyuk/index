@@ -4,7 +4,13 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { Check, Copy, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import CopyableBox from "@/components/CopyableBox";
 import { useAgents } from "@/contexts/APIContext";
+
+function hasActiveSelection(): boolean {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  return !!sel && !sel.isCollapsed && sel.toString().length > 0;
+}
 import { useNotifications } from "@/contexts/NotificationContext";
 import {
   buildMcpConfigs,
@@ -26,59 +32,6 @@ function formatDate(dateStr: string | null): string {
 
 function maskKey(start: string): string {
   return start ? `${start}${"*".repeat(24)}` : "Unavailable";
-}
-
-/** True if the user has an active (non-collapsed) text selection on the page. */
-function hasActiveSelection(): boolean {
-  const sel = typeof window !== "undefined" ? window.getSelection() : null;
-  return !!sel && !sel.isCollapsed && sel.toString().length > 0;
-}
-
-/**
- * Unified click-to-copy box used for every value in the setup panel:
- * commands, URLs, IDs, secrets, and multi-line MCP configs.
- */
-function CopyableBox({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    if (hasActiveSelection()) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 800);
-    } catch {
-      /* silent */
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      aria-label="Copy"
-      className={`relative w-full text-left group rounded-sm border p-3 transition-colors duration-300 ${
-        copied
-          ? "bg-green-100 border-green-400"
-          : "bg-gray-50 border-gray-200 hover:bg-green-50 hover:border-green-300"
-      }`}
-    >
-      <code className="block text-xs text-gray-700 font-ibm-plex-mono whitespace-pre-wrap break-all pr-16 select-text">{value}</code>
-      <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-xs text-gray-400 group-hover:text-green-700 transition-colors select-none">
-        {copied ? (
-          <>
-            <Check className="w-3 h-3" />
-            Copied
-          </>
-        ) : (
-          <>
-            <Copy className="w-3 h-3" />
-            Copy
-          </>
-        )}
-      </span>
-    </button>
-  );
 }
 
 function WizardPromptRow({ label, value }: { label: string; value: string }) {
