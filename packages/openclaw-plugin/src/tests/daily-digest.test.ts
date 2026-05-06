@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { handle, handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
+import { handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
 import { _resetForTesting as _resetOnboardingStatus } from '../polling/onboarding/onboarding.status.js';
 import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
@@ -171,7 +171,7 @@ describe('handleDailyDigest (hooks-only path)', () => {
       throw new Error(`Unexpected fetch: ${url}`);
     }) as unknown as typeof fetch;
 
-    const result = await handle(mockApi, cfg);
+    const result = await handleDailyDigest(mockApi, cfg);
     expect(result).toBe(false);
   });
 });

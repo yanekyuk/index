@@ -4,7 +4,7 @@ import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
 import { readMainAgentToolUse } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
 import { fetchConnectToken } from '../../lib/utils/connect-token.js';
-import { isOnboardingComplete } from '../../polling/onboarding/onboarding.status.js';
+import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
 export interface AmbientDiscoveryConfig {
   baseUrl: string;

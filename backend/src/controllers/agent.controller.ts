@@ -12,7 +12,6 @@ import {
   UnauthorizedError,
 } from '../services/negotiation-polling.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { userService } from '../services/user.service';
 
 const agentTestMessageService = new AgentTestMessageService();
 
@@ -186,12 +185,8 @@ export class AgentController {
     }
 
     try {
-      const [agent, userData] = await Promise.all([
-        agentService.getById(agentId, user.id),
-        userService.findById(user.id),
-      ]);
-      const onboardingCompletedAt = userData?.onboarding?.completedAt ?? null;
-      return Response.json({ agent, onboardingCompletedAt });
+      const result = await agentService.getMe(agentId, user.id);
+      return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
     }

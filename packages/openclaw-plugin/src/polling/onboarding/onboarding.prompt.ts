@@ -1,14 +1,4 @@
-/**
- * Builds the onboarding prompt dispatched to the user's main OpenClaw agent
- * after initial plugin setup, when onboarding has not yet been completed.
- *
- * The agent has access to Index Network MCP tools and can drive the full
- * onboarding flow on the user's chat channel (Telegram, WhatsApp, etc.)
- * without the user visiting index.network.
- *
- * Gmail import (`import_gmail_contacts`) is intentionally excluded — it
- * requires OAuth in a browser and is not appropriate for chat-channel delivery.
- */
+// Gmail import excluded — requires OAuth in a browser, not suitable for chat-channel delivery.
 export function buildOnboardingPrompt(): string {
   return `You are the Index agent. The user has just connected to Index Network via OpenClaw and needs to complete their onboarding. Walk them through the following steps in order. Do not skip steps.
 
