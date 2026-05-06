@@ -564,8 +564,8 @@ export class AgentController {
     try {
       await agentService.getById(agentId, user.id);
       await agentService.touchLastSeen(agentId);
-      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
-      return Response.json({ opportunities });
+      const result = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
+      return Response.json({ opportunities: result.opportunities, totalPending: result.totalPending });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }
