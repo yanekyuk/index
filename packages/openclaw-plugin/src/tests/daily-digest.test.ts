@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
-import { handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
+import { handle, handle as handleDailyDigest } from '../polling/daily-digest/daily-digest.poller.js';
+import { _resetForTesting as _resetOnboardingStatus } from '../polling/onboarding/onboarding.status.js';
 import type { OpenClawPluginApi } from '../lib/openclaw/plugin-api.js';
 
 const OPP_1 = '11111111-1111-1111-1111-111111111111';
@@ -42,6 +43,9 @@ function mockBackend(opportunities: unknown[], hookStatus = 200, confirmStatus =
   const sink: FetchSink = { pendingUrls: [], hookCalls: [], confirmCalls: [] };
   global.fetch = mock(async (input: RequestInfo, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/api/agents/me')) {
+      return new Response(JSON.stringify({ agent: {}, onboardingCompletedAt: '2026-05-05T10:00:00.000Z' }), { status: 200 });
+    }
     if (url.includes('/connect-token')) {
       return new Response(JSON.stringify({ token: 'mock-jwt-token' }), { status: 200 });
     }
@@ -73,11 +77,13 @@ describe('handleDailyDigest (hooks-only path)', () => {
 
   beforeEach(() => {
     originalFetch = global.fetch;
+    _resetOnboardingStatus();
     mockApi = makeApi();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
+    _resetOnboardingStatus();
   });
 
   const cfg = {
@@ -154,5 +160,18 @@ describe('handleDailyDigest (hooks-only path)', () => {
     expect(result).toBe(true);
     expect(sink.hookCalls).toHaveLength(1);
     expect(sink.confirmCalls).toHaveLength(0);
+  });
+
+  it('returns false without hitting backend when onboarding is not complete', async () => {
+    global.fetch = mock(async (input: RequestInfo) => {
+      const url = String(input);
+      if (url.includes('/api/agents/me')) {
+        return new Response(JSON.stringify({ agent: {}, onboardingCompletedAt: null }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as unknown as typeof fetch;
+
+    const result = await handle(mockApi, cfg);
+    expect(result).toBe(false);
   });
 });
