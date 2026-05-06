@@ -8,6 +8,7 @@ import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { ensurePersonalNetwork } from '../adapters/database.adapter';
 import { networkInvitationTemplate } from '../lib/email/templates/network-invitation.template';
 import { executeSendEmail } from '../lib/email/transport.helper';
+import { buildConnectCommand } from '../lib/openclaw/connect-command';
 
 const logger = log.service.from('network-invitation');
 
@@ -60,7 +61,7 @@ class NetworkInvitationService {
 
     const apiKey = await this.provisionScopedAgent(user.id, params.networkId);
     const networkName = await this.lookupNetworkName(params.networkId);
-    const connectCommand = this.buildConnectCommand(apiKey);
+    const connectCommand = buildConnectCommand(apiKey);
 
     await this.dispatchInvitationEmail({
       to: email,
@@ -84,13 +85,6 @@ class NetworkInvitationService {
       .where(eq(schema.networks.id, networkId))
       .limit(1);
     return row?.title ?? 'your network';
-  }
-
-  private buildConnectCommand(apiKey: string): string {
-    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/+$/, '');
-    const urlFlag =
-      baseUrl && baseUrl !== 'https://index.network' ? ` --url ${baseUrl}` : '';
-    return `openclaw index connect --api-key ${apiKey}${urlFlag}`;
   }
 
   private async dispatchInvitationEmail(params: {
@@ -182,7 +176,12 @@ class NetworkInvitationService {
       .onConflictDoNothing();
   }
 
-  private async provisionScopedAgent(userId: string, networkId: string): Promise<string> {
+  /**
+   * Mints a network-scoped personal agent + API key for a user. Used for new
+   * invites and (via experimentService) for existing users re-signing through
+   * the master-key headless endpoint.
+   */
+  async provisionScopedAgent(userId: string, networkId: string): Promise<string> {
     const agent = await agentDatabaseAdapter.createAgent({
       ownerId: userId,
       name: 'Personal Agent',
