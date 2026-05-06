@@ -226,6 +226,74 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 }
 
 /**
+ * Options for non-interactive setup. All prompt/select values are pre-filled
+ * from these options; no interactive I/O is performed. Network I/O still
+ * occurs via `fetchAgentId`. `existingCfg` is deep-cloned so the caller's
+ * object is never mutated.
+ */
+export interface HeadlessSetupOptions {
+  /** Index Network URL. Defaults to 'https://index.network'. */
+  url?: string;
+  /** API key (required). */
+  apiKey: string;
+  /** Enable daily digest. Defaults to true. */
+  digestEnabled?: boolean;
+  /** Digest time in HH:MM 24-hour local format. Defaults to '08:00'. */
+  digestTime?: string;
+  /** Main agent tool use mode. Defaults to 'disabled'. */
+  mainAgentToolUse?: 'enabled' | 'disabled';
+  /** Existing OpenClaw config snapshot. Defaults to empty. The object is deep-cloned; caller's copy is not mutated. */
+  existingCfg?: Record<string, unknown>;
+  /** Override the agentId resolution fetch. Useful for testing. */
+  fetchAgentId?: (protocolUrl: string, apiKey: string) => Promise<string>;
+}
+
+/**
+ * Non-interactive equivalent of {@link runSetup}. Builds a pre-filled
+ * {@link SetupContext} from `opts` (no readline, no prompts) and delegates
+ * to `runSetup`. Returns the complete, mutated OpenClaw config object — the
+ * caller is responsible for writing it to disk.
+ *
+ * @throws When `apiKey` is empty, or when `fetchAgentId` rejects.
+ */
+export async function runHeadlessSetup(
+  opts: HeadlessSetupOptions,
+): Promise<Record<string, unknown>> {
+  const url = opts.url ?? DEFAULT_URL;
+  const digestEnabled = opts.digestEnabled ?? true;
+  const digestTime = opts.digestTime ?? '08:00';
+  const mainAgentToolUse = opts.mainAgentToolUse ?? 'disabled';
+
+  // Deep-clone so we never mutate the caller's object.
+  const cfg: Record<string, unknown> = JSON.parse(
+    JSON.stringify(opts.existingCfg ?? {}),
+  );
+
+  const ctx: SetupContext = {
+    cfg,
+    prompt: async (label, promptOpts) => {
+      if (label === 'Index Network URL') return url;
+      // Handles both "API key" and "API key (leave blank to keep existing)"
+      if (label.startsWith('API key')) return opts.apiKey;
+      if (label.startsWith('Digest time')) return digestTime;
+      return promptOpts?.default ?? '';
+    },
+    select: async (label, choices) => {
+      if (label === 'Daily digest') return digestEnabled ? 'true' : 'false';
+      if (label === 'Main agent tool use during Index Network renders') return mainAgentToolUse;
+      return choices[0].value;
+    },
+    configSet: async (dotPath, value) => {
+      setConfigValue(cfg, dotPath, value);
+    },
+    fetchAgentId: opts.fetchAgentId ?? defaultFetchAgentId,
+  };
+
+  await runSetup(ctx);
+  return cfg;
+}
+
+/**
  * Read the OpenClaw config file, or return an empty object if missing.
  */
 function readOpenClawConfig(): Record<string, unknown> {
@@ -251,6 +319,60 @@ function setConfigValue(cfg: Record<string, unknown>, dotPath: string, value: un
     obj = obj[key] as Record<string, unknown>;
   }
   obj[parts[parts.length - 1]] = value;
+}
+
+/**
+ * Registers the `openclaw index connect` CLI command.
+ *
+ * Usage:
+ *   openclaw index connect --api-key <key> [--url <url>]
+ *
+ * Reads the existing ~/.openclaw/openclaw.json (if any), runs a headless
+ * setup with the supplied key, and writes the result back to disk. Idempotent
+ * — safe to re-run with the same or a new key.
+ */
+export function registerConnectCli(
+  program: Parameters<typeof registerSetupCli>[0],
+): void {
+  // Guard against duplicate registration.
+  if (program.commands?.some((c) => c.name() === 'connect')) return;
+
+  type ConnectOpts = { apiKey: string; url: string };
+
+  (
+    program as unknown as {
+      command(n: string): {
+        description(d: string): {
+          requiredOption(f: string, d: string): {
+            option(f: string, d: string, dflt: string): {
+              action(fn: (opts: ConnectOpts) => Promise<void>): void;
+            };
+          };
+        };
+      };
+    }
+  )
+    .command('connect')
+    .description('Non-interactive setup using an API key (e.g. from EdgeClaw signup)')
+    .requiredOption('--api-key <key>', 'API key returned by the headless signup endpoint')
+    .option('--url <url>', 'Index Network frontend URL', DEFAULT_URL)
+    .action(async (opts: ConnectOpts) => {
+      const cfg = readOpenClawConfig();
+      try {
+        const updated = await runHeadlessSetup({
+          url: opts.url,
+          apiKey: opts.apiKey,
+          existingCfg: cfg,
+        });
+        fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
+        console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
+        console.log('Restart the gateway to apply changes: openclaw gateway restart');
+      } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
+        process.exitCode = 1;
+      }
+    });
 }
 
 export function registerSetupCli(

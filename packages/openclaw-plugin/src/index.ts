@@ -26,7 +26,7 @@ import * as testMessagePoller from './polling/test-message/test-message.poller.j
 import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
 import * as acceptedOpportunityPoller from './polling/accepted-opportunity/accepted-opportunity.poller.js';
 import * as acceptedOpportunityScheduler from './polling/accepted-opportunity/accepted-opportunity.scheduler.js';
-import { registerSetupCli } from './setup/setup.cli.js';
+import { registerSetupCli, registerConnectCli } from './setup/setup.cli.js';
 import { deriveUrls } from './lib/utils/url.js';
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
@@ -51,6 +51,7 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
         .command('index')
         .description('Manage Index Network plugin configuration');
       registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
+      registerConnectCli(cmd as Parameters<typeof registerSetupCli>[0]);
 
       // Deprecated alias — same handler, prints a warning. Remove in 0.23.0.
       const aliasCmd = (program as { command(n: string): { description(d: string): unknown } })

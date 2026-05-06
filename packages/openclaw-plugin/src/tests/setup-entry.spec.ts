@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { runSetup as setup } from '../setup/setup.cli.js';
+import { runSetup as setup, runHeadlessSetup } from '../setup/setup.cli.js';
 
 interface FakeCtx {
   ctx: Parameters<typeof setup>[0];
@@ -604,5 +604,163 @@ describe('setup wizard', () => {
 
     const newWrite = fake.configWrites.find((w) => w.path === 'mcp.servers.index');
     expect(newWrite).toBeDefined();
+  });
+});
+
+describe('headless setup', () => {
+  test('writes all required config keys with defaults', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const pluginCfg = (result as Record<string, unknown> & {
+      plugins: { entries: { 'indexnetwork-openclaw-plugin': { config: Record<string, unknown> } } };
+    }).plugins.entries['indexnetwork-openclaw-plugin'].config;
+
+    expect(pluginCfg.url).toBe('https://index.network');
+    expect(pluginCfg.apiKey).toBe('key-headless');
+    expect(pluginCfg.agentId).toBe('agent-headless');
+    expect(pluginCfg.digestEnabled).toBe('true');
+    expect(pluginCfg.digestTime).toBe('08:00');
+    expect(pluginCfg.mainAgentToolUse).toBe('disabled');
+  });
+
+  test('uses custom URL when provided', async () => {
+    const result = await runHeadlessSetup({
+      url: 'https://dev.index.network',
+      apiKey: 'key-headless',
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const pluginCfg = (result as Record<string, unknown> & {
+      plugins: { entries: { 'indexnetwork-openclaw-plugin': { config: Record<string, unknown> } } };
+    }).plugins.entries['indexnetwork-openclaw-plugin'].config;
+
+    expect(pluginCfg.url).toBe('https://dev.index.network');
+  });
+
+  test('configures MCP server with correct URL and API key', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const mcp = (result as Record<string, unknown> & {
+      mcp: { servers: { index: { url: string; transport: string; headers: Record<string, string> } } };
+    }).mcp.servers.index;
+
+    expect(mcp.url).toBe('https://protocol.index.network/mcp');
+    expect(mcp.transport).toBe('streamable-http');
+    expect(mcp.headers['x-api-key']).toBe('key-headless');
+  });
+
+  test('respects digestEnabled=false', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      digestEnabled: false,
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const pluginCfg = (result as Record<string, unknown> & {
+      plugins: { entries: { 'indexnetwork-openclaw-plugin': { config: Record<string, unknown> } } };
+    }).plugins.entries['indexnetwork-openclaw-plugin'].config;
+
+    expect(pluginCfg.digestEnabled).toBe('false');
+    expect(pluginCfg.digestTime).toBeUndefined();
+  });
+
+  test('respects custom digestTime', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      digestEnabled: true,
+      digestTime: '07:30',
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const pluginCfg = (result as Record<string, unknown> & {
+      plugins: { entries: { 'indexnetwork-openclaw-plugin': { config: Record<string, unknown> } } };
+    }).plugins.entries['indexnetwork-openclaw-plugin'].config;
+
+    expect(pluginCfg.digestTime).toBe('07:30');
+  });
+
+  test('respects mainAgentToolUse=enabled', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      mainAgentToolUse: 'enabled',
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const pluginCfg = (result as Record<string, unknown> & {
+      plugins: { entries: { 'indexnetwork-openclaw-plugin': { config: Record<string, unknown> } } };
+    }).plugins.entries['indexnetwork-openclaw-plugin'].config;
+
+    expect(pluginCfg.mainAgentToolUse).toBe('enabled');
+  });
+
+  test('bootstraps hooks in the returned config', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const hooks = (result as Record<string, unknown> & {
+      hooks: { enabled: boolean; token: string; path: string; allowRequestSessionKey: boolean; allowedSessionKeyPrefixes: string[] };
+    }).hooks;
+
+    expect(hooks.enabled).toBe(true);
+    expect(typeof hooks.token).toBe('string');
+    expect(hooks.token.length).toBeGreaterThanOrEqual(32);
+    expect(hooks.path).toBe('/hooks');
+    expect(hooks.allowRequestSessionKey).toBe(true);
+    expect(hooks.allowedSessionKeyPrefixes).toContain('agent:main:');
+  });
+
+  test('throws when apiKey is empty', async () => {
+    await expect(
+      runHeadlessSetup({ apiKey: '', fetchAgentId: async () => 'x' }),
+    ).rejects.toThrow('API key is required');
+  });
+
+  test('surfaces fetchAgentId errors', async () => {
+    await expect(
+      runHeadlessSetup({
+        apiKey: 'key-headless',
+        fetchAgentId: async () => { throw new Error('Could not resolve agent from API key (HTTP 401).'); },
+      }),
+    ).rejects.toThrow('Could not resolve agent from API key');
+  });
+
+  test('passes protocolUrl (not frontendUrl) to fetchAgentId', async () => {
+    const calls: Array<{ protocolUrl: string; apiKey: string }> = [];
+    await runHeadlessSetup({
+      url: 'https://index.network',
+      apiKey: 'key-headless',
+      fetchAgentId: async (protocolUrl: string, apiKey: string) => { calls.push({ protocolUrl, apiKey }); return 'agent-x'; },
+    });
+    expect(calls).toEqual([{ protocolUrl: 'https://protocol.index.network', apiKey: 'key-headless' }]);
+  });
+
+  test('preserves existing config keys not written by setup', async () => {
+    const result = await runHeadlessSetup({
+      apiKey: 'key-headless',
+      existingCfg: { gateway: { port: 18789, auth: { token: 'gw-tok' } } },
+      fetchAgentId: async () => 'agent-headless',
+    });
+
+    const gw = (result as Record<string, unknown> & { gateway: { port: number } }).gateway;
+    expect(gw.port).toBe(18789);
+  });
+
+  test('does not mutate the existingCfg object passed in', async () => {
+    const original: Record<string, unknown> = { gateway: { port: 1 } };
+    const before = JSON.stringify(original);
+    await runHeadlessSetup({
+      apiKey: 'key-headless',
+      existingCfg: original,
+      fetchAgentId: async () => 'agent-headless',
+    });
+    expect(JSON.stringify(original)).toBe(before);
   });
 });
