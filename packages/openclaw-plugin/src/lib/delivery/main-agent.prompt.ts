@@ -18,6 +18,7 @@ export type MainAgentContentType =
   | 'daily_digest'
   | 'ambient_discovery'
   | 'accepted_opportunity'
+  | 'welcome'
   | 'test_message';
 
 /** A candidate from an accepted opportunity notification. */
@@ -44,7 +45,7 @@ export interface OpportunityCandidate {
 
 /**
  * Structured payload delivered to the main agent. The shape varies by
- * `contentType`: digest/discovery payloads carry candidates; test payloads
+ * `contentType`: digest/discovery/welcome payloads carry candidates; test payloads
  * carry a plain content string.
  */
 export type MainAgentPayload =
@@ -55,6 +56,10 @@ export type MainAgentPayload =
     }
   | {
       contentType: 'daily_digest';
+      candidates: OpportunityCandidate[];
+    }
+  | {
+      contentType: 'welcome';
       candidates: OpportunityCandidate[];
     }
   | {
@@ -92,7 +97,7 @@ export function buildMainAgentPrompt(input: MainAgentPromptInput): string {
     '',
     URL_PRESERVATION_CLAUSE,
     '',
-    ...(input.contentType === 'ambient_discovery' || input.contentType === 'daily_digest'
+    ...(input.contentType === 'ambient_discovery' || input.contentType === 'daily_digest' || input.contentType === 'welcome'
       ? [MSG_PARAM_CLAUSE, '']
       : []),
     perTypeInstruction(input),
@@ -200,6 +205,26 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         "skip will appear in tonight's digest.",
       ].join('\n');
     }
+    case 'welcome':
+      return [
+        'This is a WELCOME message — the user just finished onboarding and created their first intent.',
+        'This is your chance to frame what happens next based on what they told you.',
+        '',
+        'If there are candidates below: Open with one short sentence — in your own voice — that frames',
+        'this as an early result from the system based on what they just shared. Then present the candidates',
+        'as a numbered list (same URL-rendering rules as daily digest: links go inline on verb phrases,',
+        'never as separate action strips).',
+        '',
+        'If there are NO candidates: Acknowledge warmly that the system is actively looking and will',
+        'surface matches as they emerge. No awkward silence, no "nothing yet" tone. Frame it as the',
+        'beginning of an ongoing process.',
+        '',
+        'Always fires regardless of candidate count — there is no "empty welcome" suppression.',
+        '',
+        'For each opportunity you mention in your reply, you MUST first call the MCP tool',
+        "`confirm_opportunity_delivery` with `trigger: 'welcome'` and the opportunity's id.",
+        "Do not call confirm for opportunities you don't mention.",
+      ].join('\n');
     case 'accepted_opportunity':
       return [
         'This is an ACCEPTED OPPORTUNITY notification. Someone has accepted a connection opportunity',
