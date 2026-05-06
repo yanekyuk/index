@@ -227,8 +227,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 
 /**
  * Options for non-interactive setup. All prompt/select values are pre-filled
- * from these options; no I/O is performed. `existingCfg` is deep-cloned so
- * the caller's object is never mutated.
+ * from these options; no interactive I/O is performed. Network I/O still
+ * occurs via `fetchAgentId`. `existingCfg` is deep-cloned so the caller's
+ * object is never mutated.
  */
 export interface HeadlessSetupOptions {
   /** Index Network URL. Defaults to 'https://index.network'. */
@@ -363,6 +364,7 @@ export function registerConnectCli(
           apiKey: opts.apiKey,
           existingCfg: cfg,
         });
+        fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
         console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
         console.log('Restart the gateway to apply changes: openclaw gateway restart');

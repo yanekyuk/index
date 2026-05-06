@@ -12,6 +12,7 @@ const logger = log.service.from('experiment');
 export interface ExperimentSignupResult {
   user: { id: string; email: string };
   apiKey: string;
+  agentId: string;
   /** Ready-to-run command to configure a self-hosted OpenClaw plugin. */
   connectCommand: string;
   created: boolean;
@@ -25,7 +26,7 @@ class ExperimentService {
     const { user, created } = await this.findOrCreateUser(normalizedEmail, networkId);
     await ensurePersonalNetwork(user.id);
     await this.joinExperimentNetwork(user.id, networkId);
-    const apiKey = await this.ensureAgentAndCreateToken(user.id);
+    const { apiKey, agentId } = await this.ensureAgentAndCreateToken(user.id);
 
     logger.info('[ExperimentService] Signup complete', {
       userId: user.id,
@@ -36,6 +37,7 @@ class ExperimentService {
     return {
       user: { id: user.id, email: user.email },
       apiKey,
+      agentId,
       connectCommand: this.buildConnectCommand(apiKey),
       created,
     };
@@ -100,7 +102,7 @@ class ExperimentService {
       .onConflictDoNothing();
   }
 
-  private async ensureAgentAndCreateToken(userId: string): Promise<string> {
+  private async ensureAgentAndCreateToken(userId: string): Promise<{ agentId: string; apiKey: string }> {
     const existingAgents = await db
       .select({ id: schema.agents.id })
       .from(schema.agents)
@@ -143,11 +145,11 @@ class ExperimentService {
       agentId,
     });
 
-    return token.key;
+    return { agentId, apiKey: token.key };
   }
 
   private buildConnectCommand(apiKey: string): string {
-    const appUrl = process.env.APP_URL;
+    const appUrl = (process.env.APP_URL ?? '').replace(/\/+$/, '');
     const urlFlag =
       appUrl && appUrl !== 'https://index.network'
         ? ` --url ${appUrl}`
