@@ -12,6 +12,8 @@ const logger = log.service.from('experiment');
 export interface ExperimentSignupResult {
   user: { id: string; email: string };
   apiKey: string;
+  /** Ready-to-run command to configure a self-hosted OpenClaw plugin. */
+  connectCommand: string;
   created: boolean;
 }
 
@@ -34,6 +36,7 @@ class ExperimentService {
     return {
       user: { id: user.id, email: user.email },
       apiKey,
+      connectCommand: this.buildConnectCommand(apiKey),
       created,
     };
   }
@@ -141,6 +144,15 @@ class ExperimentService {
     });
 
     return token.key;
+  }
+
+  private buildConnectCommand(apiKey: string): string {
+    const appUrl = process.env.APP_URL;
+    const urlFlag =
+      appUrl && appUrl !== 'https://index.network'
+        ? ` --url ${appUrl}`
+        : '';
+    return `openclaw index connect --api-key ${apiKey}${urlFlag}`;
   }
 }
 
