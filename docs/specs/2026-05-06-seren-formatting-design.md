@@ -20,6 +20,7 @@ The main-agent prompts in `main-agent.prompt.ts` give the OpenClaw agent generic
 1. Restructure `perTypeInstruction` for welcome, daily digest, and ambient to use Seren's structural patterns — two-section layout with "Conversations waiting" + "Help your community," section-aware CTAs, and overflow counts.
 2. Add `feedCategory` and `totalPending` to the plugin's prompt payload types, threading them from the pending endpoint through the pollers.
 3. Add a new `GET /api/opportunities/:id/approve-introduction?token=...` backend endpoint so introducers can approve introductions via a link click in Telegram.
+4. Add deployment-level branding config (`nodeName`, `nodeDescription`, `nodeContext`) to the plugin config, injected into all prompts so the agent can reference the community context.
 
 ## Design
 
@@ -168,7 +169,39 @@ opportunity's id.
 
 No change — stays as-is. Introducers are excluded from this endpoint.
 
-### 5. MSG_PARAM_CLAUSE Update
+### 5. Branding Config
+
+Three new fields in `api.pluginConfig`, set during plugin setup (`setup.cli.ts`):
+
+- **`nodeName`** — Community/event name (e.g. "Edge Esmeralda"). Used in greetings, headers.
+- **`nodeDescription`** — Short description (e.g. "A four-week village bringing together 500+ thinkers from the frontiers of tech, science, culture, and policy"). Used in welcome message framing.
+- **`nodeContext`** — Freeform context (event dates, location, schedule details, anything the agent should know). Injected into all prompts so the agent can reference temporal/spatial context naturally (e.g. "It's Thursday, Week 2 at Edge Esmeralda").
+
+#### Config Helpers
+
+Add to `config.ts`:
+
+- `readNodeBranding(api): { nodeName: string | null; nodeDescription: string | null; nodeContext: string | null }`
+
+#### Prompt Integration
+
+Add a `BRANDING_CLAUSE` that's included in all prompt types (before `perTypeInstruction`). Only emitted when at least `nodeName` is set:
+
+```
+COMMUNITY CONTEXT:
+Name: {nodeName}
+Description: {nodeDescription}
+Context: {nodeContext}
+
+Use this context naturally — reference the community by name, weave in relevant
+details when they fit. Do not dump this block verbatim into your reply.
+```
+
+#### Setup Integration
+
+Add branding fields to `setup.cli.ts` as optional prompts during plugin setup. All three are optional — if omitted, the branding clause is skipped and prompts remain generic.
+
+### 6. MSG_PARAM_CLAUSE Update
 
 The existing `MSG_PARAM_CLAUSE` (greeting composition) applies only to `connection` candidates. The prompt instructions above make this explicit: "Compose a &msg= greeting" for connection, "Do NOT compose a &msg= greeting for connector candidates." The clause itself doesn't need modification.
 
@@ -182,6 +215,8 @@ The existing `MSG_PARAM_CLAUSE` (greeting composition) applies only to `connecti
 | `packages/openclaw-plugin/src/polling/ambient-discovery/ambient-discovery.poller.ts` | Thread `feedCategory`, `totalPending`, build approve URLs for connector-flow |
 | `packages/openclaw-plugin/src/polling/daily-digest/daily-digest.poller.ts` | Same |
 | `packages/openclaw-plugin/src/polling/welcome/welcome.watcher.ts` | Same |
+| `packages/openclaw-plugin/src/lib/delivery/config.ts` | Add `readNodeBranding` helper |
+| `packages/openclaw-plugin/src/setup/setup.cli.ts` | Add optional branding prompts during setup |
 
 ## Tests
 
@@ -196,3 +231,5 @@ The existing `MSG_PARAM_CLAUSE` (greeting composition) applies only to `connecti
 | Ambient prompt has no mandatory sections | Flat list, agent discretion |
 | Connector-flow candidates use approve URL | URL path is `/approve-introduction` not `/connect` |
 | Connection candidates use accept URL with &msg= | Existing behavior preserved |
+| Branding clause included when nodeName set | COMMUNITY CONTEXT block appears in prompt |
+| Branding clause skipped when no nodeName | No COMMUNITY CONTEXT block |
