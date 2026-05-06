@@ -391,6 +391,8 @@ export default function Sidebar() {
                 type="button"
                 onClick={async () => {
                   if (!masterKeyModal?.masterKey) return;
+                  const sel = window.getSelection();
+                  if (sel && !sel.isCollapsed) return;
                   try {
                     await navigator.clipboard.writeText(masterKeyModal.masterKey);
                     setCopied(true);
