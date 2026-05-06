@@ -226,6 +226,73 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 }
 
 /**
+ * Options for non-interactive setup. All prompt/select values are pre-filled
+ * from these options; no I/O is performed. `existingCfg` is deep-cloned so
+ * the caller's object is never mutated.
+ */
+export interface HeadlessSetupOptions {
+  /** Index Network URL. Defaults to 'https://index.network'. */
+  url?: string;
+  /** API key (required). */
+  apiKey: string;
+  /** Enable daily digest. Defaults to true. */
+  digestEnabled?: boolean;
+  /** Digest time in HH:MM 24-hour local format. Defaults to '08:00'. */
+  digestTime?: string;
+  /** Main agent tool use mode. Defaults to 'disabled'. */
+  mainAgentToolUse?: 'enabled' | 'disabled';
+  /** Existing OpenClaw config snapshot. Defaults to empty. The object is deep-cloned; caller's copy is not mutated. */
+  existingCfg?: Record<string, unknown>;
+  /** Override the agentId resolution fetch. Useful for testing. */
+  fetchAgentId?: (protocolUrl: string, apiKey: string) => Promise<string>;
+}
+
+/**
+ * Non-interactive equivalent of {@link runSetup}. Builds a pre-filled
+ * {@link SetupContext} from `opts` (no readline, no prompts) and delegates
+ * to `runSetup`. Returns the complete, mutated OpenClaw config object — the
+ * caller is responsible for writing it to disk.
+ *
+ * @throws When `apiKey` is empty, or when `fetchAgentId` rejects.
+ */
+export async function runHeadlessSetup(
+  opts: HeadlessSetupOptions,
+): Promise<Record<string, unknown>> {
+  const url = opts.url ?? 'https://index.network';
+  const digestEnabled = opts.digestEnabled ?? true;
+  const digestTime = opts.digestTime ?? '08:00';
+  const mainAgentToolUse = opts.mainAgentToolUse ?? 'disabled';
+
+  // Deep-clone so we never mutate the caller's object.
+  const cfg: Record<string, unknown> = JSON.parse(
+    JSON.stringify(opts.existingCfg ?? {}),
+  );
+
+  const ctx: SetupContext = {
+    cfg,
+    prompt: async (label, promptOpts) => {
+      if (label === 'Index Network URL') return url;
+      // Handles both "API key" and "API key (leave blank to keep existing)"
+      if (label.startsWith('API key')) return opts.apiKey;
+      if (label.startsWith('Digest time')) return digestTime;
+      return promptOpts?.default ?? '';
+    },
+    select: async (label, choices) => {
+      if (label === 'Daily digest') return digestEnabled ? 'true' : 'false';
+      if (label === 'Main agent tool use during Index Network renders') return mainAgentToolUse;
+      return choices[0].value;
+    },
+    configSet: async (dotPath, value) => {
+      setConfigValue(cfg, dotPath, value);
+    },
+    fetchAgentId: opts.fetchAgentId ?? defaultFetchAgentId,
+  };
+
+  await runSetup(ctx);
+  return cfg;
+}
+
+/**
  * Read the OpenClaw config file, or return an empty object if missing.
  */
 function readOpenClawConfig(): Record<string, unknown> {
