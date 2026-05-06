@@ -2,7 +2,7 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
-import { experimentService } from '../services/experiment.service';
+import { experimentService, type ImportRow } from '../services/experiment.service';
 import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
@@ -221,6 +221,159 @@ export class NetworkController {
       }
       throw err;
     }
+  }
+
+  /**
+   * Parse a CSV file for member import. Owner-only, experiment networks only.
+   * Used for large files (>500 rows) where client-side parsing is skipped.
+   */
+  @Post('/:id/members/import/parse')
+  @UseGuards(AuthGuard)
+  async parseImportCsv(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const formData = await req.formData().catch(() => null);
+    const file = formData?.get('file');
+    if (!file || !(file instanceof File)) {
+      return Response.json({ error: 'CSV file is required' }, { status: 400 });
+    }
+
+    try {
+      const text = await file.text();
+      const { valid, invalid } = this.parseCsvText(text);
+      return Response.json({ valid, invalid });
+    } catch (err: unknown) {
+      logger.error('CSV parse failed', { networkId: params.id, error: errorMessage(err) });
+      return Response.json({ error: 'Failed to parse CSV' }, { status: 400 });
+    }
+  }
+
+  /**
+   * Import members from parsed CSV data. Owner-only, experiment networks only.
+   */
+  @Post('/:id/members/import')
+  @UseGuards(AuthGuard)
+  async importMembers(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => ({})) as { members?: ImportRow[] };
+    if (!body.members || !Array.isArray(body.members) || body.members.length === 0) {
+      return Response.json({ error: 'members array is required' }, { status: 400 });
+    }
+
+    try {
+      const result = await experimentService.importMembers(params.id, body.members);
+      return Response.json(result);
+    } catch (err: unknown) {
+      logger.error('CSV import failed', { networkId: params.id, error: errorMessage(err) });
+      return Response.json({ error: 'Import failed' }, { status: 500 });
+    }
+  }
+
+  private async assertExperimentOwner(networkId: string, userId: string): Promise<void> {
+    let network: Awaited<ReturnType<typeof networkService.getNetworkById>>;
+    try {
+      network = await networkService.getNetworkById(networkId, userId);
+    } catch {
+      throw Response.json({ error: 'Access denied' }, { status: 403 });
+    }
+    if (!network) {
+      throw Response.json({ error: 'Network not found' }, { status: 404 });
+    }
+    if (!(network as Record<string, unknown>).isExperiment) {
+      throw Response.json({ error: 'This operation is only available for experiment networks' }, { status: 403 });
+    }
+    const owner = (network as Record<string, unknown>).user as { id: string } | undefined;
+    if (owner?.id !== userId) {
+      throw Response.json({ error: 'Owner-only operation' }, { status: 403 });
+    }
+  }
+
+  private parseCsvText(text: string): { valid: ImportRow[]; invalid: { row: Record<string, string>; reason: string }[] } {
+    const lines = text.split(/\r?\n/).filter(line => line.trim());
+    if (lines.length === 0) return { valid: [], invalid: [] };
+
+    const headers = this.parseCsvLine(lines[0]).map(h => h.toLowerCase().trim());
+    const emailIdx = headers.indexOf('email');
+    if (emailIdx === -1) return { valid: [], invalid: [] };
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const knownCols = new Set(['email', 'name', 'bio', 'location']);
+    const valid: ImportRow[] = [];
+    const invalid: { row: Record<string, string>; reason: string }[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = this.parseCsvLine(lines[i]);
+      const row: Record<string, string> = {};
+      headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+
+      const email = row['email']?.toLowerCase().trim();
+      if (!email) {
+        invalid.push({ row, reason: 'Missing email' });
+        continue;
+      }
+      if (!emailRegex.test(email)) {
+        invalid.push({ row, reason: 'Invalid email format' });
+        continue;
+      }
+
+      const socials: { label: string; value: string }[] = [];
+      for (const [key, val] of Object.entries(row)) {
+        if (!knownCols.has(key) && val) {
+          socials.push({ label: key, value: val });
+        }
+      }
+
+      valid.push({
+        email,
+        name: row['name'] || undefined,
+        bio: row['bio'] || undefined,
+        location: row['location'] || undefined,
+        socials,
+      });
+    }
+
+    return { valid, invalid };
+  }
+
+  private parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          current += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          result.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+    }
+    result.push(current);
+    return result;
   }
 
   /**
