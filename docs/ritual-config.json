@@ -82,5 +82,9 @@
   "brainstorm": {
     "enabled": true,
     "specPath": "docs/specs"
+  },
+  "worktree": {
+    "setupCommand": "bun run worktree:setup",
+    "note": "Run `bun run worktree:setup <name>` from the project root after creating a worktree — it symlinks .env files and runs bun install."
   }
 }
