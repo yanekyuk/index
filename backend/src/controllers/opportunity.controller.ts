@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
+import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
 import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
@@ -449,6 +450,8 @@ export class NetworkOpportunityController {
       });
     }
 
+    await assertAgentNetworkScope(req, networkId);
+
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
     const limit = url.searchParams.get('limit');
@@ -493,6 +496,8 @@ export class NetworkOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    await assertAgentNetworkScope(req, networkId);
 
     let body: { parties?: Array<{ userId: string; intentId?: string }>; reasoning?: string; category?: string; confidence?: number };
     try {

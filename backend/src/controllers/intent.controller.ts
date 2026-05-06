@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -73,6 +74,10 @@ export class IntentController {
     const { proposalId, description, networkId } = parsed.data;
 
     logger.verbose('Intent confirm requested', { userId: user.id, proposalId });
+
+    if (networkId) {
+      await assertAgentNetworkScope(req, networkId);
+    }
 
     try {
       const created = await intentService.createFromProposal(user.id, description, proposalId, networkId);

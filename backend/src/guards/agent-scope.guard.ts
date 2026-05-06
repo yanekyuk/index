@@ -2,7 +2,22 @@ import { eq } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { agentPermissions } from '../schemas/database.schema';
+import type { AuthenticatedUser } from './auth.guard';
 import { resolveApiKeyAgentId } from './auth.guard';
+
+/**
+ * Thrown by `assertAgentNetworkScope` when an API-key-authenticated request
+ * targets a network outside the agent's bound scope. Carried up through the
+ * controller and mapped to HTTP 403 by the route registry's error handler in
+ * `main.ts`. The custom class lets the handler distinguish scope violations
+ * from generic `Error`s without string-matching.
+ */
+export class ScopeViolationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ScopeViolationError';
+  }
+}
 
 /**
  * Resolve the network the current request's agent is restricted to, or null
@@ -51,6 +66,25 @@ export const assertAgentNetworkScope = async (req: Request, networkId: string): 
   const scope = await resolveAgentNetworkScope(req);
   if (scope === null) return;
   if (scope !== networkId) {
-    throw new Error(`Agent is restricted to its bound network scope and cannot act on network ${networkId}`);
+    throw new ScopeViolationError(
+      `Agent is restricted to its bound network scope and cannot act on network ${networkId}`,
+    );
   }
+};
+
+/**
+ * Returns the auth'd user paired with the agent's network scope (if any).
+ * Use this in handlers that need to filter list results by scope. Use
+ * `assertAgentNetworkScope` directly when the network is known up-front
+ * from the route param.
+ *
+ * @param req - Incoming Request
+ * @param user - Already-resolved AuthenticatedUser (from AuthGuard / AuthOrApiKeyGuard)
+ * @returns `{ user, networkScopeId }` where `networkScopeId` is null for unscoped callers
+ */
+export const withAgentScope = async (
+  req: Request,
+  user: AuthenticatedUser,
+): Promise<{ user: AuthenticatedUser; networkScopeId: string | null }> => {
+  return { user, networkScopeId: await resolveAgentNetworkScope(req) };
 };
