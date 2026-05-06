@@ -230,12 +230,13 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
     await ctx.configSet('hooks.allowRequestSessionKey', true);
   }
 
-  const REQUIRED_SESSION_KEY_PREFIX = 'agent:main:';
+  const REQUIRED_SESSION_KEY_PREFIXES = ['agent:main:', 'hook:'];
   const existingPrefixes = getStringArrayAt(ctx.cfg, 'hooks.allowedSessionKeyPrefixes') ?? [];
-  if (!existingPrefixes.includes(REQUIRED_SESSION_KEY_PREFIX)) {
+  const missingPrefixes = REQUIRED_SESSION_KEY_PREFIXES.filter((p) => !existingPrefixes.includes(p));
+  if (missingPrefixes.length > 0) {
     await ctx.configSet('hooks.allowedSessionKeyPrefixes', [
       ...existingPrefixes,
-      REQUIRED_SESSION_KEY_PREFIX,
+      ...missingPrefixes,
     ]);
   }
 
