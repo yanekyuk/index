@@ -75,12 +75,13 @@ export default function NetworksPage() {
         joinPolicy: indexData.joinPolicy,
         isExperiment: indexData.isExperiment,
       });
-      addIndex(newIndex);
+      const { masterKey, ...network } = newIndex;
+      addIndex(network);
       setCreateNetworkModalOpen(false);
-      if (newIndex.masterKey) {
-        setMasterKeyModal({ networkId: newIndex.id, masterKey: newIndex.masterKey });
+      if (masterKey) {
+        setMasterKeyModal({ networkId: network.id, masterKey });
       } else {
-        navigate(`/networks/${newIndex.id}`);
+        navigate(`/networks/${network.id}`);
       }
       success('Network created successfully');
     } catch (err) {
