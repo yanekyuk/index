@@ -281,13 +281,21 @@ export class NetworkController {
   }
 
   private async assertExperimentOwner(networkId: string, userId: string): Promise<void> {
-    // getNetworkById throws 'Access denied' if not a member
-    const network = await networkService.getNetworkById(networkId, userId);
+    let network: Awaited<ReturnType<typeof networkService.getNetworkById>>;
+    try {
+      network = await networkService.getNetworkById(networkId, userId);
+    } catch {
+      throw Response.json({ error: 'Access denied' }, { status: 403 });
+    }
     if (!network) {
       throw Response.json({ error: 'Network not found' }, { status: 404 });
     }
     if (!(network as Record<string, unknown>).isExperiment) {
       throw Response.json({ error: 'This operation is only available for experiment networks' }, { status: 403 });
+    }
+    const owner = (network as Record<string, unknown>).user as { id: string } | undefined;
+    if (owner?.id !== userId) {
+      throw Response.json({ error: 'Owner-only operation' }, { status: 403 });
     }
   }
 

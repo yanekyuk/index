@@ -332,16 +332,14 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // CSV Import — parse a large CSV file server-side
   parseCsvImport: async (networkId: string, file: File): Promise<{
-    valid: Array<{ email: string; name?: string; bio?: string; socials: { label: string; value: string }[] }>;
+    valid: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>;
     invalid: Array<{ row: Record<string, string>; reason: string }>;
   }> => {
-    const formData = new FormData();
-    formData.append('file', file);
     return api.uploadFile(`/networks/${networkId}/members/import/parse`, file, undefined, 'file');
   },
 
   // CSV Import — confirm import of parsed rows
-  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; socials: { label: string; value: string }[] }>): Promise<{ imported: number; skipped: number }> => {
+  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{ imported: number; skipped: number }> => {
     return api.post(`/networks/${networkId}/members/import`, { members });
   },
 });

@@ -137,6 +137,7 @@ function rowToRecord(row: ImportRow): Record<string, string> {
   const rec: Record<string, string> = { email: row.email };
   if (row.name) rec['name'] = row.name;
   if (row.bio) rec['bio'] = row.bio;
+  if (row.location) rec['location'] = row.location;
   for (const s of row.socials) {
     rec[s.label] = s.value;
   }

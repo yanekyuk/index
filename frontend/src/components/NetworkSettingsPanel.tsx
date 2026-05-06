@@ -365,7 +365,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     } catch {
       error('Failed to read CSV file');
     }
-  }, []);
+  }, [error]);
 
   const handleCsvConfirm = useCallback(async (rows: ImportRow[]) => {
     try {
@@ -376,7 +376,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     } catch {
       error('Import failed');
     }
-  }, [indexesService, index.id, loadMembers]);
+  }, [indexesService, index.id, loadMembers, success, error]);
 
   const linkAndImport = async (toolkit: string) => {
     const svc = createIntegrationsService(api);
