@@ -100,6 +100,10 @@ interface ChatTarget {
  * current OpenClaw schema where chat info lives under `origin.to` and
  * `origin.provider`/`origin.surface`. Falls back to a top-level `lastTo`
  * of the form `<channel>:<id>` for legacy entries that still carry it.
+ *
+ * When `origin.provider`/`origin.surface` is a non-chat internal surface
+ * (e.g. "webchat") but `origin.to` starts with a known chat prefix, the
+ * channel is inferred from `origin.to` instead.
  */
 function readChannelTo(val: SessionsMapEntry): { channel: string; to: string } | undefined {
   const originTo = typeof val.origin?.to === 'string' ? val.origin.to : '';
@@ -107,13 +111,41 @@ function readChannelTo(val: SessionsMapEntry): { channel: string; to: string } |
     (typeof val.origin?.provider === 'string' && val.origin.provider) ||
     (typeof val.origin?.surface === 'string' && val.origin.surface) ||
     '';
-  if (originTo && originChannel) {
+  if (originTo && originChannel && CHAT_CHANNEL_PREFIXES.includes(originChannel)) {
     return { channel: originChannel, to: originTo };
+  }
+  // When origin.to encodes the channel (e.g. "telegram:12345") but the
+  // provider/surface is an internal surface like "webchat", infer from to.
+  if (originTo) {
+    const colonIdx = originTo.indexOf(':');
+    if (colonIdx > 0) {
+      const inferred = originTo.slice(0, colonIdx);
+      if (CHAT_CHANNEL_PREFIXES.includes(inferred)) {
+        return { channel: inferred, to: originTo };
+      }
+    }
   }
   const lastTo = typeof val.lastTo === 'string' ? val.lastTo : '';
   const colonIdx = lastTo.indexOf(':');
   if (colonIdx > 0) {
     return { channel: lastTo.slice(0, colonIdx), to: lastTo };
+  }
+  return undefined;
+}
+
+/**
+ * Parses a session key of the form `agent:main:<channel>:<type>:<id>` to
+ * extract the delivery target. Used as a last-resort fallback when the
+ * session entry has no origin/deliveryContext metadata (common with
+ * per-channel-peer DM sessions after OpenClaw isolation fixes).
+ */
+function extractFromSessionKey(key: string): { channel: string; to: string } | undefined {
+  const parts = key.split(':');
+  if (parts.length >= 5 && parts[0] === 'agent' && parts[1] === 'main') {
+    const channel = parts[2];
+    if (CHAT_CHANNEL_PREFIXES.includes(channel)) {
+      return { channel, to: `${channel}:${parts[4]}` };
+    }
   }
   return undefined;
 }
@@ -163,12 +195,11 @@ async function findChatTarget(
 
   const candidates = Object.entries(map)
     .filter(([key, val]) => {
-      // Skip plugin-internal hook/heartbeat sessions and the plugin's own
-      // bookkeeping sessions.
       if (key.startsWith('agent:main:hook:')) return false;
       if (key === 'agent:main:main') return false;
       if (key.startsWith('agent:main:index:')) return false;
-      const target = readChannelTo(val);
+      if (key.includes(':slash:')) return false;
+      const target = readChannelTo(val) ?? extractFromSessionKey(key);
       return target !== undefined && CHAT_CHANNEL_PREFIXES.includes(target.channel);
     })
     .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
@@ -176,7 +207,7 @@ async function findChatTarget(
   const top = candidates[0];
   if (!top) return undefined;
 
-  const target = readChannelTo(top[1]);
+  const target = readChannelTo(top[1]) ?? extractFromSessionKey(top[0]);
   if (!target) return undefined;
   return { sessionKey: top[0], channel: target.channel, to: target.to };
 }
