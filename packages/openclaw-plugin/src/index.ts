@@ -146,9 +146,13 @@ export function register(api: OpenClawPluginApi): void {
   const apiKey = readConfig(api, 'apiKey');
 
   if (!agentId || !apiKey) {
-    api.logger.warn(
-      'Index Network plugin not configured. Run `openclaw index connect` to complete setup.',
-    );
+    // Only warn in gateway context — suppress during CLI invocations (e.g. `openclaw index connect`)
+    // where register() is called before the config is written.
+    if (process.argv.some((a) => a === 'gateway')) {
+      api.logger.warn(
+        'Index Network plugin not configured. Run `openclaw index connect` to complete setup.',
+      );
+    }
     return;
   }
 
