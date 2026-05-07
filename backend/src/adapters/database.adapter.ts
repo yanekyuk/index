@@ -1273,12 +1273,6 @@ export class ChatDatabaseAdapter {
       .where(sql`'owner' = ANY(${schema.networkMembers.permissions})`)
       .as('owner_members');
 
-    // Experiment networks remain hidden from public-discovery lists.
-    const experimentFilter = or(
-      eq(schema.networks.isExperiment, false),
-      isNull(schema.networks.isExperiment),
-    );
-
     const rows = await db
       .select({
         id: schema.networks.id,
@@ -1308,7 +1302,6 @@ export class ChatDatabaseAdapter {
             eq(schema.networks.isPersonal, false),
             eq(ownerMembers.userId, userId)
           ),
-          experimentFilter
         )
       )
       .orderBy(desc(schema.networks.isPersonal), desc(schema.networks.createdAt));
@@ -1409,6 +1402,7 @@ export class ChatDatabaseAdapter {
     const whereConditions = [
       isNull(schema.networks.deletedAt),
       eq(schema.networks.isPersonal, false),
+      or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment)),
     ];
 
     if (excludeIds.length > 0) {
