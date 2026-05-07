@@ -1828,6 +1828,47 @@ Import validated rows (from `/import/parse`) into the network. Owner-only, exper
 
 ---
 
+### POST /api/networks/:id/members/invite
+
+Invite a single member to an experiment network by email. Owner-only, experiment networks only. Idempotent: re-inviting an existing user just ensures membership; no fresh key is issued and no email is re-sent.
+
+**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+
+**Path params**:
+- `id` — Network ID (must be an experiment network).
+
+**Request body**:
+```json
+{ "email": "attendee@example.com", "name": "Optional Name" }
+```
+
+**Response 201** (new account created): A network-scoped personal agent and API key are provisioned, and an invitation email containing the connect command is sent.
+```json
+{
+  "user": { "id": "user-uuid", "email": "attendee@example.com" },
+  "created": true,
+  "agentProvisioned": true
+}
+```
+
+**Response 200** (existing account): The user is added to the network if they aren't already a member; no new key is minted and no email is sent.
+```json
+{
+  "user": { "id": "user-uuid", "email": "attendee@example.com" },
+  "created": false,
+  "agentProvisioned": false
+}
+```
+
+The raw API key is delivered only via the invitation email and is never returned in this response. Use `POST /api/networks/:id/signup` (master-key auth) for headless flows that need the key in-band.
+
+**Errors**:
+- `400` — Missing or malformed email.
+- `403` — Not the network owner, not an experiment network, or scope violation.
+- `500` — Provisioning failed.
+
+---
+
 ## Integration
 
 **Controller prefix**: `/integrations`

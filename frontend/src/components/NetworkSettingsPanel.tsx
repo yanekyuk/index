@@ -283,6 +283,13 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   };
 
   const handleAddMember = async (memberUser: Member) => {
+    if (currentIndex.isExperiment) {
+      // Experiment networks need scoped-agent + API-key + invite email even
+      // when the invitee already exists in the inviter's contacts; route
+      // through the invite endpoint, which is idempotent for existing users.
+      await handleInviteMember(memberUser.email);
+      return;
+    }
     try {
       const newMember = await indexesService.addMember(index.id, memberUser.id, ['member']);
       setMembers(prev => [...prev, newMember]);
