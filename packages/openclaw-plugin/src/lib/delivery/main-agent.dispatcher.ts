@@ -11,7 +11,7 @@
  * gateway creates an isolated session with no channel binding and the
  * reply has nowhere to go.
  *
- * Required gateway config (bootstrapped by `openclaw index setup`):
+ * Required gateway config (bootstrapped by `openclaw index connect`):
  *  - `hooks.enabled = true`
  *  - `hooks.token`   = a non-empty secret distinct from `gateway.auth.token`
  *  - `hooks.path`    = a sub-path, defaulting to `/hooks`

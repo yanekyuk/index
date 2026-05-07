@@ -73,7 +73,7 @@ Configure OpenClaw's log scrubbing at the workspace level if you want either pat
 
 **Opportunities picked up but not rendered** — check OpenClaw gateway logs:
 - `Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset` → re-run `openclaw index connect` to bootstrap hooks.
-- `/hooks/agent returned 401: hooks.token rejected` → run `openclaw config unset hooks.token` and then run `openclaw index connect`.
+- `/hooks/agent returned 401: hooks.token rejected` → run `openclaw config unset hooks.token` and re-run `openclaw index connect`.
 - `/hooks/agent returned 404` → confirm `hooks.enabled=true` in `~/.openclaw/openclaw.json`.
 
 **Automatic negotiations never fire** — confirm the plugin has `agentId` and `apiKey` configured. Check OpenClaw gateway logs for poll errors. Verify your agent exists at https://index.network/agents.

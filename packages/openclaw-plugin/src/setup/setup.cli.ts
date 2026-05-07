@@ -3,7 +3,7 @@
  *
  * Registered via `api.registerCli()` and invoked as:
  *
- *   openclaw index setup
+ *   openclaw index connect
  *
  * Collects url, apiKey, and mainAgentToolUse, resolves the caller's
  * agentId from the API key via GET /api/agents/me, then writes plugin
@@ -204,7 +204,7 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   if (existingHooksToken && existingHooksToken === gatewayAuthToken) {
     throw new Error(
       'hooks.token must be distinct from gateway.auth.token. ' +
-        'Run `openclaw config unset hooks.token` and re-run setup to regenerate.',
+        'Run `openclaw config unset hooks.token` and re-run `openclaw index connect` to regenerate.',
     );
   }
 
