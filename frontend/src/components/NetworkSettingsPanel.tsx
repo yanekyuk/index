@@ -347,7 +347,10 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setShowSuggestions(false);
       setSearchHasQueried(false);
       await loadMembers();
-      const toast = result.created
+      // agentProvisioned is the source-of-truth for whether an invite email
+      // went out — true for both newly-created users and pre-existing users
+      // who didn't yet have a scoped agent for this network.
+      const toast = result.agentProvisioned
         ? 'Invitation sent'
         : result.alreadyMember
           ? 'Already a member'

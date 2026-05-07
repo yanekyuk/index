@@ -86,13 +86,20 @@ class NetworkInvitationService {
   }
 
   private async hasScopedAgent(userId: string, networkId: string): Promise<boolean> {
+    // Inner-join on agents and require deletedAt IS NULL: agentDatabaseAdapter
+    // .deleteAgent() soft-deletes the agent and hard-deletes its api keys but
+    // leaves the agent_permissions row intact. Without the join, a user whose
+    // agent has been deleted would short-circuit re-provisioning and end up
+    // with no working key.
     const [row] = await db
       .select({ id: schema.agentPermissions.id })
       .from(schema.agentPermissions)
+      .innerJoin(schema.agents, eq(schema.agents.id, schema.agentPermissions.agentId))
       .where(and(
         eq(schema.agentPermissions.userId, userId),
         eq(schema.agentPermissions.scope, 'network'),
         eq(schema.agentPermissions.scopeId, networkId),
+        isNull(schema.agents.deletedAt),
       ))
       .limit(1);
     return Boolean(row);

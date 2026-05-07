@@ -9,6 +9,8 @@ import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -110,8 +112,7 @@ export class NetworkController {
       });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(body.email)) {
+    if (!EMAIL_REGEX.test(body.email)) {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -281,9 +282,10 @@ export class NetworkController {
 
   /**
    * Invite a single member to an experiment network by email. Owner-only.
-   * Idempotent: re-inviting an existing user just ensures membership.
-   * For new users, provisions a network-scoped agent + API key and emails the
-   * invitation with a connect command.
+   * Idempotent: re-inviting a user who already has a network-scoped agent is
+   * a no-op (no key minted, no email). When the user does NOT yet have a
+   * scoped agent — newly created users and pre-existing ghost contacts alike
+   * — provisions one and emails the invitation with a connect command.
    */
   @Post('/:id/members/invite')
   @UseGuards(AuthOrApiKeyGuard)
@@ -301,8 +303,7 @@ export class NetworkController {
     if (!email) {
       return Response.json({ error: 'email is required' }, { status: 400 });
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!EMAIL_REGEX.test(email)) {
       return Response.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
@@ -385,7 +386,6 @@ export class NetworkController {
     const emailIdx = headers.indexOf('email');
     if (emailIdx === -1) return { valid: [], invalid: [] };
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const knownCols = new Set(['email', 'name', 'bio', 'location']);
     const valid: ImportRow[] = [];
     const invalid: { row: Record<string, string>; reason: string }[] = [];
@@ -400,7 +400,7 @@ export class NetworkController {
         invalid.push({ row, reason: 'Missing email' });
         continue;
       }
-      if (!emailRegex.test(email)) {
+      if (!EMAIL_REGEX.test(email)) {
         invalid.push({ row, reason: 'Invalid email format' });
         continue;
       }
