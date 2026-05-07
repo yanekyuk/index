@@ -3,7 +3,7 @@ watchPatterns = ["/backend/**", "/packages/protocol/**", "/bun.lock", "/package.
 buildCommand = "bun run build:package:protocol && bun run build:backend"
 
 [deploy]
-preDeployCommand = "cd backend && bun run db:migrate"
+preDeployCommand = "echo 'skipping migrations: applied manually via Neon MCP'"
 startCommand = "cd backend && bun run start"
 healthcheckPath = "/health"
 restartPolicyType = "ON_FAILURE"
