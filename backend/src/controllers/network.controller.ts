@@ -4,9 +4,12 @@ import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/expe
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { experimentService, type ImportRow } from '../services/experiment.service';
+import { networkInvitationService } from '../services/network-invitation.service';
 import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -109,8 +112,7 @@ export class NetworkController {
       });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(body.email)) {
+    if (!EMAIL_REGEX.test(body.email)) {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -279,6 +281,57 @@ export class NetworkController {
   }
 
   /**
+   * Invite a single member to an experiment network by email. Owner-only.
+   * Idempotent: re-inviting a user who already has a network-scoped agent is
+   * a no-op (no key minted, no email). When the user does NOT yet have a
+   * scoped agent — newly created users and pre-existing ghost contacts alike
+   * — provisions one and emails the invitation with a connect command.
+   */
+  @Post('/:id/members/invite')
+  @UseGuards(AuthOrApiKeyGuard)
+  async inviteMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => ({})) as { email?: string; name?: string };
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    if (!email) {
+      return Response.json({ error: 'email is required' }, { status: 400 });
+    }
+    if (!EMAIL_REGEX.test(email)) {
+      return Response.json({ error: 'Invalid email format' }, { status: 400 });
+    }
+
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) : undefined;
+
+    try {
+      const result = await networkInvitationService.invite({
+        networkId: params.id,
+        email,
+        name: name || undefined,
+      });
+      return Response.json({
+        user: { id: result.user.id, email: result.user.email },
+        created: result.created,
+        alreadyMember: result.alreadyMember,
+        agentProvisioned: result.agentProvisioned,
+      }, { status: result.created ? 201 : 200 });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('email exists but is filtered out')) {
+        return Response.json({ error: msg }, { status: 409 });
+      }
+      logger.error('Invite by email failed', { networkId: params.id, error: msg });
+      return Response.json({ error: 'Invite failed' }, { status: 500 });
+    }
+  }
+
+  /**
    * Import members from parsed CSV data. Owner-only, experiment networks only.
    */
   @Post('/:id/members/import')
@@ -333,7 +386,6 @@ export class NetworkController {
     const emailIdx = headers.indexOf('email');
     if (emailIdx === -1) return { valid: [], invalid: [] };
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const knownCols = new Set(['email', 'name', 'bio', 'location']);
     const valid: ImportRow[] = [];
     const invalid: { row: Record<string, string>; reason: string }[] = [];
@@ -348,7 +400,7 @@ export class NetworkController {
         invalid.push({ row, reason: 'Missing email' });
         continue;
       }
-      if (!emailRegex.test(email)) {
+      if (!EMAIL_REGEX.test(email)) {
         invalid.push({ row, reason: 'Invalid email format' });
         continue;
       }

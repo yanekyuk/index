@@ -283,6 +283,13 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   };
 
   const handleAddMember = async (memberUser: Member) => {
+    if (currentIndex.isExperiment) {
+      // Experiment networks need scoped-agent + API-key + invite email even
+      // when the invitee already exists in the inviter's contacts; route
+      // through the invite endpoint, which is idempotent for existing users.
+      await handleInviteMember(memberUser.email);
+      return;
+    }
     try {
       const newMember = await indexesService.addMember(index.id, memberUser.id, ['member']);
       setMembers(prev => [...prev, newMember]);
@@ -308,12 +315,12 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   };
 
-  const [isAddingContact, setIsAddingContact] = useState(false);
+  const [isAddingMember, setIsAddingMember] = useState(false);
   const CONTACTS_PAGE_SIZE = 10;
 
   const handleAddContact = async (email: string) => {
-    if (isAddingContact) return;
-    setIsAddingContact(true);
+    if (isAddingMember) return;
+    setIsAddingMember(true);
     try {
       await usersService.addContact(email);
       setMemberSearchQuery('');
@@ -326,7 +333,34 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       console.error('Error adding contact:', err);
       error('Failed to add contact');
     } finally {
-      setIsAddingContact(false);
+      setIsAddingMember(false);
+    }
+  };
+
+  const handleInviteMember = async (email: string) => {
+    if (isAddingMember) return;
+    setIsAddingMember(true);
+    try {
+      const result = await indexesService.inviteMember(index.id, email);
+      setMemberSearchQuery('');
+      setSuggestedUsers([]);
+      setShowSuggestions(false);
+      setSearchHasQueried(false);
+      await loadMembers();
+      // agentProvisioned is the source-of-truth for whether an invite email
+      // went out — true for both newly-created users and pre-existing users
+      // who didn't yet have a scoped agent for this network.
+      const toast = result.agentProvisioned
+        ? 'Invitation sent'
+        : result.alreadyMember
+          ? 'Already a member'
+          : 'Member added';
+      success(toast);
+    } catch (err) {
+      console.error('Error inviting member:', err);
+      error('Failed to invite member');
+    } finally {
+      setIsAddingMember(false);
     }
   };
 
@@ -702,13 +736,15 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                   {memberSearchQuery.includes('@') ? (
                     <button
                       className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                      onClick={() => handleAddContact(memberSearchQuery)}
-                      disabled={isAddingContact}
+                      onClick={() => currentIndex.isExperiment ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
+                      disabled={isAddingMember}
                     >
                       <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <Plus className="h-3.5 w-3.5 text-gray-500" />
                       </div>
-                      <span className="text-sm text-black flex-1 truncate">Add "{memberSearchQuery}"</span>
+                      <span className="text-sm text-black flex-1 truncate">
+                        {currentIndex.isExperiment ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
+                      </span>
                     </button>
                   ) : (
                     <div className="px-3 py-2.5 text-sm text-gray-400">No results found</div>
