@@ -2,10 +2,10 @@ import '../src/startup.env';
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import db from '../src/lib/drizzle/drizzle';
-import { agents, apikeys, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
+import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config
@@ -125,13 +125,17 @@ async function cleanupUser(userId: string) {
 afterAll(async () => {
   try {
     if (testNetworkId) {
-      const experimentUsers = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.experimentNetworkId, testNetworkId));
+      // Members joined the experiment network via networkMembers (no longer
+      // via the deprecated users.experimentNetworkId column).
+      const experimentMembers = await db
+        .select({ userId: networkMembers.userId })
+        .from(networkMembers)
+        .where(eq(networkMembers.networkId, testNetworkId));
 
-      for (const u of experimentUsers) {
-        await cleanupUser(u.id);
+      for (const m of experimentMembers) {
+        if (m.userId !== testOwnerId) {
+          await cleanupUser(m.userId);
+        }
       }
 
       await db.delete(networkMembers).where(eq(networkMembers.networkId, testNetworkId));
@@ -293,21 +297,35 @@ describe('Experiment network headless signup', () => {
     expect(res.status).toBe(400);
   });
 
-  // ── 8. Experiment user isolated from normal auth flow ───────────────────────
+  // ── 8. Signup provisions a network-scoped agent permission ──────────────────
 
-  it('experiment user does not appear in the regular users scope (experimentNetworkId IS NULL)', async () => {
-    if (!signedUpUserId) return;
+  it('grants the new user a network-scoped agent permission for the experiment network', async () => {
+    if (!signedUpUserId || !testNetworkId) return;
 
-    const normalUsers = await db
-      .select({ id: users.id })
-      .from(users)
+    const perms = await db
+      .select({
+        agentId: agentPermissions.agentId,
+        scope: agentPermissions.scope,
+        scopeId: agentPermissions.scopeId,
+        actions: agentPermissions.actions,
+      })
+      .from(agentPermissions)
       .where(and(
-        eq(users.id, signedUpUserId),
-        isNull(users.experimentNetworkId),
+        eq(agentPermissions.userId, signedUpUserId),
+        eq(agentPermissions.scope, 'network'),
+        eq(agentPermissions.scopeId, testNetworkId),
       ));
 
-    // The experiment user should NOT appear in a query filtered to non-experiment users
-    expect(normalUsers).toHaveLength(0);
+    // At least one network-scoped permission row exists for this user/network pair.
+    expect(perms.length).toBeGreaterThanOrEqual(1);
+    const actions = perms[0].actions;
+    expect(actions).toEqual(expect.arrayContaining([
+      'manage:profile',
+      'manage:intents',
+      'manage:networks',
+      'manage:contacts',
+      'manage:opportunities',
+    ]));
   });
 
   // ── 9. Immutability: cannot set isExperiment=false via PATCH ────────────────

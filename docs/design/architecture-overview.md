@@ -260,6 +260,15 @@ MCP requests authenticate via an `x-api-key` header. The resolver reads the Bett
 
 Every tool and negotiation endpoint checks the caller's `agent_permissions` for the relevant action (e.g. the negotiation pickup/respond endpoints and the `respond_to_negotiation` MCP tool require `manage:negotiations`). MCP auth resolves the `(userId, agentId)` pair from the API key, so every permission check is attributable to a concrete agent identity — not just a user.
 
+#### Network-scoped agents
+
+`agent_permissions.scope` accepts `'global' | 'node' | 'network'`. A network-scoped permission row — `scope='network', scopeId=<networkId>` — restricts the agent to a single network. Two enforcement layers:
+
+- **HTTP**: `backend/src/guards/agent-scope.guard.ts` exposes `resolveAgentNetworkScope(req)`, `assertAgentNetworkScope(req, networkId)`, and `withAgentScope(req, user)`. Network/intent/opportunity controllers assert on writes that take a path-param networkId, and filter list endpoints via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`.
+- **MCP**: the auth resolver also returns `networkScopeId`. `computeAgentIndexScope` (in `packages/protocol/src/mcp/mcp.server.ts`) clamps `indexScope` to `[networkScopeId, personalIndex]` before constructing per-request scoped DBs, so every downstream tool call is bounded.
+
+The primary use case is bulk experiment-network onboarding: `networkInvitationService.invite({ networkId, email })` provisions user + network-scoped agent + API key + invitation email. Possession of the email account *is* the user's verification — there is no separate `users.experimentNetworkId` column anymore.
+
 #### Personal agent dispatch (negotiation)
 
 Negotiation turns that cannot be resolved synchronously by an in-process system agent are **parked for polling**: the graph writes a `tasks` row in `waiting_for_agent` with the full turn context in metadata and suspends.

@@ -65,14 +65,13 @@ export class AuthDatabaseAdapter {
               .values(data)
               .onConflictDoUpdate({
                 target: [schema.users.email],
-                targetWhere: sql`${schema.users.experimentNetworkId} IS NULL`,
                 set: {
                   name: sql`EXCLUDED."name"`,
                   avatar: sql`EXCLUDED."avatar"`,
                   isGhost: sql`false`,
                   updatedAt: sql`now()`,
                 },
-                setWhere: sql`${schema.users.isGhost} = true AND ${schema.users.experimentNetworkId} IS NULL`,
+                setWhere: sql`${schema.users.isGhost} = true`,
               })
               .returning();
 

@@ -60,7 +60,7 @@ export class ContactDatabaseAdapter {
     const [row] = await db
       .select({ id: schema.users.id, name: schema.users.name, email: schema.users.email, isGhost: schema.users.isGhost })
       .from(schema.users)
-      .where(and(sql`lower(${schema.users.email}) = ${normalized}`, isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)))
+      .where(and(sql`lower(${schema.users.email}) = ${normalized}`, isNull(schema.users.deletedAt)))
       .limit(1);
     return row ?? null;
   }
@@ -70,7 +70,7 @@ export class ContactDatabaseAdapter {
     return db
       .select({ id: schema.users.id, name: schema.users.name, email: schema.users.email, isGhost: schema.users.isGhost })
       .from(schema.users)
-      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)));
+      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt)));
   }
 
   async createGhostUser(data: { name: string; email: string }): Promise<{ id: string }> {
@@ -82,9 +82,8 @@ export class ContactDatabaseAdapter {
       .values({ id, name: data.name, email, isGhost: true })
       .onConflictDoUpdate({
         target: [schema.users.email],
-        targetWhere: sql`${schema.users.experimentNetworkId} IS NULL`,
         set: { name: sql`EXCLUDED."name"`, updatedAt: sql`now()` },
-        setWhere: sql`${schema.users.isGhost} = true AND ${schema.users.experimentNetworkId} IS NULL`,
+        setWhere: sql`${schema.users.isGhost} = true`,
       })
       .returning({ id: schema.users.id });
 
@@ -98,7 +97,7 @@ export class ContactDatabaseAdapter {
     const [existing] = await db
       .select({ id: schema.users.id })
       .from(schema.users)
-      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)))
+      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)))
       .limit(1);
 
     if (!existing) throw new Error(`Cannot create ghost: email belongs to a deleted user (${email})`);
@@ -121,7 +120,7 @@ export class ContactDatabaseAdapter {
     const existingAfterInsert = await db
       .select({ id: schema.users.id, email: schema.users.email })
       .from(schema.users)
-      .where(and(inArray(schema.users.email, [...insertedEmails]), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)));
+      .where(and(inArray(schema.users.email, [...insertedEmails]), isNull(schema.users.deletedAt)));
 
     const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
     const actuallyCreatedIds = new Set(usersToInsert.filter(u => emailToId.get(u.email) === u.id).map(u => u.id));

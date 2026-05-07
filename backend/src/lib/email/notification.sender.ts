@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import db from '../drizzle/drizzle';
 import { userNotificationSettings, users } from '../../schemas/database.schema';
@@ -46,7 +46,7 @@ export async function sendConnectionRequestEmail(
   })
     .from(users)
     .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
-    .where(and(eq(users.email, to), isNull(users.experimentNetworkId)))
+    .where(eq(users.email, to))
     .limit(1);
 
   if (userResult.length === 0) return;
@@ -106,7 +106,7 @@ export async function sendConnectionAcceptedEmail(
     })
       .from(users)
       .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
-      .where(and(eq(users.email, recipientEmail), isNull(users.experimentNetworkId)))
+      .where(eq(users.email, recipientEmail))
       .limit(1);
 
     if (userResult.length === 0) continue;

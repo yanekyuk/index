@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
+import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
 import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
@@ -439,7 +440,7 @@ export class NetworkOpportunityController {
    * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
@@ -448,6 +449,8 @@ export class NetworkOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    await assertAgentNetworkScope(req, networkId);
 
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
@@ -484,7 +487,7 @@ export class NetworkOpportunityController {
    * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
    */
   @Post('/:networkId/opportunities')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
@@ -493,6 +496,8 @@ export class NetworkOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    await assertAgentNetworkScope(req, networkId);
 
     let body: { parties?: Array<{ userId: string; intentId?: string }>; reasoning?: string; category?: string; confidence?: number };
     try {

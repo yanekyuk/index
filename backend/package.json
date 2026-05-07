@@ -1,6 +1,6 @@
 {
   "name": "protocol",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -25,6 +25,7 @@
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "maintenance:migrate-chat": "bun ./src/cli/migrate-chat-to-conversations.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
+    "maintenance:audit-experiment-emails": "bun ./src/cli/audit-experiment-email-collisions.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
