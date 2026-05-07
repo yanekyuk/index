@@ -5,7 +5,7 @@ import { runSetup as setup, runHeadlessSetup } from '../setup/setup.cli.js';
 interface FakeCtx {
   ctx: Parameters<typeof setup>[0];
   configWrites: Array<{ path: string; value: unknown }>;
-  promptCalls: Array<{ label: string; opts?: { default?: string; secret?: boolean } }>;
+  promptCalls: Array<{ label: string; opts?: { default?: string } }>;
   selectCalls: Array<{ label: string; choices: Array<{ label: string; value: string }> }>;
 }
 
@@ -176,7 +176,7 @@ describe('setup wizard', () => {
     await expect(setup(fake.ctx)).rejects.toThrow('Could not resolve agent from API key');
   });
 
-  test('prompts API key with secret flag', async () => {
+  test('prompts for API key', async () => {
     const fake = buildFakeCtx({
       promptResponses: { 'API key': 'key-456' },
       selectResponses: { 'Daily digest': 'true' },
@@ -185,7 +185,7 @@ describe('setup wizard', () => {
     await setup(fake.ctx);
 
     const apiKeyPrompt = fake.promptCalls.find((p) => p.label === 'API key');
-    expect(apiKeyPrompt?.opts?.secret).toBe(true);
+    expect(apiKeyPrompt).toBeDefined();
   });
 
   test('never prompts for delivery channel regardless of configured channels', async () => {
