@@ -438,6 +438,8 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |
+| `negotiation-timeout` | Triggers the AI fallback agent when a personal agent does not respond to a parked negotiation turn within its timeout window |
+| `negotiation-claim-timeout` | Expires a stale claim (task stuck in `claimed`) and returns the turn to `waiting_for_agent` |
 
 ### Job Patterns
 

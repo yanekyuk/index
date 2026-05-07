@@ -9,8 +9,9 @@ This guide is for the InstaClaw team. It describes how to provision an Edge City
 For each EdgeClaw attendee, InstaClaw needs to:
 
 1. Call the Index Network signup endpoint with the attendee's email.
-2. Receive back an `apiKey` and `agentId`.
-3. Write those values into the attendee's OpenClaw plugin config.
+2. Receive back an `apiKey`.
+3. Call `GET /api/agents/me` with that key to resolve the `agentId`.
+4. Write `url`, `apiKey`, and `agentId` into the attendee's OpenClaw plugin config.
 
 That's it. The attendee's agent is then live and connected to the Edge City network.
 
@@ -37,24 +38,43 @@ POST https://index.network/api/networks/<EDGE_CITY_NETWORK_ID>/signup
     "email": "attendee@example.com"
   },
   "apiKey": "sk_live_...",
-  "agentId": "agent-uuid",
-  "connectCommand": "openclaw index connect --api-key sk_live_...",
-  "created": true
+  "connectCommand": "openclaw index connect --api-key sk_live_..."
 }
 ```
 
 | Field | Description |
 |-------|-------------|
 | `apiKey` | The attendee's personal agent API key. Used to authenticate against the Index Network MCP server. |
-| `agentId` | The attendee's personal agent UUID. Required in the plugin config. |
 | `connectCommand` | Pre-built CLI command for self-hosted OpenClaw users. InstaClaw can ignore this. |
-| `created` | `true` if a new account was created, `false` if the attendee already existed. |
 
-**Idempotent:** Calling this endpoint more than once for the same email always returns the same user. A fresh API key is issued on every call — store the latest one.
+**Idempotent:** Calling this endpoint more than once for the same email always returns the same user. A fresh API key is issued on every call — store the latest one and re-resolve the `agentId` via `GET /api/agents/me`.
 
 ---
 
-## Step 2 — Configure the plugin on the attendee's instance
+## Step 2 — Resolve the agentId
+
+The signup response does not include an `agentId`. Call `GET /api/agents/me` with the returned `apiKey` to resolve it:
+
+```
+GET https://index.network/api/agents/me
+x-api-key: sk_live_...
+```
+
+**Response:**
+```json
+{
+  "agent": {
+    "id": "agent-uuid",
+    ...
+  }
+}
+```
+
+Use `agent.id` as the `agentId` in the plugin config.
+
+---
+
+## Step 3 — Configure the plugin on the attendee's instance
 
 Write the following keys into the attendee's OpenClaw config under `plugins.entries.indexnetwork-openclaw-plugin.config`:
 
@@ -62,7 +82,7 @@ Write the following keys into the attendee's OpenClaw config under `plugins.entr
 |------------|-------|
 | `url` | `https://index.network` |
 | `apiKey` | Value of `apiKey` from the signup response |
-| `agentId` | Value of `agentId` from the signup response |
+| `agentId` | Value of `agent.id` from the `GET /api/agents/me` response |
 
 **Full config path:** `plugins.entries.indexnetwork-openclaw-plugin.config`
 
