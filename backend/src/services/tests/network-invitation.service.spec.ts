@@ -4,7 +4,7 @@ config({ path: '.env.test' });
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { and, eq, inArray } from 'drizzle-orm';
 
-const sendSpy = mock(async () => ({ data: null, skipped: false }));
+const sendSpy = mock(async (_args: { to: string; subject: string; html: string; text: string }) => ({ data: null, skipped: false }));
 mock.module('../../lib/email/transport.helper', () => ({
   executeSendEmail: sendSpy,
 }));
@@ -15,15 +15,13 @@ import { networkInvitationService } from '../network-invitation.service';
 
 describe('networkInvitationService.invite', () => {
   let networkId: string;
-  let ownerId: string;
   const cleanupUserIds: string[] = [];
 
   beforeAll(async () => {
     const [u] = await db.insert(schema.users)
       .values({ email: `inv-owner-${Date.now()}@test.dev`, name: 'Owner', emailVerified: true })
       .returning({ id: schema.users.id });
-    ownerId = u.id;
-    cleanupUserIds.push(ownerId);
+    cleanupUserIds.push(u.id);
 
     const [n] = await db.insert(schema.networks)
       .values({ title: 'Invite Net', isPersonal: false, isExperiment: true })

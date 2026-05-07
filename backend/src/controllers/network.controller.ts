@@ -22,14 +22,25 @@ export class NetworkController {
   async list(req: Request, user: AuthenticatedUser) {
     const { networkScopeId } = await withAgentScope(req, user);
     const result = await networkService.getNetworksForUser(user.id);
-    const filtered = networkScopeId
-      ? {
-          ...result,
-          networks: result.networks.filter(
-            (n: { id: string; isPersonal?: boolean | null }) => n.id === networkScopeId || n.isPersonal === true,
-          ),
-        }
-      : result;
+    let filtered = result;
+    if (networkScopeId) {
+      const networks = result.networks.filter(
+        (n: { id: string; isPersonal?: boolean | null }) => n.id === networkScopeId || n.isPersonal === true,
+      );
+      // Recompute pagination so count/totalCount/total stay consistent with
+      // the post-filter networks array; otherwise scoped callers see stale
+      // counts that don't match the rows they receive.
+      filtered = {
+        ...result,
+        networks,
+        pagination: {
+          ...result.pagination,
+          count: networks.length,
+          totalCount: networks.length,
+          total: networks.length > 0 ? 1 : 0,
+        },
+      };
+    }
     logger.verbose('Networks listed for user', { userId: user.id, count: filtered.networks.length, scoped: networkScopeId !== null });
     return Response.json(filtered);
   }

@@ -20,16 +20,21 @@ export class ScopeViolationError extends Error {
 }
 
 /**
- * Resolve the network the given agent is restricted to, or null if the agent
- * has any `scope='global'` permission, has no network-scoped permissions, or
- * doesn't exist.
+ * Resolve the network the given agent's network-level access is restricted to.
  *
- * If the agent has *only* network-scoped permissions, returns the single
- * `scopeId` they share. Throws if the agent's network-scoped permissions
- * disagree on `scopeId` (defensive — should never happen for imported agents).
+ * Returns `null` (no network restriction) when any of:
+ *  - the agent has any `scope='global'` permission, OR
+ *  - the agent has no `scope='network'` permissions, OR
+ *  - the agent doesn't exist.
+ *
+ * If the agent has at least one `scope='network'` permission, returns the
+ * single shared `scopeId`. Other non-global permissions (e.g. `scope='node'`)
+ * are ignored here because they don't constrain network-level access. Throws
+ * if the agent's network-scoped permissions disagree on `scopeId` (defensive —
+ * should never happen for imported agents).
  *
  * @param agentId - The agent UUID whose permissions are inspected
- * @returns The bound network id, or `null` if the agent is not network-scoped
+ * @returns The bound network id, or `null` if the agent has no network restriction
  * @throws If the agent has multiple distinct network scopes
  */
 export const resolveAgentNetworkScopeById = async (agentId: string): Promise<string | null> => {
