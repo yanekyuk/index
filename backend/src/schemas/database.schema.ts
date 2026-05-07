@@ -61,12 +61,8 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-
-  // Experiment network scope — when set, this user belongs to a headless experiment network
-  experimentNetworkId: text('experiment_network_id').references(() => networks.id),
 }, (table) => ({
-  usersEmailExperimentUnique: uniqueIndex('users_email_experiment_unique').on(table.email, table.experimentNetworkId),
-  usersEmailOrganicUnique: uniqueIndex('users_email_organic_unique').on(table.email).where(sql`${table.experimentNetworkId} IS NULL`),
+  usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
   usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
 }));
 

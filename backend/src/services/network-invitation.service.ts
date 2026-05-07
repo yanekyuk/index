@@ -129,7 +129,6 @@ class NetworkInvitationService {
         and(
           eq(schema.users.email, email),
           isNull(schema.users.deletedAt),
-          isNull(schema.users.experimentNetworkId),
         ),
       )
       .limit(1);
@@ -155,13 +154,12 @@ class NetworkInvitationService {
           and(
             eq(schema.users.email, email),
             isNull(schema.users.deletedAt),
-            isNull(schema.users.experimentNetworkId),
           ),
         )
         .limit(1);
       if (!raced) {
         throw new Error(
-          `Cannot invite user: email exists but is filtered out (likely soft-deleted or experiment-scoped): ${email}`,
+          `Cannot invite user: email exists but is filtered out (likely soft-deleted): ${email}`,
         );
       }
       return { user: raced, created: false };

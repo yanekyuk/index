@@ -80,35 +80,6 @@ export async function ensurePersonalNetwork(userId: string): Promise<string> {
 }
 
 /**
- * Throws if the user is bound to an experiment network and the target network
- * is anything other than (a) their experiment network or (b) their personal
- * index. Used to keep headless-signup users scoped to their experiment.
- */
-async function assertExperimentMembershipScope(userId: string, networkId: string): Promise<void> {
-  const [user] = await db
-    .select({ experimentNetworkId: schema.users.experimentNetworkId })
-    .from(schema.users)
-    .where(eq(schema.users.id, userId))
-    .limit(1);
-
-  const experimentNetworkId = user?.experimentNetworkId;
-  if (!experimentNetworkId) return;
-  if (networkId === experimentNetworkId) return;
-
-  const [personal] = await db
-    .select({ networkId: schema.personalNetworks.networkId })
-    .from(schema.personalNetworks)
-    .where(and(
-      eq(schema.personalNetworks.userId, userId),
-      eq(schema.personalNetworks.networkId, networkId),
-    ))
-    .limit(1);
-  if (personal) return;
-
-  throw new Error('Experiment users cannot join networks outside their experiment scope.');
-}
-
-/**
  * Returns the personal index ID for a user.
  * @param userId - The user to look up
  * @returns The personal index ID, or null if not found
@@ -1273,15 +1244,6 @@ export class ChatDatabaseAdapter {
   }
 
   async getNetworksForUser(userId: string) {
-    // Check if user is an experiment user
-    const [userRow] = await db
-      .select({ experimentNetworkId: schema.users.experimentNetworkId })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-
-    const experimentNetworkId = userRow?.experimentNetworkId;
-
     const memberIndexIds = await db
       .select({ networkId: schema.networkMembers.networkId })
       .from(schema.networkMembers)
@@ -1311,11 +1273,11 @@ export class ChatDatabaseAdapter {
       .where(sql`'owner' = ANY(${schema.networkMembers.permissions})`)
       .as('owner_members');
 
-    // Experiment users only see their personal network and experiment network.
-    // Organic users never see experiment networks.
-    const experimentFilter = experimentNetworkId
-      ? or(eq(schema.networks.isPersonal, true), eq(schema.networks.id, experimentNetworkId))
-      : or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment));
+    // Experiment networks remain hidden from public-discovery lists.
+    const experimentFilter = or(
+      eq(schema.networks.isExperiment, false),
+      isNull(schema.networks.isExperiment),
+    );
 
     const rows = await db
       .select({
@@ -2132,21 +2094,35 @@ export class ChatDatabaseAdapter {
 
   /**
    * Cascading soft delete for an experiment network.
-   * Soft-deletes all experiment users scoped to this network and their data
-   * (intents, agents, API keys, personal networks, network memberships), then
-   * soft-deletes the experiment network itself.
+   *
+   * Soft-deletes users who were *invited into* this experiment (i.e. have a
+   * network-scoped personal agent permissioned on this network) along with
+   * their data (intents, agents, API keys, personal networks, network
+   * memberships). Organic users who happen to be members but were not
+   * provisioned through the invitation flow are NOT cascaded — they keep their
+   * accounts.
+   *
    * @param networkId - The experiment network to delete
    */
   async softDeleteExperimentNetwork(networkId: string): Promise<void> {
     const now = new Date();
 
-    // Find all experiment users scoped to this network
+    // Identify experimentally-onboarded users: those who own at least one
+    // agent with a network-scoped permission on this network. These are the
+    // users provisioned by networkInvitationService.invite() (headless/CSV).
     const experimentUsers = await db
-      .select({ id: schema.users.id })
+      .selectDistinct({ id: schema.users.id })
       .from(schema.users)
+      .innerJoin(schema.agents, eq(schema.agents.ownerId, schema.users.id))
+      .innerJoin(
+        schema.agentPermissions,
+        eq(schema.agentPermissions.agentId, schema.agents.id),
+      )
       .where(and(
-        eq(schema.users.experimentNetworkId, networkId),
+        eq(schema.agentPermissions.scope, 'network'),
+        eq(schema.agentPermissions.scopeId, networkId),
         isNull(schema.users.deletedAt),
+        isNull(schema.agents.deletedAt),
       ));
 
     const userIds = experimentUsers.map(u => u.id);
@@ -2328,8 +2304,6 @@ export class ChatDatabaseAdapter {
     userId: string,
     role: 'owner' | 'admin' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
-    await assertExperimentMembershipScope(userId, networkId);
-
     let memberPrompt: string | null = null;
     const [indexRow] = await db.select({ prompt: networks.prompt }).from(networks).where(eq(networks.id, networkId)).limit(1);
     if (indexRow) memberPrompt = indexRow.prompt;
@@ -2903,12 +2877,11 @@ export class ChatDatabaseAdapter {
       })
       .onConflictDoUpdate({
         target: [schema.users.email],
-        targetWhere: sql`${schema.users.experimentNetworkId} IS NULL`,
         set: {
           name: sql`EXCLUDED."name"`,
           updatedAt: sql`now()`,
         },
-        setWhere: sql`${schema.users.isGhost} = true AND ${schema.users.experimentNetworkId} IS NULL`,
+        setWhere: sql`${schema.users.isGhost} = true`,
       })
       .returning({ id: schema.users.id });
 
@@ -2927,7 +2900,7 @@ export class ChatDatabaseAdapter {
     const [existing] = await db
       .select({ id: schema.users.id })
       .from(schema.users)
-      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)))
+      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)))
       .limit(1);
 
     if (!existing) {
@@ -3013,7 +2986,6 @@ export class ChatDatabaseAdapter {
         inArray(schema.users.email, emails),
         eq(schema.users.isGhost, true),
         isNotNull(schema.users.deletedAt),
-        isNull(schema.users.experimentNetworkId),
       ));
     return results.map(r => r.email);
   }
@@ -3056,7 +3028,6 @@ export class ChatDatabaseAdapter {
       .where(and(
         sql`lower(${schema.users.email}) = ${normalized}`,
         isNull(schema.users.deletedAt),
-        isNull(schema.users.experimentNetworkId),
       ))
       .limit(1);
     return row ?? null;
@@ -3077,7 +3048,7 @@ export class ChatDatabaseAdapter {
         isGhost: schema.users.isGhost,
       })
       .from(schema.users)
-      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt), isNull(schema.users.experimentNetworkId)));
+      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt)));
     return rows;
   }
 
@@ -3127,7 +3098,6 @@ export class ChatDatabaseAdapter {
       .where(and(
         inArray(schema.users.email, [...insertedEmails]),
         isNull(schema.users.deletedAt),
-        isNull(schema.users.experimentNetworkId),
       ));
 
     // Map back to our generated IDs vs actual IDs
@@ -4787,7 +4757,7 @@ export class UserDatabaseAdapter {
   async findByEmail(email: string): Promise<typeof users.$inferSelect | null> {
     const result = await db.select()
       .from(users)
-      .where(and(eq(users.email, email), isNull(users.experimentNetworkId)))
+      .where(eq(users.email, email))
       .limit(1);
     return result[0] ?? null;
   }
