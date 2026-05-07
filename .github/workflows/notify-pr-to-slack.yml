@@ -1,6 +1,6 @@
 # Notify Slack when code lands on dev or main — via PR merge or direct push.
 # Requires: GitHub repo secret SLACK_WEBHOOK_URL (webhook URL for the Slack automation).
-name: Changelog to Slack
+name: Notify Slack on merge
 on:
   pull_request_target:
     types: [closed]
