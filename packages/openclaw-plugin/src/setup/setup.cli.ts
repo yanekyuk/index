@@ -154,37 +154,9 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   ]);
   await ctx.configSet(`${configPrefix}.mainAgentToolUse`, mainAgentToolUse || 'disabled');
 
-  // --- Community branding (optional) ---
-  const existingNodeName = existing('nodeName');
-  const nodeNameRaw = await ctx.prompt(
-    'Community name (optional, leave blank to clear)',
-    { default: existingNodeName || '' },
-  );
-  const nodeName = nodeNameRaw.trim();
-  if (nodeName) {
-    await ctx.configSet(`${configPrefix}.nodeName`, nodeName);
-
-    const existingDesc = existing('nodeDescription');
-    const nodeDescriptionRaw = await ctx.prompt(
-      'Community description (optional, leave blank to clear)',
-      { default: existingDesc || '' },
-    );
-    const nodeDescription = nodeDescriptionRaw.trim();
-    await ctx.configSet(`${configPrefix}.nodeDescription`, nodeDescription || undefined);
-
-    const existingCtx = existing('nodeContext');
-    const nodeContextRaw = await ctx.prompt(
-      'Community context / focus area (optional, leave blank to clear)',
-      { default: existingCtx || '' },
-    );
-    const nodeContext = nodeContextRaw.trim();
-    await ctx.configSet(`${configPrefix}.nodeContext`, nodeContext || undefined);
-  } else {
-    // Blank nodeName clears all branding fields
-    await ctx.configSet(`${configPrefix}.nodeName`, undefined);
-    await ctx.configSet(`${configPrefix}.nodeDescription`, undefined);
-    await ctx.configSet(`${configPrefix}.nodeContext`, undefined);
-  }
+  // Branding (nodeName/nodeDescription/nodeContext) is intentionally not
+  // prompted — values come from the network owner's pre-baked config or
+  // default to Index Network. Pre-existing values are preserved.
 
   // --- Bootstrap gateway hooks (required for /hooks/agent dispatch) ---
   // The plugin dispatches notifications via POST /hooks/agent, which requires
@@ -275,12 +247,6 @@ export interface HeadlessSetupOptions {
   digestTime?: string;
   /** Main agent tool use mode. Defaults to 'disabled'. */
   mainAgentToolUse?: 'enabled' | 'disabled';
-  /** Optional community branding name. */
-  nodeName?: string;
-  /** Optional community branding description. */
-  nodeDescription?: string;
-  /** Optional community branding context/focus area. */
-  nodeContext?: string;
   /** Existing OpenClaw config snapshot. Defaults to empty. The object is deep-cloned; caller's copy is not mutated. */
   existingCfg?: Record<string, unknown>;
   /** Override the agentId resolution fetch. Useful for testing. */
@@ -315,9 +281,6 @@ export async function runHeadlessSetup(
       // Handles both "API key" and "API key (leave blank to keep existing)"
       if (label.startsWith('API key')) return opts.apiKey;
       if (label.startsWith('Digest time')) return digestTime;
-      if (label.startsWith('Community name')) return opts.nodeName ?? '';
-      if (label.startsWith('Community description')) return opts.nodeDescription ?? '';
-      if (label.startsWith('Community context')) return opts.nodeContext ?? '';
       return promptOpts?.default ?? '';
     },
     select: async (label, choices) => {
