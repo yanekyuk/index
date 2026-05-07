@@ -356,7 +356,12 @@ Bun.serve({
               return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             // Map common auth errors
-            if (message === 'Access token required' || message === 'Invalid or expired access token') {
+            if (
+              message === 'Access token required' ||
+              message === 'Access token or API key required' ||
+              message === 'Invalid or expired access token' ||
+              message === 'Invalid API key'
+            ) {
               return new Response(JSON.stringify({ error: message }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             if (message === 'User not found' || message === 'Account deactivated') {
