@@ -312,10 +312,15 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         '(morning briefs, ongoing discovery, feedback welcome).',
         '',
         'Always fires regardless of candidate count.',
-        '',
-        'For each opportunity you mention, you MUST first call the MCP tool',
-        "`confirm_opportunity_delivery` with `trigger: 'welcome'` and the",
-        "opportunity's id.",
+        ...(payload.candidates.length > 0
+          ? [
+              '',
+              'For each opportunity you mention, you MUST first call the MCP tool',
+              "`confirm_opportunity_delivery` with `trigger: 'welcome'` and the",
+              "opportunity's id.",
+              "Do not call confirm for opportunities you don't mention.",
+            ]
+          : []),
       ].join('\n');
     case 'accepted_opportunity':
       return [
