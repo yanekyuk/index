@@ -18,13 +18,12 @@ that would otherwise live only in the commit.
 **Always use these terms (never the alternatives):**
 
 - `intent` not "request" or "query"
-- `index` / `indexes` not "community" / "communities"
+- `network` / `networks` not "index" / "indexes" or "community" / "communities"
 - `opportunity` not "match" or "connection" or "result"
 - `profile` not "user profile" (unless distinguishing from agent profiles)
 - `signal` when describing intent-like data informally
 - `member` / `membership` not "participant" or "subscriber"
-- `personal index` not "personal network" (in docs that distinguish it)
-- `network` is the overarching term for an index when speaking loosely
+- `personal network` not "personal index"
 
 Never write "networking", "match", or "search" in documentation.
 
@@ -94,7 +93,7 @@ For each changed area, review the diff and ask:
 
 Capture if new or changed:
 
-- Business rules or invariants (e.g. "personal indexes cannot be deleted")
+- Business rules or invariants (e.g. "personal networks cannot be deleted")
 - Entity model additions or changes (new columns, new relationships, soft-delete rules)
 - Confidence/inference semantics (if scoring logic changed)
 - Constraint or lifecycle rules (e.g. when an opportunity transitions to accepted)
