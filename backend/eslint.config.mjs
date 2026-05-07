@@ -152,6 +152,7 @@ export default tseslint.config(
                     "schemas",
                     "types",
                     "events",
+                    "guards",
                   ],
                 },
               },

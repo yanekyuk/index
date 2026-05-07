@@ -20,22 +20,19 @@ export class ScopeViolationError extends Error {
 }
 
 /**
- * Resolve the network the current request's agent is restricted to, or null
- * if the request is JWT-authenticated, has no API key, the key carries no
- * `metadata.agentId`, or the agent has any `scope='global'` permission.
+ * Resolve the network the given agent is restricted to, or null if the agent
+ * has any `scope='global'` permission, has no network-scoped permissions, or
+ * doesn't exist.
  *
  * If the agent has *only* network-scoped permissions, returns the single
  * `scopeId` they share. Throws if the agent's network-scoped permissions
  * disagree on `scopeId` (defensive — should never happen for imported agents).
  *
- * @param req - The incoming request whose `x-api-key` header is inspected
+ * @param agentId - The agent UUID whose permissions are inspected
  * @returns The bound network id, or `null` if the agent is not network-scoped
  * @throws If the agent has multiple distinct network scopes
  */
-export const resolveAgentNetworkScope = async (req: Request): Promise<string | null> => {
-  const agentId = await resolveApiKeyAgentId(req);
-  if (!agentId) return null;
-
+export const resolveAgentNetworkScopeById = async (agentId: string): Promise<string | null> => {
   const rows = await db
     .select({ scope: agentPermissions.scope, scopeId: agentPermissions.scopeId })
     .from(agentPermissions)
@@ -52,6 +49,25 @@ export const resolveAgentNetworkScope = async (req: Request): Promise<string | n
     throw new Error(`Agent ${agentId} has conflicting network scopes: ${[...distinctIds].join(', ')}`);
   }
   return networkScoped[0].scopeId!;
+};
+
+/**
+ * Resolve the network the current request's agent is restricted to, or null
+ * if the request is JWT-authenticated, has no API key, the key carries no
+ * `metadata.agentId`, or the agent has any `scope='global'` permission.
+ *
+ * If the agent has *only* network-scoped permissions, returns the single
+ * `scopeId` they share. Throws if the agent's network-scoped permissions
+ * disagree on `scopeId` (defensive — should never happen for imported agents).
+ *
+ * @param req - The incoming request whose `x-api-key` header is inspected
+ * @returns The bound network id, or `null` if the agent is not network-scoped
+ * @throws If the agent has multiple distinct network scopes
+ */
+export const resolveAgentNetworkScope = async (req: Request): Promise<string | null> => {
+  const agentId = await resolveApiKeyAgentId(req);
+  if (!agentId) return null;
+  return resolveAgentNetworkScopeById(agentId);
 };
 
 /**

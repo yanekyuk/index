@@ -20,6 +20,7 @@ import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory } 
  
 import { BASE_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
+import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
 const logger = log.server.from('mcp');
 
@@ -94,7 +95,7 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
 }
 
 const authResolver: McpAuthResolver = {
-  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean }> {
+  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null }> {
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
 
@@ -102,11 +103,14 @@ const authResolver: McpAuthResolver = {
       const isJwt = token.split('.').length === 3;
 
       if (isJwt) {
-        // JWT path: verify with JWKS (issued by the jwt() plugin for CLI/API use)
+        // JWT path: verify with JWKS (issued by the jwt() plugin for CLI/API use).
+        // JWTs don't carry an agentId — they authenticate users, not agents — so
+        // there is no network scope to compute; the field is explicitly null
+        // (not omitted) so callers cannot conflate "no scope" with "scope unset".
         try {
           const { payload } = await jwtVerify(token, JWKS);
-          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true };
-          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true };
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -116,7 +120,8 @@ const authResolver: McpAuthResolver = {
           throw new Error(`Invalid or expired access token: ${msg}`, { cause: err });
         }
       } else {
-        // Opaque token path: issued by the mcp() plugin via OAuth flow
+        // Opaque token path: issued by the mcp() plugin via OAuth flow — also
+        // session-auth, no agent identity, so network scope is always null.
         try {
           const res = await fetch(`${BASE_URL}/api/auth/mcp/get-session`, {
             headers: { Authorization: `Bearer ${token}` },
@@ -124,7 +129,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return { userId: data.userId, isSessionAuth: true };
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -181,15 +186,21 @@ const authResolver: McpAuthResolver = {
           const userId = row.referenceId ?? row.userId ?? sessionUserId;
           if (userId) {
             const metadata = parseApiKeyMetadata(row.metadata);
+            // For network-scoped agents, resolve the bound network scope so the
+            // MCP server can clamp `indexScope` to that single network downstream.
+            const networkScopeId = metadata.agentId
+              ? await resolveAgentNetworkScopeById(metadata.agentId)
+              : null;
             return {
               userId,
               ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
+              networkScopeId,
             };
           }
         }
 
         if (sessionUserId) {
-          return { userId: sessionUserId };
+          return { userId: sessionUserId, networkScopeId: null };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -8,7 +8,7 @@ import db from '../../lib/drizzle/drizzle';
 import * as schema from '../../schemas/database.schema';
 import { agentDatabaseAdapter } from '../../adapters/agent.database.adapter';
 import { agentTokenAdapter } from '../../adapters/agent-token.adapter';
-import { resolveAgentNetworkScope, assertAgentNetworkScope } from '../agent-scope.guard';
+import { resolveAgentNetworkScope, resolveAgentNetworkScopeById, assertAgentNetworkScope } from '../agent-scope.guard';
 
 describe('agent-scope.guard', () => {
   let userId: string;
@@ -16,6 +16,8 @@ describe('agent-scope.guard', () => {
   let unrelatedNetworkId: string;
   let scopedKey: string;
   let globalKey: string;
+  let scopedAgentId: string;
+  let globalAgentId: string;
 
   beforeAll(async () => {
     const [u] = await db.insert(schema.users)
@@ -36,6 +38,7 @@ describe('agent-scope.guard', () => {
     const scopedAgent = await agentDatabaseAdapter.createAgent({
       ownerId: userId, name: 'Scoped Agent', type: 'personal',
     });
+    scopedAgentId = scopedAgent.id;
     await agentDatabaseAdapter.grantPermission({
       agentId: scopedAgent.id, userId, scope: 'network', scopeId: networkId,
       actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
@@ -45,6 +48,7 @@ describe('agent-scope.guard', () => {
     const globalAgent = await agentDatabaseAdapter.createAgent({
       ownerId: userId, name: 'Global Agent', type: 'personal',
     });
+    globalAgentId = globalAgent.id;
     await agentDatabaseAdapter.grantPermission({
       agentId: globalAgent.id, userId, scope: 'global',
       actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
@@ -81,5 +85,17 @@ describe('agent-scope.guard', () => {
 
   test('assert is no-op for global agent', async () => {
     await expect(assertAgentNetworkScope(reqWithKey(globalKey), unrelatedNetworkId)).resolves.toBeUndefined();
+  });
+
+  test('resolveAgentNetworkScopeById returns null for global agent', async () => {
+    expect(await resolveAgentNetworkScopeById(globalAgentId)).toBeNull();
+  });
+
+  test('resolveAgentNetworkScopeById returns scopeId for network-scoped agent', async () => {
+    expect(await resolveAgentNetworkScopeById(scopedAgentId)).toBe(networkId);
+  });
+
+  test('resolveAgentNetworkScopeById returns null for unknown agent id', async () => {
+    expect(await resolveAgentNetworkScopeById('00000000-0000-0000-0000-000000000000')).toBeNull();
   });
 });
