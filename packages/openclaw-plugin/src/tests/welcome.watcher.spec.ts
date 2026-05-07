@@ -98,24 +98,13 @@ describe('welcome watcher', () => {
     welcomeWatcher._resetForTesting();
   });
 
-  it('skips immediately if welcomeSent is already true', async () => {
-    mockApi.pluginConfig['welcomeSent'] = true;
-    mockBackend(false, []);
-
-    await welcomeWatcher.start(mockApi, cfg);
-
-    const debugCalls = mockApi.logger.debug.mock.calls.map((c) => c[0]);
-    expect(debugCalls.some((c) => typeof c === 'string' && c.includes('already sent'))).toBe(true);
-  });
-
-  it('starts polling when welcomeSent is false', async () => {
+  it('starts polling unconditionally', async () => {
     mockBackend(false, []);
 
     await welcomeWatcher.start(mockApi, cfg);
 
     const debugCalls = mockApi.logger.debug.mock.calls.map((c) => c[0]);
     expect(debugCalls.some((c) => typeof c === 'string' && c.includes('welcome watcher'))).toBe(true);
-    expect(mockApi.pluginConfig['welcomeSent']).not.toBe(true);
   });
 
   it('tick does nothing when onboarding is not complete', async () => {
@@ -123,12 +112,11 @@ describe('welcome watcher', () => {
 
     await welcomeWatcher._tick(mockApi, cfg);
 
-    expect(mockApi.pluginConfig['welcomeSent']).not.toBe(true);
     const debugCalls = mockApi.logger.debug.mock.calls.map((c) => c[0]);
     expect(debugCalls.some((c) => typeof c === 'string' && c.includes('not yet complete'))).toBe(true);
   });
 
-  it('dispatches welcome with zero candidates and writes welcomeSent', async () => {
+  it('dispatches welcome with zero candidates', async () => {
     const sink = mockBackend(true, []);
 
     await welcomeWatcher._tick(mockApi, cfg);
@@ -139,7 +127,6 @@ describe('welcome watcher', () => {
     const msg = sink.hookCalls[0].body?.message;
     expect(typeof msg).toBe('string');
     expect(msg as string).toContain('WELCOME');
-    expect(mockApi.pluginConfig['welcomeSent']).toBe(true);
   });
 
   it('dispatches welcome with candidates including connect tokens', async () => {
@@ -176,7 +163,6 @@ describe('welcome watcher', () => {
     expect(msg).toContain('mock-jwt-token');
     expect(msg).toContain('/u/user-alice');
     expect(msg).toContain('/u/user-bob');
-    expect(mockApi.pluginConfig['welcomeSent']).toBe(true);
   });
 
   it('filters out opportunities without counterpartUserId', async () => {
@@ -210,15 +196,13 @@ describe('welcome watcher', () => {
     const msg = sink.hookCalls[0].body?.message as string;
     expect(msg).toContain('Bob does ML');
     expect(msg).not.toContain('No counterpart');
-    expect(mockApi.pluginConfig['welcomeSent']).toBe(true);
   });
 
-  it('does not write welcomeSent when hook dispatch returns non-2xx', async () => {
+  it('logs a warning when hook dispatch returns non-2xx', async () => {
     mockBackend(true, [], 500);
 
     await welcomeWatcher._tick(mockApi, cfg);
 
-    expect(mockApi.pluginConfig['welcomeSent']).not.toBe(true);
     const warnCalls = mockApi.logger.warn.mock.calls.map((c) => c[0]);
     expect(warnCalls.some((c) => typeof c === 'string' && c.includes('dispatch failed'))).toBe(true);
   });

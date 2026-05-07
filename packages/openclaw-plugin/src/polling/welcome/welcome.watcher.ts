@@ -4,18 +4,23 @@
  *
  * Lifecycle:
  * 1. Called from `register()` in index.ts after the onboarding dispatch.
- * 2. On start, checks `readWelcomeSent()` — if already true, returns (no-op).
- * 3. Sets a 15-second interval that:
- *    - Calls `isOnboardingComplete()`
- *    - If false → no-op, wait for next tick
- *    - If true → dispatch welcome, write `welcomeSent`, clear interval and exit
- * 4. Self-terminates after successful dispatch or if `welcomeSent` is found true.
+ * 2. Sets a 15-second polling interval. Each tick:
+ *    - Calls `isOnboardingComplete()`.
+ *    - If false → no-op, wait for next tick.
+ *    - If true → dispatch welcome and clear the interval.
+ * 3. Self-terminates after one successful dispatch (per plugin process).
+ *
+ * Dedup is delegated to the dispatcher's per-day idempotency key. There is
+ * deliberately no persistent `welcomeSent` flag in plugin config: a stale
+ * `true` value from a previous onboarding cycle would silently suppress every
+ * future welcome on the same plugin install, which is more painful than the
+ * cost of a duplicate idempotent dispatch.
  */
 
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
-import { readMainAgentToolUse, readWelcomeSent, writeWelcomeSent, readNodeBranding } from '../../lib/delivery/config.js';
+import { readMainAgentToolUse, readNodeBranding } from '../../lib/delivery/config.js';
 import { fetchConnectToken } from '../../lib/utils/connect-token.js';
 import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
@@ -32,20 +37,13 @@ const POLL_INTERVAL_MS = 15_000; // 15 seconds
 let intervalHandle: NodeJS.Timeout | undefined;
 
 /**
- * Starts the welcome watcher. Returns immediately if welcomeSent is already true.
- * Otherwise, sets up a 15-second polling interval that checks onboarding completion
- * and dispatches the welcome message when ready.
+ * Starts the welcome watcher. Sets up a 15-second polling interval; the
+ * per-tick logic decides whether to dispatch.
  */
 export async function start(
   api: OpenClawPluginApi,
   config: WelcomeWatcherConfig,
 ): Promise<void> {
-  // If welcome was already sent, nothing to do.
-  if (readWelcomeSent(api)) {
-    api.logger.debug('Welcome already sent, skipping watcher.');
-    return;
-  }
-
   api.logger.debug('Starting welcome watcher.');
 
   intervalHandle = setInterval(() => void _tick(api, config), POLL_INTERVAL_MS);
@@ -73,8 +71,7 @@ export async function _tick(
     clearInterval(intervalHandle);
     intervalHandle = undefined;
 
-    const ok = await dispatchWelcome(api, config);
-    if (ok) writeWelcomeSent(api);
+    await dispatchWelcome(api, config);
   } catch (err) {
     api.logger.warn(
       `Welcome watcher tick errored: ${err instanceof Error ? err.message : String(err)}`,
