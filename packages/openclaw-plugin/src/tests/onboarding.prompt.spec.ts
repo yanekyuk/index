@@ -28,4 +28,20 @@ describe('buildOnboardingPrompt', () => {
     const prompt = buildOnboardingPrompt();
     expect(prompt).not.toContain('import_gmail_contacts');
   });
+
+  it('instructs the agent to skip community discovery for network-scoped keys', () => {
+    // Network-scoped invitees (experiment-network CSV import) cannot join other
+    // communities; their MCP key is bound to a single network. Without explicit
+    // instruction the agent reads `memberOf` and presents the bound network as a
+    // "community you might find relevant", which both surprises the user and
+    // would re-trigger create_network_membership on a network they're already in.
+    const prompt = buildOnboardingPrompt();
+    expect(prompt).toMatch(/scopeRestriction\.isScoped/);
+    expect(prompt.toLowerCase()).toMatch(/skip|do not list|do not propose/);
+  });
+
+  it('handles empty publicNetworks gracefully', () => {
+    const prompt = buildOnboardingPrompt();
+    expect(prompt).toMatch(/publicNetworks.*missing|missing.*publicNetworks|empty/);
+  });
 });
