@@ -1,31 +1,31 @@
-name: Project Manager
+name: Agent Release Manager
 
 on:
-  issues:
-    types: [opened, edited]
+  workflow_dispatch:
 
 jobs:
-  project-manager:
+  release-manager:
+    if: github.repository == 'indexnetwork/index'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: dev
 
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
-      - name: Run Project Manager
+      - name: Run Release Manager
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-          COPILOT_MCP_LINEAR_API_KEY: ${{ secrets.COPILOT_MCP_LINEAR_API_KEY }}
         run: |
           copilot \
-            --agent=project-manager \
-            -p "Sync and enrich issue #${{ github.event.issue.number }}" \
+            --agent=release-manager \
+            -p "Prepare and open the release PR from dev into main" \
             --allow-all \
             --no-ask-user

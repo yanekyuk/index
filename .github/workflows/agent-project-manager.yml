@@ -1,16 +1,16 @@
-name: Docs Author
+name: Agent Project Manager
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [dev]
+  issues:
+    types: [opened, edited]
 
 jobs:
-  docs-author:
-    if: github.event.pull_request.merged == true
+  project-manager:
+    if: github.repository == 'indexnetwork/index'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      issues: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -20,12 +20,13 @@ jobs:
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
-      - name: Run Docs Author
+      - name: Run Project Manager
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_MCP_LINEAR_API_KEY: ${{ secrets.COPILOT_MCP_LINEAR_API_KEY }}
         run: |
           copilot \
-            --agent=docs-author \
-            -p "Run on PR #${{ github.event.pull_request.number }}" \
+            --agent=project-manager \
+            -p "Sync and enrich issue #${{ github.event.issue.number }}" \
             --allow-all \
             --no-ask-user
