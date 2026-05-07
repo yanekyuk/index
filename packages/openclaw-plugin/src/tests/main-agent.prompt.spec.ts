@@ -66,6 +66,37 @@ describe('buildMainAgentPrompt — ambient_discovery', () => {
     expect(out).not.toContain('one-line note');
     expect(out).not.toContain("don't omit the message");
   });
+
+  it('caps per-dispatch surfacing at 3 per feedCategory type', () => {
+    const out = buildMainAgentPrompt({
+      contentType: 'ambient_discovery',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 0, totalPending: 8, candidates: [cand] },
+    });
+    expect(out).toContain("at most 3 'connection' candidates");
+    expect(out).toContain("at most 3 'connector-flow'");
+  });
+
+  it('orders the agent to produce no output once the daily cap is exhausted', () => {
+    const out = buildMainAgentPrompt({
+      contentType: 'ambient_discovery',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 3, totalPending: 5, candidates: [cand] },
+    });
+    expect(out).toContain('daily cap is 3 and is exhausted');
+    expect(out).toContain('Produce no output at all');
+    expect(out).toContain('no confirm call');
+  });
+
+  it('demands a non-generic per-user reason as the quality bar', () => {
+    const out = buildMainAgentPrompt({
+      contentType: 'ambient_discovery',
+      mainAgentToolUse: 'enabled',
+      payload: { contentType: 'ambient_discovery', ambientDeliveredToday: 0, totalPending: 1, candidates: [cand] },
+    });
+    expect(out).toContain('QUALITY BAR');
+    expect(out).toContain('would not read identically for any other user');
+  });
 });
 
 describe('buildMainAgentPrompt — daily_digest', () => {
