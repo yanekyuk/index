@@ -370,15 +370,29 @@ async function runInteractiveSetup(cfg: Record<string, unknown>): Promise<void> 
     cfg,
     prompt: async (label, opts) => {
       const defaultSuffix = opts?.default ? ` [${opts.default}]` : '';
+      if (opts?.secret) {
+        // Suppress readline echo for secret input (e.g. API key).
+        const rlAny = rl as unknown as { _writeToOutput: (s: string) => void };
+        const orig = rlAny._writeToOutput;
+        rlAny._writeToOutput = () => {};
+        process.stdout.write(`${label}${defaultSuffix}: `);
+        const answer = await rl.question('');
+        rlAny._writeToOutput = orig;
+        process.stdout.write('\n');
+        return answer.trim() || opts?.default || '';
+      }
       const answer = await rl.question(`${label}${defaultSuffix}: `);
       return answer.trim() || opts?.default || '';
     },
     select: async (label, choices) => {
-      console.log(`\n${label}:`);
-      choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.label}`));
-      const answer = await rl.question('Selection: ');
-      const idx = parseInt(answer.trim(), 10) - 1;
-      return choices[idx]?.value ?? '';
+      while (true) {
+        console.log(`\n${label}:`);
+        choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.label}`));
+        const answer = await rl.question('Selection: ');
+        const idx = parseInt(answer.trim(), 10) - 1;
+        if (choices[idx]) return choices[idx].value;
+        console.log(`  Please enter a number between 1 and ${choices.length}.`);
+      }
     },
     configSet: async (dotPath, value) => {
       setConfigValue(cfg, dotPath, value);
