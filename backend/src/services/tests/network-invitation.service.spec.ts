@@ -61,6 +61,7 @@ describe('networkInvitationService.invite', () => {
     cleanupUserIds.push(result.user.id);
 
     expect(result.created).toBe(true);
+    expect(result.alreadyMember).toBe(false);
     expect(result.agentProvisioned).toBe(true);
     expect(result.apiKey).toBeTruthy();
     expect(result.user.email).toBe(email);
@@ -92,8 +93,8 @@ describe('networkInvitationService.invite', () => {
     expect(perms.every((p) => p.scope === 'network' && p.scopeId === networkId)).toBe(true);
   });
 
-  test('reuses existing user and does NOT issue a new key', async () => {
-    const email = `existing-${Date.now()}@test.dev`;
+  test('existing user without scoped agent (e.g. ghost contact) gets provisioned + emailed', async () => {
+    const email = `ghost-${Date.now()}@test.dev`;
     const [existing] = await db.insert(schema.users)
       .values({ email, name: email, emailVerified: true })
       .returning({ id: schema.users.id });
@@ -103,30 +104,26 @@ describe('networkInvitationService.invite', () => {
     const result = await networkInvitationService.invite({ networkId, email });
 
     expect(result.created).toBe(false);
-    expect(result.agentProvisioned).toBe(false);
-    expect(result.apiKey).toBeNull();
+    expect(result.alreadyMember).toBe(false);
+    expect(result.agentProvisioned).toBe(true);
+    expect(result.apiKey).toBeTruthy();
     expect(result.user.id).toBe(existing.id);
-    expect(sendSpy).toHaveBeenCalledTimes(0);
-
-    const [member] = await db
-      .select({ networkId: schema.networkMembers.networkId })
-      .from(schema.networkMembers)
-      .where(and(
-        eq(schema.networkMembers.userId, existing.id),
-        eq(schema.networkMembers.networkId, networkId),
-      ));
-    expect(member).toBeTruthy();
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
-  test('idempotent: invite twice for the same new email yields one user, one agent, one key', async () => {
-    const email = `idempotent-${Date.now()}@test.dev`;
+  test('existing user with scoped agent: no new key, no email, alreadyMember reflects state', async () => {
+    const email = `provisioned-${Date.now()}@test.dev`;
     const first = await networkInvitationService.invite({ networkId, email });
     cleanupUserIds.push(first.user.id);
+
+    sendSpy.mockClear();
     const second = await networkInvitationService.invite({ networkId, email });
 
     expect(second.user.id).toBe(first.user.id);
     expect(second.created).toBe(false);
+    expect(second.alreadyMember).toBe(true);
     expect(second.agentProvisioned).toBe(false);
     expect(second.apiKey).toBeNull();
+    expect(sendSpy).toHaveBeenCalledTimes(0);
   });
 });

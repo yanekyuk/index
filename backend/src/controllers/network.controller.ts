@@ -306,19 +306,26 @@ export class NetworkController {
       return Response.json({ error: 'Invalid email format' }, { status: 400 });
     }
 
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) : undefined;
+
     try {
       const result = await networkInvitationService.invite({
         networkId: params.id,
         email,
-        name: body.name,
+        name: name || undefined,
       });
       return Response.json({
         user: { id: result.user.id, email: result.user.email },
         created: result.created,
+        alreadyMember: result.alreadyMember,
         agentProvisioned: result.agentProvisioned,
       }, { status: result.created ? 201 : 200 });
     } catch (err: unknown) {
-      logger.error('Invite by email failed', { networkId: params.id, error: errorMessage(err) });
+      const msg = errorMessage(err);
+      if (msg.includes('email exists but is filtered out')) {
+        return Response.json({ error: msg }, { status: 409 });
+      }
+      logger.error('Invite by email failed', { networkId: params.id, error: msg });
       return Response.json({ error: 'Invite failed' }, { status: 500 });
     }
   }

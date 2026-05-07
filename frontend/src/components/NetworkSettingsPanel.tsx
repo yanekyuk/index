@@ -315,12 +315,12 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   };
 
-  const [isAddingContact, setIsAddingContact] = useState(false);
+  const [isAddingMember, setIsAddingMember] = useState(false);
   const CONTACTS_PAGE_SIZE = 10;
 
   const handleAddContact = async (email: string) => {
-    if (isAddingContact) return;
-    setIsAddingContact(true);
+    if (isAddingMember) return;
+    setIsAddingMember(true);
     try {
       await usersService.addContact(email);
       setMemberSearchQuery('');
@@ -333,13 +333,13 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       console.error('Error adding contact:', err);
       error('Failed to add contact');
     } finally {
-      setIsAddingContact(false);
+      setIsAddingMember(false);
     }
   };
 
   const handleInviteMember = async (email: string) => {
-    if (isAddingContact) return;
-    setIsAddingContact(true);
+    if (isAddingMember) return;
+    setIsAddingMember(true);
     try {
       const result = await indexesService.inviteMember(index.id, email);
       setMemberSearchQuery('');
@@ -347,12 +347,17 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setShowSuggestions(false);
       setSearchHasQueried(false);
       await loadMembers();
-      success(result.created ? 'Invitation sent' : 'Member added');
+      const toast = result.created
+        ? 'Invitation sent'
+        : result.alreadyMember
+          ? 'Already a member'
+          : 'Member added';
+      success(toast);
     } catch (err) {
       console.error('Error inviting member:', err);
       error('Failed to invite member');
     } finally {
-      setIsAddingContact(false);
+      setIsAddingMember(false);
     }
   };
 
@@ -729,7 +734,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     <button
                       className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
                       onClick={() => currentIndex.isExperiment ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
-                      disabled={isAddingContact}
+                      disabled={isAddingMember}
                     >
                       <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <Plus className="h-3.5 w-3.5 text-gray-500" />

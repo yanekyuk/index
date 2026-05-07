@@ -344,7 +344,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Invite a single member to an experiment network by email
-  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; agentProvisioned: boolean }> => {
+  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean; agentProvisioned: boolean }> => {
     return api.post(`/networks/${networkId}/members/invite`, { email, name });
   },
 });
