@@ -876,14 +876,15 @@ Atomically reserve and return one pending opportunity for the agent to process. 
 {
   "opportunityId": "uuid",
   "reservationToken": "token-string",
-  "opportunity": { ... }
+  "reservationExpiresAt": "ISO-8601-timestamp",
+  "rendered": { ... }
 }
 ```
 
 **Response 204**: No pending opportunities.
 
 **Errors**:
-- `403` if the agent is not owned by the authenticated user.
+- `404` if the agent is not owned by the authenticated user or does not exist (returns 404 regardless to prevent existence disclosure).
 
 ---
 
@@ -909,7 +910,7 @@ Confirm that the agent has successfully delivered an opportunity. Must be called
 
 **Errors**:
 - `404` — Invalid or expired reservation token; the message has already been confirmed or the token is wrong.
-- `403` if the agent is not owned by the authenticated user.
+- `404` if the agent is not owned by the authenticated user or does not exist.
 
 ---
 
@@ -930,7 +931,7 @@ Enqueue a test message for the agent. Owner-only. Used to verify that a personal
 **Response 201**: The enqueued test message record.
 
 **Errors**:
-- `403` if the agent is not owned by the authenticated user.
+- `404` if the agent is not owned by the authenticated user or does not exist.
 
 ---
 
@@ -948,7 +949,7 @@ Atomically reserve and return one pending test message. Returns 204 if no messag
 **Response 204**: No pending test messages.
 
 **Errors**:
-- `403` if the agent is not owned by the authenticated user.
+- `404` if the agent is not owned by the authenticated user or does not exist.
 
 ---
 
@@ -1764,9 +1765,9 @@ Headless experiment-network signup. Provisions or retrieves a user account and r
 }
 ```
 
-**Response 200** (existing account): Same shape; `apiKey` is the agent's current API key.
+**Response 200** (existing account): Same shape; a fresh API key is issued on every call — store the latest one.
 
-**Idempotent**: Repeated calls for the same email return the same user. The `agentId` for this key can be resolved via `GET /api/agents/me` using the returned `apiKey`.
+**Idempotent**: Repeated calls for the same email return the same user. A fresh API key is issued each time, so store the latest returned `apiKey` and re-resolve the `agentId` from it via `GET /api/agents/me`.
 
 **Errors**:
 - `400` — Missing or malformed email.

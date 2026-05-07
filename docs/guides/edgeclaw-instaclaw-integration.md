@@ -47,7 +47,7 @@ POST https://index.network/api/networks/<EDGE_CITY_NETWORK_ID>/signup
 | `apiKey` | The attendee's personal agent API key. Used to authenticate against the Index Network MCP server. |
 | `connectCommand` | Pre-built CLI command for self-hosted OpenClaw users. InstaClaw can ignore this. |
 
-**Idempotent:** Calling this endpoint more than once for the same email always returns the same user and the same API key.
+**Idempotent:** Calling this endpoint more than once for the same email always returns the same user. A fresh API key is issued on every call — store the latest one and re-resolve the `agentId` via `GET /api/agents/me`.
 
 ---
 

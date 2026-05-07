@@ -68,10 +68,12 @@ The `opportunity_deliveries` table tracks every delivery of an opportunity to a 
 
 | `channel` | `trigger` | Description |
 |-----------|-----------|-------------|
-| `agent` | `ambient` | Real-time delivery to a polling personal agent during normal operation. |
-| `agent` | `digest` | Delivery as part of the daily digest cycle. |
-| `email` | `ambient` / `digest` | Email notification. |
-| `telegram` | `ambient` | Telegram bot notification. |
+| `openclaw` | `pending_pickup` | Agent polled and atomically reserved a pending opportunity (reserve step). |
+| `openclaw` | `ambient` | Delivery confirmed via MCP tool — real-time path. |
+| `openclaw` | `digest` | Delivery confirmed via MCP tool — daily digest path. |
+| `openclaw` | `accepted` | Delivery confirmed via MCP tool — accepted-opportunity notification. |
+
+Email and Telegram notifications are dispatched out-of-band via the notification queue and are not recorded in `opportunity_deliveries`.
 
 ### Reservation pattern
 
@@ -119,4 +121,4 @@ The API key is the sole credential returned to the caller. The `agentId` can be 
 - An agent is always owned by exactly one user. Deleting a user cascades to their agents.
 - `type = 'system'` agents are never created through the API; they are seeded at startup.
 - A global-permission agent cannot be downgraded to network scope via a permission update — the constraint is enforced at the HTTP guard layer.
-- `deliveredAt` is only written once per `(opportunityId, channel)` pair for a given user (unique index enforces this).
+- `deliveredAt` is only written once per `(userId, opportunityId, channel, deliveredAtStatus)` tuple (unique index enforces this; the `deliveredAtStatus` dimension allows separate committed records if an opportunity transitions between statuses).
