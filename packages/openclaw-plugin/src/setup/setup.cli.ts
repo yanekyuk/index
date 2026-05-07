@@ -388,6 +388,7 @@ async function runInteractiveSetup(cfg: Record<string, unknown>): Promise<void> 
 
   try {
     await runSetup(ctx);
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
     console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
     console.log('Restart the gateway to apply changes: openclaw gateway restart');
