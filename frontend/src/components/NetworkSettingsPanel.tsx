@@ -839,7 +839,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                 OpenClaw plugin config
               </p>
               <p className="text-xs text-gray-500 mb-3">
-                Hand to InstaClaw admins to merge into <code className="px-1 py-0.5 bg-gray-100 rounded text-[11px] font-ibm-plex-mono">openclaw.json</code> under <code className="px-1 py-0.5 bg-gray-100 rounded text-[11px] font-ibm-plex-mono">plugins.entries.indexnetwork-openclaw-plugin.config</code>.
+                Hand to OpenClaw admins to merge into <code className="px-1 py-0.5 bg-gray-100 rounded text-[11px] font-ibm-plex-mono">openclaw.json</code> under <code className="px-1 py-0.5 bg-gray-100 rounded text-[11px] font-ibm-plex-mono">plugins.entries.indexnetwork-openclaw-plugin.config</code>.
               </p>
               <CopyableBox
                 value={JSON.stringify(
