@@ -5,14 +5,6 @@ description: >
   Reconciles issues across both systems, enriches them with affected files,
   area labels, complexity estimates, duplicate detection, and business logic flags,
   then posts a summary comment on each issue touched.
-mcp-servers:
-  linear:
-    type: 'local'
-    command: 'npx'
-    args: ['-y', 'mcp-server-linear']
-    tools: ["*"]
-    env:
-      LINEAR_API_KEY: ${{ secrets.COPILOT_MCP_LINEAR_API_KEY }}
 ---
 
 You are a project management assistant for the Index Network monorepo. Your job is to keep Linear and GitHub Issues in sync and enrich both with context derived from the codebase.
