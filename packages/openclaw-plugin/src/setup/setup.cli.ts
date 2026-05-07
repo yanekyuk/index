@@ -45,7 +45,7 @@ export interface SetupContext {
   /** Full OpenClaw config snapshot. */
   cfg: Record<string, unknown>;
   /** Prompt the user for free-text input. */
-  prompt(label: string, opts?: { default?: string; secret?: boolean }): Promise<string>;
+  prompt(label: string, opts?: { default?: string }): Promise<string>;
   /** Prompt the user to select from a list. Returns the selected value. */
   select(label: string, choices: Array<{ label: string; value: string }>): Promise<string>;
   /** Write a value into the OpenClaw config file. */
@@ -114,8 +114,8 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
 
   // --- API Key ---
   const apiKey = existing('apiKey')
-    ? await ctx.prompt('API key (leave blank to keep existing)', { secret: true })
-    : await ctx.prompt('API key', { secret: true });
+    ? await ctx.prompt('API key (leave blank to keep existing)')
+    : await ctx.prompt('API key');
   const resolvedApiKey = apiKey || existing('apiKey') || '';
   if (!resolvedApiKey) {
     throw new Error('API key is required. Generate one on the Index Network Agents page.');
@@ -370,17 +370,6 @@ async function runInteractiveSetup(cfg: Record<string, unknown>): Promise<void> 
     cfg,
     prompt: async (label, opts) => {
       const defaultSuffix = opts?.default ? ` [${opts.default}]` : '';
-      if (opts?.secret) {
-        // Suppress readline echo for secret input (e.g. API key).
-        const rlAny = rl as unknown as { _writeToOutput: (s: string) => void };
-        const orig = rlAny._writeToOutput;
-        rlAny._writeToOutput = () => {};
-        process.stdout.write(`${label}${defaultSuffix}: `);
-        const answer = await rl.question('');
-        rlAny._writeToOutput = orig;
-        process.stdout.write('\n');
-        return answer.trim() || opts?.default || '';
-      }
       const answer = await rl.question(`${label}${defaultSuffix}: `);
       return answer.trim() || opts?.default || '';
     },
