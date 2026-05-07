@@ -1,4 +1,4 @@
-name: Agent Release Manager
+name: Open release PR
 
 on:
   workflow_dispatch:

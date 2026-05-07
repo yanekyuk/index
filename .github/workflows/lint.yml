@@ -7,7 +7,7 @@
 # NOTE: Only boundary violations fail the lint check. Pre-existing lint
 # errors (no-explicit-any, no-unused-vars) are not gated here yet.
 # Full lint enforcement is tracked separately.
-name: Lint
+name: Lint and typecheck
 
 on:
   pull_request:

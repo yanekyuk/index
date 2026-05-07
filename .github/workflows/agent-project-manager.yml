@@ -1,4 +1,4 @@
-name: Agent Project Manager
+name: Sync issues with Linear
 
 on:
   issues:
