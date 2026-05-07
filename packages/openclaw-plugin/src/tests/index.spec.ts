@@ -158,12 +158,12 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
   });
 
-  test('warns user to run openclaw index setup when not configured', () => {
+  test('warns user to run openclaw index connect when not configured', () => {
     const fake = buildFakeApi({});
     register(fake.api);
 
     const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
-    expect(warnMsg).toContain('openclaw index setup');
+    expect(warnMsg).toContain('openclaw index connect');
   });
 
   test('falls back to protocolUrl and warns about migration', () => {
@@ -176,7 +176,7 @@ describe('register(api)', () => {
     const warnCalls = fake.logger.warn.mock.calls as string[][];
     const migrationWarn = warnCalls.find((args) => args[0].includes('deprecated'));
     expect(migrationWarn).toBeTruthy();
-    expect(migrationWarn![0]).toContain('openclaw index setup');
+    expect(migrationWarn![0]).toContain('openclaw index connect');
 
     expect(fake.configSetCalls.length).toBe(1);
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');

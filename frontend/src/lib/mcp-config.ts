@@ -1,6 +1,6 @@
 const DEFAULT_PROTOCOL_URL = import.meta.env.DEV
   ? "http://localhost:3001"
-  : "https://api.index.network";
+  : "https://protocol.index.network";
 const PROTOCOL_URL = import.meta.env.VITE_PROTOCOL_URL || DEFAULT_PROTOCOL_URL;
 const MCP_URL = `${PROTOCOL_URL}/mcp`;
 

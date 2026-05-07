@@ -209,7 +209,7 @@ export async function dispatchToMainAgent(
   if (!hooksEnabled || !hooksToken) {
     api.logger.warn(
       'Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset. ' +
-        'Run `openclaw index setup` to bootstrap hooks.',
+        'Run `openclaw index connect` to bootstrap hooks.',
     );
     return { delivered: false, error: 'config_error' };
   }

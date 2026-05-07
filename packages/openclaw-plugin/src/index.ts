@@ -12,7 +12,7 @@
  * Daily digest is scheduled directly (no HTTP route needed).
  *
  * Uses `definePluginEntry` from the OpenClaw plugin SDK so that CLI commands
- * (e.g. `openclaw index setup`) are properly registered.
+ * (e.g. `openclaw index connect`) are properly registered.
  */
 
 import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
@@ -37,7 +37,7 @@ import { dispatchToMainAgent } from './lib/delivery/main-agent.dispatcher.js';
 let registered = false;
 
 /**
- * Registers the `openclaw index setup` CLI command if the host supports
+ * Registers the `openclaw index connect` CLI command if the host supports
  * `registerCli`. Also registers `openclaw index-network setup` as a deprecated
  * alias for one minor version (drop in 0.23.0).
  *
@@ -86,7 +86,7 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     return;
   }
   if (!apiKey) {
-    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index setup`.');
+    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index connect`.');
     return;
   }
 
@@ -139,7 +139,7 @@ export function register(api: OpenClawPluginApi): void {
   }
   registered = true;
 
-  // Register `openclaw index setup` CLI command unconditionally
+  // Register `openclaw index connect` CLI command unconditionally
   registerSetupCommand(api);
 
   const agentId = readConfig(api, 'agentId');
@@ -147,7 +147,7 @@ export function register(api: OpenClawPluginApi): void {
 
   if (!agentId || !apiKey) {
     api.logger.warn(
-      'Index Network plugin not configured. Run `openclaw index setup` to complete setup.',
+      'Index Network plugin not configured. Run `openclaw index connect` to complete setup.',
     );
     return;
   }
@@ -156,7 +156,7 @@ export function register(api: OpenClawPluginApi): void {
   const legacyProtocolUrl = readConfig(api, 'protocolUrl');
   if (!urlFromConfig && legacyProtocolUrl) {
     api.logger.warn(
-      'Plugin config uses deprecated "protocolUrl". Run `openclaw index setup` to migrate to the new "url" field.',
+      'Plugin config uses deprecated "protocolUrl". Run `openclaw index connect` to migrate to the new "url" field.',
     );
   }
   const configUrl = urlFromConfig || legacyProtocolUrl || 'https://index.network';
