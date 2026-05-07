@@ -228,25 +228,37 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         "Do not call confirm for opportunities you don't mention.",
       ].join('\n');
     case 'ambient_discovery': {
-      const countLine =
+      const dailyGate =
         payload.ambientDeliveredToday === null
-          ? "Today's ambient count is unknown — lean toward selective."
-          : `You have already sent ${payload.ambientDeliveredToday} ambient message(s) today (target ≤ 3).`;
+          ? "Today's ambient count is unknown — when uncertain, default to silence and let the daily digest sweep."
+          : payload.ambientDeliveredToday >= 3
+            ? `You have already sent ${payload.ambientDeliveredToday} ambient message(s) today. The daily cap is 3 and is exhausted. Produce no output at all — no text, no acknowledgement, no confirm call. The daily digest will sweep what's still pending.`
+            : `You have already sent ${payload.ambientDeliveredToday} ambient message(s) today. The daily cap is 3.`;
       return [
-        'This is the AMBIENT pass — a real-time check, not a digest. Surface only what',
-        'is worth interrupting the user right now. Anything you skip will appear in',
-        "tonight's daily digest.",
+        'This is the AMBIENT pass — a real-time check, not a digest. Skipping is the',
+        'default; surfacing is the exception. Interrupt the user only for candidates',
+        "that genuinely earn the interruption. Anything you skip is swept into tonight's",
+        'daily digest, so silence here is not a loss — it is correct routing.',
         '',
-        "You receive candidates of two types (feedCategory: 'connection' or",
-        "'connector-flow'). You decide what's worth surfacing — no mandatory",
-        'section structure. If you do surface candidates, write them as a flat list',
-        'with inline links (same URL rules as always).',
+        dailyGate,
         '',
-        "For 'connection' candidates: link name to profileUrl, embed acceptUrl on",
-        '"message [Name]", compose &msg= greeting.',
+        "PER-DISPATCH CAP — applies to this single reply, independent of the daily count:",
+        "Surface at most 3 'connection' candidates and at most 3 'connector-flow'",
+        'candidates. If more than 3 of either type qualify, pick the highest-signal ones',
+        'and let the rest fall to the digest. Never exceed 3 of either type in one reply.',
+        '',
+        'QUALITY BAR — apply per candidate before counting it toward the caps:',
+        'A candidate qualifies only if you can write a one-sentence reason that is specific',
+        "to this user's situation and would not read identically for any other user.",
+        "Generic framings ('interesting profile', 'might be useful', 'works in a related",
+        "space') do not qualify — drop them. The daily digest is the right venue for",
+        'borderline matches; the ambient channel is for the ones worth interrupting for.',
+        '',
+        "FORMAT — when you do surface candidates:",
+        'Write a flat list with inline links (URL rules above) — no mandatory section',
+        "structure. For 'connection' candidates: link name to profileUrl, embed acceptUrl",
+        "on a verb phrase like \"message [Name]\", compose &msg= greeting.",
         "For 'connector-flow' candidates: embed acceptUrl on \"make intro\", no &msg=.",
-        '',
-        countLine,
         '',
         `If totalPending > number of candidates shown, mention overflow:`,
         '"There are N more conversations waiting for you, let me know if you want',
@@ -300,10 +312,15 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         '(morning briefs, ongoing discovery, feedback welcome).',
         '',
         'Always fires regardless of candidate count.',
-        '',
-        'For each opportunity you mention, you MUST first call the MCP tool',
-        "`confirm_opportunity_delivery` with `trigger: 'welcome'` and the",
-        "opportunity's id.",
+        ...(payload.candidates.length > 0
+          ? [
+              '',
+              'For each opportunity you mention, you MUST first call the MCP tool',
+              "`confirm_opportunity_delivery` with `trigger: 'welcome'` and the",
+              "opportunity's id.",
+              "Do not call confirm for opportunities you don't mention.",
+            ]
+          : []),
       ].join('\n');
     case 'accepted_opportunity':
       return [

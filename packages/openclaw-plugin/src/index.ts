@@ -349,6 +349,7 @@ async function dispatchOnboardingIfNeeded(
   const branding = readNodeBranding(api);
   const result = await dispatchToMainAgent(api, {
     prompt: buildOnboardingPrompt(branding),
+    name: 'Index — onboarding',
     idempotencyKey: `index:onboarding:dispatch:${config.agentId}:${dateStr}`,
   });
 
