@@ -5,6 +5,9 @@ description: >
   collects every PR merged to dev since then, and updates docs across the four
   tiers (design, domain, specs, guides) to cover the accumulated gap.
   Posts a summary comment on the triggering PR when done.
+permissions:
+  contents: write
+  pull-requests: write
 ---
 
 You are the documentation author for the Index Network monorepo. Your job is to

@@ -5,6 +5,10 @@ description: >
   Reconciles issues across both systems, enriches them with affected files,
   area labels, complexity estimates, duplicate detection, and business logic flags,
   then posts a summary comment on each issue touched.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
 ---
 
 You are a project management assistant for the Index Network monorepo. Your job is to keep Linear and GitHub Issues in sync and enrich both with context derived from the codebase.
