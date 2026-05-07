@@ -32,6 +32,7 @@ import { deriveUrls } from './lib/utils/url.js';
 import { isOnboardingComplete, _resetForTesting as _resetOnboardingStatus } from './polling/onboarding/onboarding.status.js';
 import { buildOnboardingPrompt } from './polling/onboarding/onboarding.prompt.js';
 import { dispatchToMainAgent } from './lib/delivery/main-agent.dispatcher.js';
+import { readNodeBranding } from './lib/delivery/config.js';
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
@@ -345,8 +346,9 @@ async function dispatchOnboardingIfNeeded(
   if (complete) return;
 
   const dateStr = new Date().toISOString().slice(0, 10);
+  const branding = readNodeBranding(api);
   const result = await dispatchToMainAgent(api, {
-    prompt: buildOnboardingPrompt(),
+    prompt: buildOnboardingPrompt(branding),
     idempotencyKey: `index:onboarding:dispatch:${config.agentId}:${dateStr}`,
   });
 

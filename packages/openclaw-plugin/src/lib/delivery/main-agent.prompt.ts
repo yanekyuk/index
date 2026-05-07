@@ -130,14 +130,17 @@ function normalizeBrandingField(value: string): string {
 
 function buildBrandingClause(branding: { nodeName: string; nodeDescription?: string; nodeContext?: string }): string {
   const name = normalizeBrandingField(branding.nodeName);
-  const parts = [`COMMUNITY CONTEXT: This notification comes from the "${name}" community.`];
+  const parts = [
+    `COMMUNITY CONTEXT: The user's community is "${name}" — this is their home on Index Network for this notification.`,
+    `When you greet, address, or reference the community, use the literal string "${name}". Never substitute "Index", "Index Network", or any other placeholder for the community name.`,
+  ];
   if (branding.nodeDescription) {
-    parts.push(normalizeBrandingField(branding.nodeDescription));
+    parts.push(`COMMUNITY DESCRIPTION (use as the second sentence of any welcome opener, paraphrased to fit your voice): ${normalizeBrandingField(branding.nodeDescription)}`);
   }
   if (branding.nodeContext) {
-    parts.push(normalizeBrandingField(branding.nodeContext));
+    parts.push(`COMMUNITY CONTEXT NOTE (background you can draw on): ${normalizeBrandingField(branding.nodeContext)}`);
   }
-  return parts.join(' ');
+  return parts.join('\n');
 }
 
 const INPUT_AS_DATA_CLAUSE = [
@@ -263,7 +266,18 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
       return [
         'This is a WELCOME message — the user just finished onboarding and created their first signal.',
         '',
-        'Present candidates in up to two sections based on their feedCategory field:',
+        'OPENER (REQUIRED when branding is provided above): The first line of your reply MUST be exactly',
+        '"Welcome to {COMMUNITY_NAME}" — where {COMMUNITY_NAME} is the literal community name supplied',
+        'in the branding clause earlier in this prompt. When no branding clause is present, fall back to',
+        '"Welcome to Index Network". Never substitute "Index", "your community", or any placeholder for',
+        'the community name when a name is given. The opener stands on its own line.',
+        '',
+        'SECOND PARAGRAPH (only when a branding description / context-note is provided): 2–3 sentences',
+        'situating the user inside the community. Paraphrase the description and context-note from the',
+        'branding clause; do not copy them verbatim. End with a sentence like "Here\'s what landed in',
+        'the first pass." that bridges into the candidate sections.',
+        '',
+        'Then present candidates in up to two sections based on their feedCategory field:',
         '',
         'SECTION 1 — DIRECT CONNECTIONS (feedCategory = \'connection\'):',
         'Open with a count line (e.g. "3 conversations waiting").',
@@ -279,9 +293,10 @@ function perTypeInstruction(input: MainAgentPromptInput): string {
         'Do NOT compose a &msg= greeting for connector candidates.',
         '',
         'Skip any section with zero candidates. If both sections are empty,',
-        'acknowledge warmly that the system is actively looking.',
+        'acknowledge warmly that the system is actively looking — but the opener',
+        'and second paragraph still fire regardless of candidate count.',
         '',
-        'Close with a short "from here" paragraph — frame what happens next',
+        'Close with a short "From here" paragraph — frame what happens next',
         '(morning briefs, ongoing discovery, feedback welcome).',
         '',
         'Always fires regardless of candidate count.',
