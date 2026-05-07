@@ -1,4 +1,4 @@
-name: Docs Author
+name: Agent Docs Author
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   docs-author:
-    if: github.event.pull_request.merged == true
+    if: github.repository == 'indexnetwork/index' && github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: write

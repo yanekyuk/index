@@ -5,6 +5,7 @@ on:
 
 jobs:
   release-manager:
+    if: github.repository == 'indexnetwork/index'
     runs-on: ubuntu-latest
     permissions:
       contents: read

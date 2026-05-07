@@ -1,4 +1,4 @@
-name: Project Manager
+name: Agent Project Manager
 
 on:
   issues:
@@ -6,6 +6,7 @@ on:
 
 jobs:
   project-manager:
+    if: github.repository == 'indexnetwork/index'
     runs-on: ubuntu-latest
     permissions:
       contents: read
