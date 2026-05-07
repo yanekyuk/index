@@ -8,7 +8,7 @@ export const OPENCLAW_INSTALL_CMD =
   "openclaw plugins install @indexnetwork/openclaw-plugin";
 export const OPENCLAW_UPDATE_CMD =
   "openclaw plugins update @indexnetwork/openclaw-plugin";
-export const OPENCLAW_SETUP_CMD = "openclaw index setup";
+export const OPENCLAW_SETUP_CMD = "openclaw index connect";
 export const OPENCLAW_GATEWAY_RESTART_CMD = "openclaw gateway restart";
 
 function yamlDoubleQuoted(value: string): string {

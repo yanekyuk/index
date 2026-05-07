@@ -54,15 +54,15 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
       const cmd = (program as { command(n: string): { description(d: string): unknown } })
         .command('index')
         .description('Manage Index Network plugin configuration');
-      registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
       registerConnectCli(cmd as Parameters<typeof registerSetupCli>[0]);
+      registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
 
       // Deprecated alias — same handler, prints a warning. Remove in 0.23.0.
       const aliasCmd = (program as { command(n: string): { description(d: string): unknown } })
         .command('index-network')
         .description('[Deprecated — use `openclaw index`] Manage Index Network plugin configuration');
       registerSetupCli(aliasCmd as Parameters<typeof registerSetupCli>[0], {
-        deprecationWarning: 'Note: `openclaw index-network setup` is deprecated. Use `openclaw index setup` instead. The alias will be removed in 0.23.0.',
+        deprecationWarning: 'Note: `openclaw index-network setup` is deprecated. Use `openclaw index connect` instead. The alias will be removed in 0.23.0.',
       });
     },
     {
