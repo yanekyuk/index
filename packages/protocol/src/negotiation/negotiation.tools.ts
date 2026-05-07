@@ -303,7 +303,12 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
       'authorized to act on their behalf within the scope granted to your agent.',
     querySchema: z.object({
       negotiationId: z.string().describe('The negotiation task ID to respond to.'),
-      action: z.enum(['accept', 'reject', 'counter', 'question']).describe('The response action: accept the proposal, reject it, counter with a new message, or ask a clarifying question.'),
+      action: z.enum(['propose', 'accept', 'reject', 'counter', 'question']).describe('The response action. On the first turn (turnCount === 0) this MUST be "propose".'),
+      reasoning: z.string().describe('Why you are taking this action — your assessment of the opportunity.'),
+      suggestedRoles: z.object({
+        ownUser: z.enum(['agent', 'patient', 'peer']).describe('Suggested role for your user in this opportunity.'),
+        otherUser: z.enum(['agent', 'patient', 'peer']).describe('Suggested role for the other user in this opportunity.'),
+      }).describe('Role suggestions for both parties.'),
       message: z.string().optional().describe('Required for "counter" and "question" actions. Your message explaining what you want to change or clarify.'),
     }),
     handler: async ({ context, query }) => {
@@ -354,8 +359,8 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
         const turnData: NegotiationTurn = {
           action: query.action,
           assessment: {
-            reasoning: query.message ?? `User ${query.action}ed the proposal.`,
-            suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
+            reasoning: query.reasoning,
+            suggestedRoles: query.suggestedRoles,
           },
           ...(query.message ? { message: query.message } : {}),
         };
@@ -473,7 +478,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           }
 
           return success({
-            message: `${query.action === 'question' ? 'Question' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
+            message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : 'Counter-proposal'} submitted. Waiting for counterparty response.`,
             negotiationId: task.id,
             action: query.action,
             turnNumber: newTurnCount,
@@ -527,7 +532,7 @@ export function createNegotiationTools(defineTool: DefineTool, deps: ToolDeps) {
           });
 
           return success({
-            message: `${query.action === 'question' ? 'Question' : 'Counter'} submitted. Counterparty responded with ${aiTurn.action}.`,
+            message: `${query.action === 'question' ? 'Question' : query.action === 'propose' ? 'Proposal' : 'Counter'} submitted. Counterparty responded with ${aiTurn.action}.`,
             negotiationId: task.id,
             action: query.action,
             turnNumber: newTurnCount,

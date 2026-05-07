@@ -20,12 +20,7 @@ export interface Member {
   isGhost?: boolean;
   intro?: string | null;
   location?: string | null;
-  socials?: {
-    x?: string;
-    linkedin?: string;
-    github?: string;
-    websites?: string[];
-  } | null;
+  socials?: Array<{ id: string; userId: string; label: string; value: string }>;
   permissions: string[];
   metadata?: Record<string, string | string[]> | null;
   createdAt?: string;
@@ -110,12 +105,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Create new network
-  createNetwork: async (data: CreateNetworkRequest): Promise<Network> => {
-    const response = await api.post<APIResponse<Network>>('/networks', data);
+  createNetwork: async (data: CreateNetworkRequest): Promise<Network & { masterKey?: string }> => {
+    const response = await api.post<APIResponse<Network> & { masterKey?: string }>('/networks', data);
     if (!response.network) {
       throw new Error('Failed to create network');
     }
-    return response.network;
+    return { ...response.network, ...(response.masterKey ? { masterKey: response.masterKey } : {}) };
   },
 
   // Update network
@@ -333,7 +328,20 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   // Remove member intent from network (deprecated - kept for backwards compatibility)
   removeMemberIntent: async (networkId: string, intentId: string): Promise<void> => {
     await api.delete(`/networks/${networkId}/member-intents/${intentId}`);
-  }
+  },
+
+  // CSV Import — parse a large CSV file server-side
+  parseCsvImport: async (networkId: string, file: File): Promise<{
+    valid: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>;
+    invalid: Array<{ row: Record<string, string>; reason: string }>;
+  }> => {
+    return api.uploadFile(`/networks/${networkId}/members/import/parse`, file, undefined, 'file');
+  },
+
+  // CSV Import — confirm import of parsed rows
+  importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{ imported: number; skipped: number }> => {
+    return api.post(`/networks/${networkId}/members/import`, { members });
+  },
 });
 
 // Non-authenticated service for public endpoints

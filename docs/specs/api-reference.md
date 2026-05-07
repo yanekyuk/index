@@ -749,7 +749,7 @@ Submit a response for a negotiation turn previously claimed via `pickup`. Authen
 
 Fetch all undelivered eligible opportunities for an owned personal agent as a batch. Authenticates with the agent's API key (`x-api-key` header) or a session. Read-only: the response does not reserve or mutate the delivery ledger, so callers are expected to decide which candidates to surface and then commit each selection via the `confirm_opportunity_delivery` MCP tool.
 
-Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`, the caller's user listed in `actors`, draft exclusion when `createdBy == user`, agent has `notify_on_opportunity = true`, no committed delivery row exists, and `canUserSeeOpportunity` passes. Results are capped at 20 by default; pass `?limit=N` (1..20) to request fewer. Results are ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
+Uses the same `getOpportunitiesForUser` database adapter as the feed graph. Eligibility filters: status `latent`, `pending`, or `draft`, the caller's user listed in `actors`, agent has `notify_on_opportunity = true`, `canUserSeeOpportunity` + `isActionableForViewer` JS filters (mirroring the feed graph), no committed delivery row exists. In practice `isActionableForViewer` excludes drafts (only `latent` and `pending` are actionable). Latent opportunities only surface for the introducer when `approved=false`. Results are capped at 20 by default; pass `?limit=N` (1..20) to request fewer. Results are ordered oldest-first, with rendered card fields suitable for direct interpolation into a delivery prompt.
 
 **Query parameters**:
 
@@ -765,6 +765,8 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
   "opportunities": [
     {
       "opportunityId": "...",
+      "counterpartUserId": "... | null",
+      "feedCategory": "connection | connector-flow",
       "rendered": {
         "headline": "...",
         "personalizedSummary": "...",
@@ -772,15 +774,60 @@ Eligibility filters match the pre-batch pickup flow: status `pending` or `draft`
         "narratorRemark": "..."
       }
     }
-  ]
+  ],
+  "totalPending": 5
 }
 ```
 
-- Returns `{ "opportunities": [] }` when nothing is pending (not `204`).
+- `feedCategory` — `'connection'` for direct matches, `'connector-flow'` when the viewer is the introducer.
+- `totalPending` — count of all eligible opportunities after filters but before the limit is applied. Enables overflow messaging ("N more conversations waiting").
+- Returns `{ "opportunities": [], "totalPending": 0 }` when nothing is pending (not `204`).
 - Each poll also bumps `agents.last_seen_at`.
 
 **Errors**:
 - `400` if `limit` is present but does not parse to a finite number (e.g. `abc`, `Infinity`, `NaN`) — `{"error":"limit must be a finite number"}`.
+- `403` if the agent is not owned by the authenticated user.
+
+### GET /api/agents/:id/opportunities/accepted
+
+Fetch accepted opportunities where the authenticated user is the counterparty (not the accepter, not an introducer) and no delivery record with `deliveredAtStatus = 'accepted'` exists yet. Used by the openclaw-plugin accepted-opportunity poller.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID.
+
+**Query params**:
+
+| Parameter | Type   | Required | Description |
+|-----------|--------|----------|-------------|
+| `limit`   | number | no       | Maximum number of opportunities to return. Server clamps to `[1, 20]`. Defaults to `10`. |
+
+**Response 200**:
+```json
+{
+  "opportunities": [
+    {
+      "opportunityId": "...",
+      "accepterUserId": "...",
+      "accepterName": "Alice",
+      "conversationUrl": "https://index.network/conversations/...",
+      "telegramHandle": "alice_tg",
+      "rendered": {
+        "headline": "...",
+        "personalizedSummary": "..."
+      }
+    }
+  ]
+}
+```
+
+- `telegramHandle` is `null` when the accepter has no `user_socials` entry with `label = 'telegram'` or when the stored value is not a valid Telegram username.
+- `conversationUrl` falls back to the frontend base URL if no DM exists.
+- Returns `{ "opportunities": [] }` when no undelivered accepted opportunities exist.
+
+**Errors**:
+- `400` if `limit` is present but does not parse to a finite number.
 - `403` if the agent is not owned by the authenticated user.
 
 ### GET /api/agents/:id/opportunities/delivery-stats
@@ -812,6 +859,122 @@ Return committed delivery counts for an owned personal agent since a given times
 - `403` if the agent is not owned by the authenticated user.
 
 **Used by**: the OpenClaw plugin's ambient discovery poller, which calls this endpoint before each cycle to feed today's committed delivery count into the agent's prompt for soft self-restraint against a ≤3/day target.
+
+---
+
+### POST /api/agents/:id/opportunities/pickup
+
+Atomically reserve and return one pending opportunity for the agent to process. Returns 204 if no opportunities are pending. Also updates the agent's `lastSeenAt` heartbeat.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID. The authenticated user must own this agent.
+
+**Response 200**:
+```json
+{
+  "opportunityId": "uuid",
+  "reservationToken": "token-string",
+  "reservationExpiresAt": "ISO-8601-timestamp",
+  "rendered": { ... }
+}
+```
+
+**Response 204**: No pending opportunities.
+
+**Errors**:
+- `404` if the agent is not owned by the authenticated user or does not exist (returns 404 regardless to prevent existence disclosure).
+
+---
+
+### POST /api/agents/:id/opportunities/:opportunityId/delivered
+
+Confirm that the agent has successfully delivered an opportunity. Must be called with the `reservationToken` issued by the preceding `pickup` call.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID. The authenticated user must own this agent.
+- `opportunityId` — Opportunity ID.
+
+**Request body**:
+```json
+{ "reservationToken": "token-string" }
+```
+
+**Response 200**:
+```json
+{ "ok": true }
+```
+
+**Errors**:
+- `404` — Invalid or expired reservation token; the message has already been confirmed or the token is wrong.
+- `404` if the agent is not owned by the authenticated user or does not exist.
+
+---
+
+### POST /api/agents/:id/test-messages
+
+Enqueue a test message for the agent. Owner-only. Used to verify that a personal agent's delivery pipeline is working correctly.
+
+**Auth**: `AuthGuard` (session only).
+
+**Path params**:
+- `id` — Agent ID. The authenticated user must own this agent.
+
+**Request body**:
+```json
+{ "content": "Hello from test" }
+```
+
+**Response 201**: The enqueued test message record.
+
+**Errors**:
+- `404` if the agent is not owned by the authenticated user or does not exist.
+
+---
+
+### POST /api/agents/:id/test-messages/pickup
+
+Atomically reserve and return one pending test message. Returns 204 if no messages are pending. Also updates the agent's `lastSeenAt` heartbeat.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID. The authenticated user must own this agent.
+
+**Response 200**: The reserved test message with a `reservationToken`.
+
+**Response 204**: No pending test messages.
+
+**Errors**:
+- `404` if the agent is not owned by the authenticated user or does not exist.
+
+---
+
+### POST /api/agents/:id/test-messages/:messageId/delivered
+
+Confirm delivery of a test message. Must be called with the `reservationToken` issued by the preceding `test-messages/pickup` call.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key).
+
+**Path params**:
+- `id` — Agent ID.
+- `messageId` — Test message ID.
+
+**Request body**:
+```json
+{ "reservationToken": "token-string" }
+```
+
+**Response 200**:
+```json
+{ "ok": true }
+```
+
+**Errors**:
+- `404` — Invalid or expired reservation token.
 
 ---
 
@@ -1576,6 +1739,92 @@ Leave an index. Members (non-owners) can leave.
 **Errors**:
 - `404` — Not found or not a member
 - `400` — Cannot leave (owner)
+
+---
+
+### POST /api/networks/:id/signup
+
+Headless experiment-network signup. Provisions or retrieves a user account and returns an API key bound to a network-scoped personal agent.
+
+**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key (shared out of band).
+
+**Path params**:
+- `id` — Network ID (must be an experiment network).
+
+**Request body**:
+```json
+{ "email": "attendee@example.com" }
+```
+
+**Response 201** (new account created):
+```json
+{
+  "user": { "id": "user-uuid", "email": "attendee@example.com" },
+  "apiKey": "sk_live_...",
+  "connectCommand": "openclaw index connect --api-key sk_live_..."
+}
+```
+
+**Response 200** (existing account): Same shape; a fresh API key is issued on every call — store the latest one.
+
+**Idempotent**: Repeated calls for the same email return the same user. A fresh API key is issued each time, so store the latest returned `apiKey` and re-resolve the `agentId` from it via `GET /api/agents/me`.
+
+**Errors**:
+- `400` — Missing or malformed email.
+- `401` — Invalid or missing master key.
+
+---
+
+### POST /api/networks/:id/members/import/parse
+
+Parse a CSV file and validate rows before committing an import. Owner-only, experiment networks only. Intended for large files (> 500 rows) where client-side parsing is skipped.
+
+**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+
+**Path params**:
+- `id` — Network ID.
+
+**Request**: Multipart form data with a `file` field containing the CSV.
+
+**Response 200**:
+```json
+{
+  "valid": [{ "email": "a@example.com", "name": "Alice" }],
+  "invalid": [{ "row": { "email": "" }, "reason": "Missing email" }]
+}
+```
+
+**Errors**:
+- `400` — No file supplied or CSV is unparseable.
+- `403` — Not the network owner or scope violation.
+
+---
+
+### POST /api/networks/:id/members/import
+
+Import validated rows (from `/import/parse`) into the network. Owner-only, experiment networks only.
+
+**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+
+**Path params**:
+- `id` — Network ID.
+
+**Request body**:
+```json
+{ "members": [{ "email": "a@example.com", "name": "Alice" }] }
+```
+
+**Response 200**:
+```json
+{ "imported": 42, "skipped": 3 }
+```
+
+- `imported` — Number of new accounts provisioned and added as members.
+- `skipped` — Number of rows that were skipped (existing users already invited, or errors).
+
+**Errors**:
+- `400` — `members` array is missing or empty.
+- `403` — Not the network owner or scope violation.
 
 ---
 

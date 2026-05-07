@@ -18,8 +18,10 @@ import { randomUUID } from 'node:crypto';
 import {
   OpportunityPresenter,
   canUserSeeOpportunity,
+  classifyOpportunity,
   gatherPresenterContext,
   getOrCreateDeliveryCardBatch,
+  isActionableForViewer,
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
@@ -28,7 +30,9 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
-import { agents, opportunities, opportunityDeliveries } from '../schemas/database.schema';
+import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
+import { conversations } from '../schemas/conversation.schema';
+import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../schemas/database.schema';
 
 const logger = log.service.from('OpportunityDeliveryService');
 
@@ -57,7 +61,25 @@ export interface PickupPendingResult {
 export interface PendingCandidate {
   opportunityId: string;
   counterpartUserId: string | null;
+  feedCategory: 'connection' | 'connector-flow';
   rendered: RenderedCard;
+}
+
+export interface PendingCandidatesResult {
+  opportunities: PendingCandidate[];
+  totalPending: number;
+}
+
+export interface AcceptedCandidate {
+  opportunityId: string;
+  accepterUserId: string;
+  accepterName: string;
+  conversationUrl: string;
+  telegramHandle: string | null;
+  rendered: {
+    headline: string;
+    personalizedSummary: string;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -227,7 +249,8 @@ export class OpportunityDeliveryService {
    * @param userId - The user the opportunity was delivered to.
    * @param agentId - The agent performing the delivery.
    * @param trigger - Which dispatch path produced this delivery: 'ambient' for
-   *                  real-time critical alerts, 'digest' for the daily sweep.
+   *                  real-time critical alerts, 'digest' for the daily sweep,
+   *                  'accepted' for accepted-opportunity notifications to the counterparty.
    * @returns `'confirmed'` on first delivery, `'already_delivered'` on duplicates.
    * @throws Error `'opportunity_not_found'` when the opportunity does not exist.
    * @throws Error `'not_authorized'` when userId is not an actor on the opportunity.
@@ -236,7 +259,7 @@ export class OpportunityDeliveryService {
     opportunityId: string,
     userId: string,
     agentId: string | null,
-    trigger: 'ambient' | 'digest',
+    trigger: 'ambient' | 'digest' | 'accepted',
   ): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
@@ -291,30 +314,132 @@ export class OpportunityDeliveryService {
 
   /**
    * Fetch all undelivered eligible opportunities for an agent owner without writing
-   * to the delivery ledger. Suitable for batch delivery flows where the caller
-   * decides which candidates to commit via `commitDelivery`.
+   * to the delivery ledger. Uses the same `getOpportunitiesForUser` adapter as the
+   * feed graph, widened to include `latent` status alongside `pending` and `draft`.
+   * JS filters mirror the feed graph: canUserSeeOpportunity + isActionableForViewer.
+   * Delivery dedup is applied as a batch JS filter after visibility checks.
    *
    * @param agentId - The agent whose owner's pending opportunities are fetched.
    * @param limit - Optional maximum number of candidates to return. Clamped to [1, 20]. Defaults to 20.
-   * @returns Array of candidates with rendered cards, ordered oldest-first (up to `limit`).
+   * @returns Result with candidates (rendered cards + feedCategory), totalPending count, ordered oldest-first.
    */
-  async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidate[]> {
-    const userId = await this.resolveAgentOwner(agentId);
+  async fetchPendingCandidates(agentId: string, limit?: number): Promise<PendingCandidatesResult> {
+    const [agent] = await db.select().from(agents).where(eq(agents.id, agentId));
+    if (!agent) throw new Error('agent_not_found');
+    if (!agent.notifyOnOpportunity) return { opportunities: [], totalPending: 0 };
+
+    const userId = agent.ownerId;
     const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 20;
     const effectiveLimit = Math.min(20, Math.max(1, raw));
 
+    // Step 1: Fetch via adapter — same as feed graph
+    const rows = await chatDatabaseAdapter.getOpportunitiesForUser(userId, {
+      statuses: ['latent', 'pending', 'draft'],
+      limit: 150,
+    });
+
+    // Step 2: JS filter chain (mirrors feed graph)
+    const visible = rows.filter((row) => {
+      const actors = row.actors as Array<{ userId: string; role: string; approved?: boolean }>;
+
+      // canUserSeeOpportunity — read-level ACL
+      if (!canUserSeeOpportunity(actors, row.status, userId)) return false;
+
+      // isActionableForViewer — actionability gate
+      if (!isActionableForViewer(actors, row.status, userId)) return false;
+
+      // Draft createdBy exclusion — skip drafts where user is the creator
+      if (row.status === 'draft') {
+        const detection = row.detection as { createdBy?: string } | null;
+        if (detection?.createdBy === userId) return false;
+      }
+
+      return true;
+    });
+
+    // Step 3: Delivery dedup — batch query then filter
+    const deduped = await this.filterAlreadyDelivered(visible, userId);
+
+    // Step 4: Classify + count + slice
+    const totalPending = deduped.length;
+
+    // Sort oldest-first by updatedAt
+    deduped.sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
+
+    const sliced = deduped.slice(0, effectiveLimit);
+
+    // Step 5: Render cards and classify
+    const candidates = await Promise.all(
+      sliced.map(async (row) => {
+        const actors = row.actors as Array<{ userId: string; role: string }>;
+        const counterpart = actors.find((a) => a.userId !== userId && a.role !== 'introducer');
+        const feedCategory = classifyOpportunity(
+          { actors, status: row.status },
+          userId,
+        ) as 'connection' | 'connector-flow';
+        return {
+          opportunityId: row.id,
+          counterpartUserId: counterpart?.userId ?? null,
+          feedCategory,
+          rendered: await this.renderOpportunityCard(row.id, userId),
+        };
+      }),
+    );
+
+    return { opportunities: candidates, totalPending };
+  }
+
+  /**
+   * Batch-filter opportunities that have already been delivered to the user.
+   * Queries the delivery ledger once for all candidate IDs, then removes
+   * candidates whose `id:status` key has a committed delivery row.
+   */
+  private async filterAlreadyDelivered<T extends { id: string; status: string }>(
+    candidates: T[],
+    userId: string,
+  ): Promise<T[]> {
+    if (candidates.length === 0) return [];
+
+    const ids = candidates.map((c) => c.id);
+    const deliveryRows = await db.execute(sql`
+      SELECT opportunity_id, delivered_at_status
+      FROM opportunity_deliveries
+      WHERE opportunity_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        AND user_id = ${userId}
+        AND channel = ${CHANNEL}
+        AND delivered_at IS NOT NULL
+    `);
+
+    const delivered = new Set(
+      (deliveryRows as unknown as Array<{ opportunity_id: string; delivered_at_status: string }>)
+        .map((r) => `${r.opportunity_id}:${r.delivered_at_status}`),
+    );
+
+    return candidates.filter((c) => !delivered.has(`${c.id}:${c.status}`));
+  }
+
+  /**
+   * Fetch accepted opportunities where the agent's owner is the counterparty
+   * (not the accepter) and no delivery with deliveredAtStatus='accepted' exists.
+   *
+   * @param agentId - The agent whose owner's accepted opportunities are fetched.
+   * @param frontendUrl - Base URL for constructing conversation links.
+   * @param limit - Optional maximum number of candidates to return. Clamped to [1, 20]. Defaults to 10.
+   * @returns Array of candidates with enriched accepter info and rendered cards.
+   */
+  async fetchAcceptedCandidates(agentId: string, frontendUrl: string, limit?: number): Promise<AcceptedCandidate[]> {
+    const userId = await this.resolveAgentOwner(agentId);
+    const raw = limit !== undefined && Number.isFinite(limit) ? Math.trunc(limit) : 10;
+    const effectiveLimit = Math.min(20, Math.max(1, raw));
+
     const result = await db.execute(sql`
-      SELECT o.id, o.actors, o.status, o.interpretation, o.detection
+      SELECT o.id, o.actors, o.accepted_by
       FROM opportunities o
-      WHERE o.status IN ('pending', 'draft')
+      WHERE o.status = 'accepted'
+        AND o.accepted_by IS NOT NULL
+        AND o.accepted_by <> ${userId}
         AND o.actors::jsonb @> ${JSON.stringify([{ userId }])}::jsonb
-        AND (
-          o.status = 'pending'
-          OR (
-            (o.detection->>'createdBy') IS NOT NULL
-            AND (o.detection->>'createdBy') <> ${userId}
-          )
-        )
+        AND NOT (o.actors::jsonb @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb)
         AND EXISTS (
           SELECT 1 FROM agents a
           WHERE a.id = ${agentId}
@@ -325,44 +450,62 @@ export class OpportunityDeliveryService {
           WHERE d.opportunity_id = o.id
             AND d.user_id = ${userId}
             AND d.channel = ${CHANNEL}
-            AND d.delivered_at_status = o.status::text
+            AND d.delivered_at_status = 'accepted'
             AND d.delivered_at IS NOT NULL
         )
-      ORDER BY o.updated_at ASC
+      ORDER BY o.updated_at DESC
       LIMIT ${effectiveLimit}
     `);
 
     const rows = result as unknown as Array<{
       id: string;
-      actors: unknown;
-      status: string;
-      interpretation: unknown;
-      detection: unknown;
+      actors: Array<{ userId: string; role: string }>;
+      accepted_by: string;
     }>;
 
-    const visible = rows.filter((row) => {
-      if (row.status === 'draft') {
-        const detection = (row as { detection?: { createdBy?: string } }).detection;
-        if (!detection?.createdBy) {
-          logger.error('Skipping draft opportunity with missing detection.createdBy', {
-            opportunityId: row.id,
-            userId,
-          });
-          return false;
-        }
-      }
-      const actors = row.actors as Array<{ userId: string; role: string }>;
-      return canUserSeeOpportunity(actors, row.status, userId);
-    });
-
     const candidates = await Promise.all(
-      visible.map(async (row) => {
-        const actors = row.actors as Array<{ userId: string; role: string }>;
-        const counterpart = actors.find((a) => a.userId !== userId);
+      rows.map(async (row) => {
+        const accepterUserId = row.accepted_by;
+
+        // Fetch accepter name and Telegram handle in a single query
+        const [userData] = await db
+          .select({
+            name: users.name,
+            telegramHandle: userSocials.value,
+          })
+          .from(users)
+          .leftJoin(userSocials, and(
+            eq(userSocials.userId, users.id),
+            eq(userSocials.label, 'telegram'),
+          ))
+          .where(and(eq(users.id, accepterUserId), isNull(users.deletedAt)))
+          .limit(1);
+        const accepterName = userData?.name ?? '';
+        const telegramHandle = normalizeTelegramHandle(userData?.telegramHandle);
+
+        // Resolve conversation URL from existing DM between the two users (read-only)
+        const dmPair = [userId, accepterUserId].sort().join(':');
+        const [existingConv] = await db
+          .select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.dmPair, dmPair))
+          .limit(1);
+        const conversationUrl = existingConv
+          ? `${frontendUrl}/conversations/${existingConv.id}`
+          : frontendUrl;
+
+        const rendered = await this.renderOpportunityCard(row.id, userId);
+
         return {
           opportunityId: row.id,
-          counterpartUserId: counterpart?.userId ?? null,
-          rendered: await this.renderOpportunityCard(row.id, userId),
+          accepterUserId,
+          accepterName,
+          conversationUrl,
+          telegramHandle,
+          rendered: {
+            headline: rendered.headline,
+            personalizedSummary: rendered.personalizedSummary,
+          },
         };
       }),
     );

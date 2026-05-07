@@ -2,6 +2,7 @@ import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { readModel } from '../../lib/openclaw/plugin-api.js';
 
 import { turnPrompt } from './negotiation-turn.prompt.js';
+import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
 export type NegotiatorPollResult = 'handled' | 'idle' | 'network_error';
 
@@ -26,6 +27,11 @@ export async function handle(
   api: OpenClawPluginApi,
   config: NegotiatorConfig,
 ): Promise<NegotiatorPollResult> {
+  if (!await isOnboardingComplete(api, config)) {
+    api.logger.debug('Negotiator: onboarding not complete, skipping.');
+    return 'idle';
+  }
+
   const pickupUrl = `${config.baseUrl}/api/agents/${config.agentId}/negotiations/pickup`;
 
   const res = await fetch(pickupUrl, {

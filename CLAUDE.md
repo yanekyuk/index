@@ -97,7 +97,7 @@ The following packages are git subtrees tracked to external repos. **Syncing is 
 
 #### packages/openclaw-plugin/ → indexnetwork/openclaw-plugin
 
-The `@indexnetwork/openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`, and (c) polls for pending opportunities (ambient discovery, daily digest, test messages) and dispatches them to the user's main OpenClaw agent via the gateway's `POST /hooks/agent` endpoint with `deliver: true, channel: "last"` — the gateway then routes the agent's reply to whichever channel the user last chatted on. The setup wizard bootstraps the OpenClaw `hooks` subsystem (`hooks.enabled`, `hooks.token`, `hooks.path`) on first run; the dispatch path requires it. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
+The `@indexnetwork/openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`, and (c) polls for pending opportunities (ambient discovery, daily digest, test messages) and accepted-opportunity notifications, dispatching them to the user's main OpenClaw agent via the gateway's `POST /hooks/agent` endpoint with `deliver: true, channel: "last"` — the gateway then routes the agent's reply to whichever channel the user last chatted on. The setup wizard bootstraps the OpenClaw `hooks` subsystem (`hooks.enabled`, `hooks.token`, `hooks.path`) on first run; the dispatch path requires it. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
 
 **Version fields (bump BOTH on every release):**
 - `package.json` → `version` (npm / workspace-facing)
@@ -268,6 +268,8 @@ Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `in
 
 All agents are first-class database entities backed by `agents`, `agent_transports`, and `agent_permissions`. System agents (`Index Chat Orchestrator`, `Index Negotiator`) are seeded with well-known UUIDs and receive default permissions during onboarding. MCP auth resolves to `userId + agentId` pairs when API keys include `metadata.agentId`. Personal agents connect by polling `/agents/:id/negotiations/pickup` with an API key; each poll bumps `agents.last_seen_at`. The dispatcher consults that heartbeat: if no personal agent is fresh (seen within 90 s), the system negotiator runs inline; otherwise the turn is parked in `tasks.state='waiting_for_agent'` with a bounded park-window budget (`AMBIENT_PARK_WINDOW_MS`, 5 min by default) that carries over from the `waiting_for_agent` timer to the `claimed` timer rather than stacking.
 
+**Network-scoped agents.** Agents can be bound to a single network via `agent_permissions.scope='network', scopeId=<networkId>`. The `agent-scope.guard.ts` resolves a request's agent scope (null for global agents, the bound `scopeId` otherwise) and `assertAgentNetworkScope(req, networkId)` is wired into network/intent/opportunity controllers — write paths assert, list paths filter via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`. The MCP layer additionally clamps `indexScope` to `[networkScopeId, personalIndex]` via `computeAgentIndexScope` so every tool call from a scoped key is bounded. Used by experiment-network CSV import (`networkInvitationService.invite`): each imported user receives a network-scoped agent + API key by email — possession of the inbox is the verification, no `users.experimentNetworkId` column needed.
+
 ### Trace Event Instrumentation
 
 `requestContext` carries a `traceEmitter?` callback for real-time TRACE panel in chat UI. Tool files emit `graph_start/graph_end` around graph invocations; graph files emit `agent_start/agent_end` around agent calls. Use kebab-case agent names. See `docs/design/protocol-deep-dive.md` for full examples.
@@ -281,6 +283,17 @@ Model settings centralized in `packages/protocol/src/shared/agent/model.config.t
 ## Environment Setup
 
 See `docs/guides/getting-started.md` for full setup guide.
+
+### Neon Database Topology
+
+Two Neon projects exist:
+
+1. **Protocol-dev-europe** (`patient-pine-89907813`, `aws-eu-central-1`) — local development database. Developers connect here from their machines.
+2. **Protocol** (`shiny-cloud-34341469`, `aws-us-east-1`) — has two branches:
+   - **`production`** (`br-fragrant-brook-ahexgsek`) — production data. **Never touch.**
+   - **`dev`** (`br-late-tooth-ahlsfgdb`) — used by the Railway `dev` environment. Database name: `protocol_prod`.
+
+Railway dev deployments run `db:migrate` against the `dev` branch of the Protocol project.
 
 ### Required Environment Variables
 
@@ -422,15 +435,17 @@ When executing implementation plans, **always use subagent-driven development wi
 
 ### Receiving Code Review (`/receiving-code-review`)
 
-When handling CodeRabbitAI reviews on PRs, follow this workflow:
+Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
 
-1. **Fetch unresolved conversations**: Use `gh api` to list all review comments on the PR. Focus on unresolved conversation threads from CodeRabbitAI.
+When handling Copilot reviews on PRs, follow this workflow:
+
+1. **Fetch unresolved conversations**: Use `gh api` to list all review comments on the PR. Focus on unresolved conversation threads from `github-copilot[bot]`.
 2. **Evaluate each conversation**: For each unresolved thread, decide whether a code fix is actually needed:
-   - **Fix needed**: Implement the fix, push, and let the resolved code speak for itself.
-   - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns). Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
-3. **Resolve all conversations**: Every conversation must be resolved (either by fixing or by responding with reasoning) before the PR can merge. Zero unresolved conversations is the merge gate.
+   - **Fix needed**: Implement the fix, push, then **manually resolve the conversation** (Copilot does not auto-resolve when commits are pushed or suggestions are applied).
+   - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns), then resolve it. Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
+3. **Resolve all conversations**: Every conversation must be manually resolved before the PR can merge.
 
-> **IMPORTANT:** Always reply directly in each conversation thread using the replies endpoint. Never post a top-level PR comment to address review feedback — CodeRabbitAI tracks resolution per conversation thread, and a top-level comment does not mark threads as resolved or create memory for the bot.
+> **IMPORTANT:** Copilot never sees follow-up comments and will not respond to `@copilot` mentions in threads — replies are for human context only. On re-review, Copilot may re-raise already-resolved comments; that is expected behavior.
 
 **Key commands:**
 ```bash
@@ -439,4 +454,7 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments
 
 # Reply to a specific review comment thread (USE THIS — not gh pr comment)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body="..."
+
+# Request a Copilot review on an existing PR
+gh pr edit PR-NUMBER --add-reviewer @copilot
 ```

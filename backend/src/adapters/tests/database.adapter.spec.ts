@@ -18,7 +18,6 @@ import {
   intents,
   intentNetworks,
   opportunities,
-  hydeDocuments,
 } from '../../schemas/database.schema';
 import {
   IntentDatabaseAdapter,
@@ -28,7 +27,6 @@ import {
   NetworkGraphDatabaseAdapter,
   HydeDatabaseAdapter,
 } from '../database.adapter';
-import { AuthDatabaseAdapter } from '../auth.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -536,7 +534,7 @@ describe('OpportunityDatabaseAdapter', () => {
     const list = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, limit: 1 });
     expect(list.length).toBeGreaterThanOrEqual(1);
     const opp = list[0];
-    const updated = await adapter.updateOpportunityStatus(opp.id, 'accepted');
+    const updated = await adapter.updateOpportunityStatus(opp.id, 'accepted', fixture.userAId);
     expect(updated).not.toBeNull();
     expect(updated!.status).toBe('accepted');
     const refetched = await adapter.getOpportunity(opp.id);

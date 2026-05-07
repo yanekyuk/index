@@ -17,7 +17,7 @@ export default function ChatPage() {
     if (s) window.history.replaceState({}, '');
     return s;
   });
-  const prefillMessage = initialState?.prefill ?? undefined;
+  const prefillMessage = initialState?.prefill ?? searchParams.get('msg') ?? undefined;
   const autoSend = initialState?.autoSend ?? false;
   const pendingOpportunityId = initialState?.opportunityId ?? undefined;
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();

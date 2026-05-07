@@ -209,32 +209,35 @@ describe('fetchPendingCandidates', () => {
 
   it('returns empty array when no eligible opportunities exist', async () => {
     const results = await svc.fetchPendingCandidates(agentId);
-    expect(results).toEqual([]);
+    expect(results.opportunities).toEqual([]);
+    expect(results.totalPending).toBe(0);
   });
 
   it('returns candidate with rendered card for eligible pending opportunity', async () => {
     const opportunityId = await seedOpportunity([userId], 'pending');
     const results = await svc.fetchPendingCandidates(agentId);
-    expect(results).toHaveLength(1);
-    expect(results[0].opportunityId).toBe(opportunityId);
-    expect(results[0].rendered.headline).toBeTruthy();
-    expect(results[0].counterpartUserId).toBeNull();
+    expect(results.opportunities).toHaveLength(1);
+    expect(results.opportunities[0].opportunityId).toBe(opportunityId);
+    expect(results.opportunities[0].rendered.headline).toBeTruthy();
+    expect(results.opportunities[0].counterpartUserId).toBeNull();
+    expect(results.totalPending).toBe(1);
   });
 
   it('returns counterpartUserId when opportunity has two actors', async () => {
     const otherUserId = await seedUser();
     const opportunityId = await seedOpportunity([userId, otherUserId], 'pending');
     const results = await svc.fetchPendingCandidates(agentId);
-    expect(results).toHaveLength(1);
-    expect(results[0].opportunityId).toBe(opportunityId);
-    expect(results[0].counterpartUserId).toBe(otherUserId);
+    expect(results.opportunities).toHaveLength(1);
+    expect(results.opportunities[0].opportunityId).toBe(opportunityId);
+    expect(results.opportunities[0].counterpartUserId).toBe(otherUserId);
   });
 
   it('excludes opportunity already committed in delivery ledger', async () => {
     const opportunityId = await seedOpportunity([userId], 'pending');
     await svc.commitDelivery(opportunityId, userId, agentId, 'ambient');
     const results = await svc.fetchPendingCandidates(agentId);
-    expect(results).toEqual([]);
+    expect(results.opportunities).toEqual([]);
+    expect(results.totalPending).toBe(0);
   });
 
   it('excludes opportunity when agent has notify_on_opportunity=false', async () => {
@@ -244,7 +247,8 @@ describe('fetchPendingCandidates', () => {
     // seed opportunity for muted user
     await seedOpportunity([mutedUserId], 'pending');
     const results = await svc.fetchPendingCandidates(mutedAgentId);
-    expect(results).toEqual([]);
+    expect(results.opportunities).toEqual([]);
+    expect(results.totalPending).toBe(0);
   });
 
   it('respects an explicit limit lower than the default cap', async () => {
@@ -252,7 +256,8 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, 3);
-    expect(results).toHaveLength(3);
+    expect(results.opportunities).toHaveLength(3);
+    expect(results.totalPending).toBe(5);
   });
 
   it('clamps limit above 20 to the 20-row cap', async () => {
@@ -260,7 +265,8 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, 50);
-    expect(results).toHaveLength(20);
+    expect(results.opportunities).toHaveLength(20);
+    expect(results.totalPending).toBe(25);
   });
 
   it('clamps limit at or below 0 to 1', async () => {
@@ -268,7 +274,7 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, 0);
-    expect(results).toHaveLength(1);
+    expect(results.opportunities).toHaveLength(1);
   });
 
   it('clamps negative limit to 1', async () => {
@@ -276,7 +282,7 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, -3);
-    expect(results).toHaveLength(1);
+    expect(results.opportunities).toHaveLength(1);
   });
 
   it('truncates fractional limit (1.9 → 1)', async () => {
@@ -284,7 +290,7 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, 1.9);
-    expect(results).toHaveLength(1);
+    expect(results.opportunities).toHaveLength(1);
   });
 
   it('falls back to 20 when limit is non-finite (NaN)', async () => {
@@ -292,7 +298,8 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId, Number.NaN);
-    expect(results).toHaveLength(20);
+    expect(results.opportunities).toHaveLength(20);
+    expect(results.totalPending).toBe(25);
   });
 
   it('uses 20 as default when limit is omitted', async () => {
@@ -300,7 +307,8 @@ describe('fetchPendingCandidates', () => {
       await seedOpportunity([userId], 'pending');
     }
     const results = await svc.fetchPendingCandidates(agentId);
-    expect(results).toHaveLength(20);
+    expect(results.opportunities).toHaveLength(20);
+    expect(results.totalPending).toBe(25);
   });
 });
 

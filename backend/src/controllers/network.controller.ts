@@ -1,6 +1,9 @@
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { assertAgentNetworkScope, withAgentScope } from '../guards/agent-scope.guard';
+import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/experiment.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { experimentService, type ImportRow } from '../services/experiment.service';
 import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
@@ -15,11 +18,31 @@ export class NetworkController {
    * List networks the authenticated user is a member of, including their personal network.
    */
   @Get('')
-  @UseGuards(AuthGuard)
-  async list(_req: Request, user: AuthenticatedUser) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async list(req: Request, user: AuthenticatedUser) {
+    const { networkScopeId } = await withAgentScope(req, user);
     const result = await networkService.getNetworksForUser(user.id);
-    logger.verbose('Networks listed for user', { userId: user.id, count: result.networks.length });
-    return Response.json(result);
+    let filtered = result;
+    if (networkScopeId) {
+      const networks = result.networks.filter(
+        (n: { id: string; isPersonal?: boolean | null }) => n.id === networkScopeId || n.isPersonal === true,
+      );
+      // Recompute pagination so count/totalCount/total stay consistent with
+      // the post-filter networks array; otherwise scoped callers see stale
+      // counts that don't match the rows they receive.
+      filtered = {
+        ...result,
+        networks,
+        pagination: {
+          ...result.pagination,
+          count: networks.length,
+          totalCount: networks.length,
+          total: networks.length > 0 ? 1 : 0,
+        },
+      };
+    }
+    logger.verbose('Networks listed for user', { userId: user.id, count: filtered.networks.length, scoped: networkScopeId !== null });
+    return Response.json(filtered);
   }
 
   /**
@@ -34,6 +57,7 @@ export class NetworkController {
       imageUrl?: string | null;
       joinPolicy?: 'anyone' | 'invite_only';
       allowGuestVibeCheck?: boolean;
+      isExperiment?: boolean;
     };
 
     if (!body.title) {
@@ -41,6 +65,16 @@ export class NetworkController {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    if (body.isExperiment) {
+      const { network, masterKey } = await networkService.createExperimentNetwork(user.id, {
+        title: body.title,
+        prompt: body.prompt,
+        imageUrl: body.imageUrl,
+      });
+      logger.verbose('Experiment network created', { networkId: (network as { id: string }).id, userId: user.id });
+      return Response.json({ network, masterKey }, { status: 201 });
     }
 
     const result = await networkService.createNetwork(user.id, {
@@ -52,6 +86,48 @@ export class NetworkController {
     });
     logger.verbose('Network created', { networkId: result.id, userId: user.id });
     return Response.json({ network: result });
+  }
+
+  /**
+   * Headless signup for experiment networks. Authenticated via master key (x-api-key header).
+   */
+  @Post('/:id/signup')
+  async signup(req: Request, _user: unknown, params: Record<string, string>) {
+    let network: ExperimentNetwork;
+    try {
+      network = await ExperimentMasterKeyGuard(req, params);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => ({})) as { email?: string };
+    if (!body.email || typeof body.email !== 'string') {
+      return new Response(JSON.stringify({ error: 'email is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(body.email)) {
+      return new Response(JSON.stringify({ error: 'Invalid email format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    try {
+      const result = await experimentService.signup(network.id, body.email);
+      const status = result.created ? 201 : 200;
+      return Response.json({ user: result.user, apiKey: result.apiKey, connectCommand: result.connectCommand }, { status });
+    } catch (err: unknown) {
+      logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
+      return new Response(JSON.stringify({ error: 'Signup failed' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   /**
@@ -83,9 +159,10 @@ export class NetworkController {
    * Get members of a network. Owner-only.
    */
   @Get('/:id/members')
-  @UseGuards(AuthGuard)
-  async getMembers(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async getMembers(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const members = await networkService.getMembersForOwner(params.id, user.id);
       logger.verbose('Members listed for network', { networkId: params.id, count: members.length });
       return Response.json({
@@ -109,7 +186,7 @@ export class NetworkController {
    * Add a member to a network. Owner/admin-only.
    */
   @Post('/:id/members')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async addMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     const body = await req.json().catch(() => ({})) as { userId?: string; permissions?: string[] };
     if (!body.userId) {
@@ -119,6 +196,7 @@ export class NetworkController {
       });
     }
     try {
+      await assertAgentNetworkScope(req, params.id);
       const role = body.permissions?.includes('admin') ? 'admin' as const : 'member' as const;
       const result = await networkService.addMember(params.id, body.userId, user.id, role);
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
@@ -138,9 +216,10 @@ export class NetworkController {
    * Remove a member from a network. Owner-only.
    */
   @Delete('/:id/members/:memberId')
-  @UseGuards(AuthGuard)
-  async removeMember(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async removeMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       await networkService.removeMember(params.id, params.memberId, user.id);
       logger.verbose('Member removed from network', { networkId: params.id, memberId: params.memberId });
       return Response.json({ success: true });
@@ -169,12 +248,168 @@ export class NetworkController {
   }
 
   /**
+   * Parse a CSV file for member import. Owner-only, experiment networks only.
+   * Used for large files (>500 rows) where client-side parsing is skipped.
+   */
+  @Post('/:id/members/import/parse')
+  @UseGuards(AuthOrApiKeyGuard)
+  async parseImportCsv(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const formData = await req.formData().catch(() => null);
+    const file = formData?.get('file');
+    if (!file || !(file instanceof File)) {
+      return Response.json({ error: 'CSV file is required' }, { status: 400 });
+    }
+
+    try {
+      const text = await file.text();
+      const { valid, invalid } = this.parseCsvText(text);
+      return Response.json({ valid, invalid });
+    } catch (err: unknown) {
+      logger.error('CSV parse failed', { networkId: params.id, error: errorMessage(err) });
+      return Response.json({ error: 'Failed to parse CSV' }, { status: 400 });
+    }
+  }
+
+  /**
+   * Import members from parsed CSV data. Owner-only, experiment networks only.
+   */
+  @Post('/:id/members/import')
+  @UseGuards(AuthOrApiKeyGuard)
+  async importMembers(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => ({})) as { members?: ImportRow[] };
+    if (!body.members || !Array.isArray(body.members) || body.members.length === 0) {
+      return Response.json({ error: 'members array is required' }, { status: 400 });
+    }
+
+    try {
+      const result = await experimentService.importMembers(params.id, body.members);
+      return Response.json(result);
+    } catch (err: unknown) {
+      logger.error('CSV import failed', { networkId: params.id, error: errorMessage(err) });
+      return Response.json({ error: 'Import failed' }, { status: 500 });
+    }
+  }
+
+  private async assertExperimentOwner(networkId: string, userId: string): Promise<void> {
+    let network: Awaited<ReturnType<typeof networkService.getNetworkById>>;
+    try {
+      network = await networkService.getNetworkById(networkId, userId);
+    } catch {
+      throw Response.json({ error: 'Access denied' }, { status: 403 });
+    }
+    if (!network) {
+      throw Response.json({ error: 'Network not found' }, { status: 404 });
+    }
+    if (!(network as Record<string, unknown>).isExperiment) {
+      throw Response.json({ error: 'This operation is only available for experiment networks' }, { status: 403 });
+    }
+    const owner = (network as Record<string, unknown>).user as { id: string } | undefined;
+    if (owner?.id !== userId) {
+      throw Response.json({ error: 'Owner-only operation' }, { status: 403 });
+    }
+  }
+
+  private parseCsvText(text: string): { valid: ImportRow[]; invalid: { row: Record<string, string>; reason: string }[] } {
+    const lines = text.split(/\r?\n/).filter(line => line.trim());
+    if (lines.length === 0) return { valid: [], invalid: [] };
+
+    const headers = this.parseCsvLine(lines[0]).map(h => h.toLowerCase().trim());
+    const emailIdx = headers.indexOf('email');
+    if (emailIdx === -1) return { valid: [], invalid: [] };
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const knownCols = new Set(['email', 'name', 'bio', 'location']);
+    const valid: ImportRow[] = [];
+    const invalid: { row: Record<string, string>; reason: string }[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = this.parseCsvLine(lines[i]);
+      const row: Record<string, string> = {};
+      headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+
+      const email = row['email']?.toLowerCase().trim();
+      if (!email) {
+        invalid.push({ row, reason: 'Missing email' });
+        continue;
+      }
+      if (!emailRegex.test(email)) {
+        invalid.push({ row, reason: 'Invalid email format' });
+        continue;
+      }
+
+      const socials: { label: string; value: string }[] = [];
+      for (const [key, val] of Object.entries(row)) {
+        if (!knownCols.has(key) && val) {
+          socials.push({ label: key, value: val });
+        }
+      }
+
+      valid.push({
+        email,
+        name: row['name'] || undefined,
+        bio: row['bio'] || undefined,
+        location: row['location'] || undefined,
+        socials,
+      });
+    }
+
+    return { valid, invalid };
+  }
+
+  private parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          current += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          result.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+    }
+    result.push(current);
+    return result;
+  }
+
+  /**
    * Update a network (title, prompt, permissions). Owner-only.
    */
   @Put('/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async update(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const body = await req.json().catch(() => ({})) as {
         title?: string;
         prompt?: string | null;
@@ -182,6 +417,14 @@ export class NetworkController {
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
       };
+
+      if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
+        return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const result = await networkService.updateNetwork(params.id, user.id, body);
       logger.verbose('Network updated', { networkId: params.id });
       return Response.json({ network: result });
@@ -193,6 +436,12 @@ export class NetworkController {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      if (msg.includes('Cannot modify join policy on experiment networks')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
       throw err;
     }
   }
@@ -201,10 +450,19 @@ export class NetworkController {
    * Update network permissions. Owner-only.
    */
   @Patch('/:id/permissions')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean };
+
+      if ('isExperiment' in body || 'experimentMasterKeyHash' in body) {
+        return new Response(JSON.stringify({ error: 'Cannot modify experiment settings after creation' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       const result = await networkService.updatePermissions(params.id, user.id, body);
       logger.verbose('Permissions updated for network', { networkId: params.id });
       return Response.json({ network: result });
@@ -213,6 +471,12 @@ export class NetworkController {
       if (msg.includes('Access denied')) {
         return new Response(JSON.stringify({ error: msg }), {
           status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (msg.includes('Cannot modify join policy on experiment networks')) {
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
       }
@@ -248,9 +512,10 @@ export class NetworkController {
    * Delete (soft-delete) a network. Owner-only.
    */
   @Delete('/:id')
-  @UseGuards(AuthGuard)
-  async delete(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async delete(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       await networkService.deleteNetwork(params.id, user.id);
       logger.verbose('Network deleted', { networkId: params.id, userId: user.id });
       return Response.json({ success: true });
@@ -271,9 +536,10 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/:id/join')
-  @UseGuards(AuthGuard)
-  async joinPublicNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async joinPublicNetwork(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const network = await networkService.joinPublicNetwork(params.id, user.id);
       logger.verbose('User joined public network', { networkId: params.id, userId: user.id });
       return Response.json({ network });
@@ -300,9 +566,10 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/member-settings')
-  @UseGuards(AuthGuard)
-  async getMemberSettings(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async getMemberSettings(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const settings = await networkService.getMemberSettings(params.id, user.id);
       logger.verbose('Member settings retrieved', { networkId: params.id, userId: user.id });
       return Response.json(settings);
@@ -323,9 +590,10 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/:id/my-intents')
-  @UseGuards(AuthGuard)
-  async getMyIntents(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async getMyIntents(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const intents = await networkService.getMyIntentsInNetwork(params.id, user.id);
       logger.verbose('My intents retrieved for network', { networkId: params.id, userId: user.id, count: intents.length });
       return Response.json({ intents });
@@ -346,9 +614,10 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Post('/:id/leave')
-  @UseGuards(AuthGuard)
-  async leaveNetwork(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async leaveNetwork(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       await networkService.leaveNetwork(params.id, user.id);
       logger.verbose('User left network', { networkId: params.id, userId: user.id });
       return Response.json({ success: true });
@@ -413,7 +682,8 @@ export class NetworkController {
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */
   @Get('/public/:id')
-  async getPublicIndex(_req: Request, _user: unknown, params: Record<string, string>) {
+  async getPublicIndex(req: Request, _user: unknown, params: Record<string, string>) {
+    await assertAgentNetworkScope(req, params.id);
     const network = await networkService.getPublicNetworkById(params.id);
     if (!network) {
       return new Response(JSON.stringify({ error: 'Network not found' }), {
@@ -432,7 +702,7 @@ export class NetworkController {
    * @returns Updated network or validation error
    */
   @Put('/:id/key')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async updateKey(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     let body: { key?: string };
     try {
@@ -451,6 +721,8 @@ export class NetworkController {
       return Response.json({ error: 'Network not found' }, { status: 404 });
     }
 
+    await assertAgentNetworkScope(req, resolvedId);
+
     const result = await networkService.updateKey(resolvedId, user.id, body.key);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
@@ -464,9 +736,10 @@ export class NetworkController {
    * IMPORTANT: This must come AFTER specific routes like /discovery/public and /:id/join.
    */
   @Get('/:id')
-  @UseGuards(AuthGuard)
-  async get(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+  @UseGuards(AuthOrApiKeyGuard)
+  async get(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
+      await assertAgentNetworkScope(req, params.id);
       const network = await networkService.getNetworkById(params.id, user.id);
       if (!network) {
         return new Response(JSON.stringify({ error: 'Network not found' }), {

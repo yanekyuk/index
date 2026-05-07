@@ -1,8 +1,10 @@
 import type { OpenClawPluginApi } from '../../lib/openclaw/plugin-api.js';
 import { dispatchToMainAgent } from '../../lib/delivery/main-agent.dispatcher.js';
 import { buildMainAgentPrompt } from '../../lib/delivery/main-agent.prompt.js';
-import { readMainAgentToolUse } from '../../lib/delivery/config.js';
+import { readMainAgentToolUse, readNodeBranding } from '../../lib/delivery/config.js';
 import { hashOpportunityBatch } from '../../lib/utils/hash.js';
+import { fetchConnectToken } from '../../lib/utils/connect-token.js';
+import { isOnboardingComplete } from '../onboarding/onboarding.status.js';
 
 export interface AmbientDiscoveryConfig {
   baseUrl: string;
@@ -95,6 +97,11 @@ export async function handle(
   api: OpenClawPluginApi,
   config: AmbientDiscoveryConfig,
 ): Promise<AmbientDiscoveryOutcome> {
+  if (!await isOnboardingComplete(api, config)) {
+    api.logger.debug('Ambient discovery: onboarding not complete, skipping.');
+    return 'empty';
+  }
+
   const pendingUrl = `${config.baseUrl}/api/agents/${config.agentId}/opportunities/pending?limit=${PENDING_LIMIT}`;
 
   let res: Response;
@@ -128,8 +135,10 @@ export async function handle(
     opportunities: Array<{
       opportunityId: string;
       counterpartUserId: string | null;
+      feedCategory?: 'connection' | 'connector-flow';
       rendered: { headline: string; personalizedSummary: string; suggestedAction: string; narratorRemark: string };
     }>;
+    totalPending?: number;
   };
 
   if (!body.opportunities.length) {
@@ -137,18 +146,32 @@ export async function handle(
     return 'empty';
   }
 
-  const candidates = body.opportunities
-    .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
-    .map((o) => ({
-      opportunityId: o.opportunityId,
-      counterpartUserId: o.counterpartUserId,
-      headline: o.rendered.headline,
-      personalizedSummary: o.rendered.personalizedSummary,
-      suggestedAction: o.rendered.suggestedAction,
-      narratorRemark: o.rendered.narratorRemark,
-      profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}`,
-      acceptUrl: `${config.frontendUrl}/opportunities/${o.opportunityId}/accept`,
-    }));
+  const totalPending = body.totalPending ?? body.opportunities.length;
+
+  const candidatesRaw = await Promise.all(
+    body.opportunities
+      .filter((o): o is typeof o & { counterpartUserId: string } => o.counterpartUserId !== null)
+      .map(async (o) => {
+        const token = await fetchConnectToken(api, config.baseUrl, config.apiKey, o.opportunityId);
+        if (!token) return null;
+
+        const feedCategory = o.feedCategory ?? 'connection';
+        const endpoint = feedCategory === 'connector-flow' ? 'approve-introduction' : 'connect';
+
+        return {
+          opportunityId: o.opportunityId,
+          counterpartUserId: o.counterpartUserId,
+          feedCategory,
+          headline: o.rendered.headline,
+          personalizedSummary: o.rendered.personalizedSummary,
+          suggestedAction: o.rendered.suggestedAction,
+          narratorRemark: o.rendered.narratorRemark,
+          profileUrl: `${config.frontendUrl}/u/${o.counterpartUserId}?link_preview=false`,
+          acceptUrl: `${config.baseUrl}/api/opportunities/${o.opportunityId}/${endpoint}?token=${token}&link_preview=false`,
+        };
+      }),
+  );
+  const candidates = candidatesRaw.filter((c): c is NonNullable<typeof c> => c !== null);
 
   if (!candidates.length) return 'empty';
 
@@ -162,11 +185,13 @@ export async function handle(
 
   const ambientDeliveredToday = await fetchAmbientDeliveredToday(api, config);
   const mainAgentToolUse = readMainAgentToolUse(api);
+  const branding = readNodeBranding(api);
 
   const prompt = buildMainAgentPrompt({
     contentType: 'ambient_discovery',
     mainAgentToolUse,
-    payload: { contentType: 'ambient_discovery', ambientDeliveredToday, candidates },
+    payload: { contentType: 'ambient_discovery', ambientDeliveredToday, totalPending, candidates },
+    branding,
   });
 
   const dispatch = await dispatchToMainAgent(api, {

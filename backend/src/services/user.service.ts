@@ -49,6 +49,15 @@ export class UserService {
         return this.db.update(userId, data);
     }
 
+    async getSocials(userId: string) {
+        return this.db.getSocials(userId);
+    }
+
+    async setSocials(userId: string, socials: { label: string; value: string }[]) {
+        logger.verbose('[UserService] Setting socials', { userId, count: socials.length });
+        return this.db.setSocials(userId, socials);
+    }
+
     async softDelete(userId: string) {
         logger.verbose('[UserService] Soft deleting user', { userId });
         await this.db.deleteUserSessions(userId);

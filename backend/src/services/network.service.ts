@@ -1,6 +1,10 @@
+import { eq } from 'drizzle-orm';
+
+import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { validateKey } from '../lib/keys';
+import * as schema from '../schemas/database.schema';
 
 const logger = log.service.from("NetworkService");
 
@@ -43,6 +47,57 @@ export class NetworkService {
   }
 
   /**
+   * Create a new experiment network with a provisioned master key.
+   * Returns the network and the raw master key (shown once; only the hash is stored).
+   * @param userId - The creating user (becomes owner)
+   * @param data - Title, prompt, and imageUrl for the network
+   * @returns The created network detail and the plaintext master key
+   */
+  async createExperimentNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null }): Promise<{ network: unknown; masterKey: string }> {
+    logger.verbose('[NetworkService] Creating experiment network', { userId, title: data.title });
+
+    // Generate master key
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const bytes = crypto.getRandomValues(new Uint8Array(64));
+    let masterKey = '';
+    for (let i = 0; i < 64; i++) {
+      masterKey += chars[bytes[i] % chars.length];
+    }
+
+    // Hash the key
+    const encoded = new TextEncoder().encode(masterKey);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    const masterKeyHash = Buffer.from(hashBuffer).toString('base64url');
+
+    // Create network with experiment flags
+    const network = await this.adapter.createNetwork({
+      title: data.title,
+      prompt: data.prompt,
+      imageUrl: data.imageUrl,
+      joinPolicy: 'invite_only',
+    });
+
+    // Set experiment columns and remove invitation link (experiment networks
+    // use master-key signup, not invitation codes)
+    await db
+      .update(schema.networks)
+      .set({
+        isExperiment: true,
+        experimentMasterKeyHash: masterKeyHash,
+        permissions: { joinPolicy: 'invite_only', invitationLink: null, allowGuestVibeCheck: false },
+      })
+      .where(eq(schema.networks.id, network.id));
+
+    // Add creator as owner
+    await this.adapter.addMemberToNetwork(network.id, userId, 'owner');
+
+    const fullNetwork = await this.adapter.getNetworkDetail(network.id, userId);
+    if (!fullNetwork) throw new Error('Failed to create experiment network');
+
+    return { network: fullNetwork, masterKey };
+  }
+
+  /**
    * Get a public index by ID (no auth required). Returns null if not public.
    */
   async getPublicNetworkById(networkId: string) {
@@ -62,18 +117,26 @@ export class NetworkService {
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal index.
+   * @throws Error if attempting to change join policy on an experiment network.
    */
   async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
     await this.assertNotPersonal(networkId);
+    if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
+      await this.assertJoinPolicyNotLockedByExperiment(networkId);
+    }
     return this.adapter.updateIndexSettings(networkId, userId, data);
   }
 
   /**
    * Update index permissions. Owner-only.
+   * @throws Error if attempting to change join policy on an experiment network.
    */
   async updatePermissions(networkId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     await this.assertNotPersonal(networkId);
+    if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
+      await this.assertJoinPolicyNotLockedByExperiment(networkId);
+    }
     logger.verbose('[NetworkService] Updating permissions', { networkId, userId });
     return this.adapter.updateIndexSettings(networkId, userId, data);
   }
@@ -113,7 +176,22 @@ export class NetworkService {
   async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Deleting index', { networkId, userId });
     await this.assertNotPersonal(networkId);
-    return this.adapter.deleteIndexForOwner(networkId, userId);
+
+    // Check if this is an experiment network
+    const [network] = await db
+      .select({ isExperiment: schema.networks.isExperiment })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+
+    if (network?.isExperiment) {
+      // Verify ownership first
+      const isOwner = await this.adapter.isIndexOwner(networkId, userId);
+      if (!isOwner) throw new Error('Access denied: Not an owner of this index');
+      await this.adapter.softDeleteExperimentNetwork(networkId);
+    } else {
+      await this.adapter.deleteIndexForOwner(networkId, userId);
+    }
   }
 
   /**
@@ -287,6 +365,22 @@ export class NetworkService {
     const isPersonal = await this.adapter.isPersonalNetwork(networkId);
     if (isPersonal) {
       throw new Error('Access denied: personal indexes cannot be modified directly.');
+    }
+  }
+
+  /**
+   * Assert that join policy fields cannot be changed on experiment networks.
+   * Experiment networks enforce `joinPolicy: 'invite_only'` and `allowGuestVibeCheck: false` permanently.
+   * @throws Error if the network is an experiment network.
+   */
+  private async assertJoinPolicyNotLockedByExperiment(networkId: string): Promise<void> {
+    const [network] = await db
+      .select({ isExperiment: schema.networks.isExperiment })
+      .from(schema.networks)
+      .where(eq(schema.networks.id, networkId))
+      .limit(1);
+    if (network?.isExperiment) {
+      throw new Error('Cannot modify join policy on experiment networks');
     }
   }
 }

@@ -1,17 +1,18 @@
 /**
  * Index Network — OpenClaw plugin entry point.
  *
- * Registers three HTTP routes across four polling domains and starts their
+ * Registers four HTTP routes across five polling domains and starts their
  * respective schedulers:
  *
- *   POST /index/poll/negotiator         — negotiation turn pickup
- *   POST /index/poll/ambient-discovery  — opportunity batch evaluation
- *   POST /index/poll/test-message       — test message pickup
+ *   POST /index/poll/negotiator              — negotiation turn pickup
+ *   POST /index/poll/ambient-discovery       — opportunity batch evaluation
+ *   POST /index/poll/test-message            — test message pickup
+ *   POST /index/poll/accepted-opportunity    — accepted opportunity notification
  *
  * Daily digest is scheduled directly (no HTTP route needed).
  *
  * Uses `definePluginEntry` from the OpenClaw plugin SDK so that CLI commands
- * (e.g. `openclaw index setup`) are properly registered.
+ * (e.g. `openclaw index connect`) are properly registered.
  */
 
 import type { OpenClawPluginApi } from './lib/openclaw/plugin-api.js';
@@ -23,16 +24,22 @@ import * as ambientDiscoveryPoller from './polling/ambient-discovery/ambient-dis
 import * as ambientDiscoveryScheduler from './polling/ambient-discovery/ambient-discovery.scheduler.js';
 import * as testMessagePoller from './polling/test-message/test-message.poller.js';
 import * as testMessageScheduler from './polling/test-message/test-message.scheduler.js';
-import { registerSetupCli } from './setup/setup.cli.js';
+import * as acceptedOpportunityPoller from './polling/accepted-opportunity/accepted-opportunity.poller.js';
+import * as acceptedOpportunityScheduler from './polling/accepted-opportunity/accepted-opportunity.scheduler.js';
+import * as welcomeWatcher from './polling/welcome/welcome.watcher.js';
+import { registerSetupCli, registerConnectCli } from './setup/setup.cli.js';
 import { deriveUrls } from './lib/utils/url.js';
+import { isOnboardingComplete, _resetForTesting as _resetOnboardingStatus } from './polling/onboarding/onboarding.status.js';
+import { buildOnboardingPrompt } from './polling/onboarding/onboarding.prompt.js';
+import { dispatchToMainAgent } from './lib/delivery/main-agent.dispatcher.js';
 
 /** Prevents double-registration when OpenClaw calls register() more than once. */
 let registered = false;
 
 /**
- * Registers the `openclaw index setup` CLI command if the host supports
+ * Registers the `openclaw index connect` CLI command if the host supports
  * `registerCli`. Also registers `openclaw index-network setup` as a deprecated
- * alias for one minor version (drop in 0.23.0).
+ * alias (to be dropped in a future release).
  *
  * Safe to call even when the plugin is unconfigured.
  */
@@ -47,14 +54,15 @@ function registerSetupCommand(api: OpenClawPluginApi): void {
       const cmd = (program as { command(n: string): { description(d: string): unknown } })
         .command('index')
         .description('Manage Index Network plugin configuration');
+      registerConnectCli(cmd as Parameters<typeof registerSetupCli>[0]);
       registerSetupCli(cmd as Parameters<typeof registerSetupCli>[0]);
 
-      // Deprecated alias — same handler, prints a warning. Remove in 0.23.0.
+      // Deprecated alias — same handler, prints a warning.
       const aliasCmd = (program as { command(n: string): { description(d: string): unknown } })
         .command('index-network')
         .description('[Deprecated — use `openclaw index`] Manage Index Network plugin configuration');
       registerSetupCli(aliasCmd as Parameters<typeof registerSetupCli>[0], {
-        deprecationWarning: 'Note: `openclaw index-network setup` is deprecated. Use `openclaw index setup` instead. The alias will be removed in 0.23.0.',
+        deprecationWarning: 'Note: `openclaw index-network setup` is deprecated. Use `openclaw index connect` instead.',
       });
     },
     {
@@ -78,7 +86,7 @@ function ensureMcpServer(api: OpenClawPluginApi, baseUrl: string, apiKey: string
     return;
   }
   if (!apiKey) {
-    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index setup`.');
+    api.logger.warn('API key not configured — skipping MCP auto-registration. Run `openclaw index connect`.');
     return;
   }
 
@@ -131,16 +139,20 @@ export function register(api: OpenClawPluginApi): void {
   }
   registered = true;
 
-  // Register `openclaw index setup` CLI command unconditionally
+  // Register `openclaw index connect` CLI command unconditionally
   registerSetupCommand(api);
 
   const agentId = readConfig(api, 'agentId');
   const apiKey = readConfig(api, 'apiKey');
 
   if (!agentId || !apiKey) {
-    api.logger.warn(
-      'Index Network plugin not configured. Run `openclaw index setup` to complete setup.',
-    );
+    // Only warn in gateway context — suppress during CLI invocations (e.g. `openclaw index connect`)
+    // where register() is called before the config is written.
+    if (process.argv.some((a) => a === 'gateway')) {
+      api.logger.warn(
+        'Index Network plugin not configured. Run `openclaw index connect` to complete setup.',
+      );
+    }
     return;
   }
 
@@ -148,7 +160,7 @@ export function register(api: OpenClawPluginApi): void {
   const legacyProtocolUrl = readConfig(api, 'protocolUrl');
   if (!urlFromConfig && legacyProtocolUrl) {
     api.logger.warn(
-      'Plugin config uses deprecated "protocolUrl". Run `openclaw index setup` to migrate to the new "url" field.',
+      'Plugin config uses deprecated "protocolUrl". Run `openclaw index connect` to migrate to the new "url" field.',
     );
   }
   const configUrl = urlFromConfig || legacyProtocolUrl || 'https://index.network';
@@ -242,6 +254,34 @@ export function register(api: OpenClawPluginApi): void {
 
   ambientDiscoveryScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
 
+  // Accepted opportunity notifications
+  api.registerHttpRoute({
+    path: '/index/poll/accepted-opportunity',
+    auth: 'gateway',
+    match: 'exact',
+    handler: async (_req, res) => {
+      try {
+        const outcome = await acceptedOpportunityPoller.handle(api, { baseUrl, agentId, apiKey });
+        if (outcome === 'error') {
+          acceptedOpportunityScheduler.increaseBackoff(api.logger);
+        } else {
+          acceptedOpportunityScheduler.resetBackoff();
+        }
+        res.statusCode = 200;
+        res.end('ok');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        api.logger.error(`Accepted opportunity poll handler error: ${msg}`);
+        acceptedOpportunityScheduler.increaseBackoff(api.logger);
+        res.statusCode = 500;
+        res.end(msg);
+      }
+      return true;
+    },
+  });
+
+  acceptedOpportunityScheduler.start({ gatewayPort, gatewayToken, logger: api.logger });
+
   api.logger.info('Index Network polling started', {
     plugin: api.id,
     agentId,
@@ -262,6 +302,12 @@ export function register(api: OpenClawPluginApi): void {
   // Reachability check after a short delay to let the gateway fully start.
   setTimeout(() => {
     checkBackendReachability(api, baseUrl);
+  }, 5_000).unref();
+
+  // Onboarding prompt dispatch — fires once per day while onboarding is pending.
+  setTimeout(() => {
+    dispatchOnboardingIfNeeded(api, { baseUrl, agentId, apiKey });
+    welcomeWatcher.start(api, { baseUrl, agentId, apiKey, frontendUrl });
   }, 5_000).unref();
 }
 
@@ -291,6 +337,29 @@ function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void
   });
 }
 
+async function dispatchOnboardingIfNeeded(
+  api: OpenClawPluginApi,
+  config: { baseUrl: string; agentId: string; apiKey: string },
+): Promise<void> {
+  const complete = await isOnboardingComplete(api, config);
+  if (complete) return;
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const result = await dispatchToMainAgent(api, {
+    prompt: buildOnboardingPrompt(),
+    idempotencyKey: `index:onboarding:dispatch:${config.agentId}:${dateStr}`,
+  });
+
+  if (result.delivered) {
+    api.logger.info('Onboarding prompt dispatched to main agent.', { agentId: config.agentId });
+  } else {
+    api.logger.warn('Onboarding prompt dispatch failed — will retry on next gateway restart.', {
+      agentId: config.agentId,
+      error: result.error,
+    });
+  }
+}
+
 function readConfig(api: OpenClawPluginApi, key: string): string {
   const val = api.pluginConfig[key];
   return typeof val === 'string' ? val : '';
@@ -302,10 +371,14 @@ function readConfig(api: OpenClawPluginApi, key: string): string {
  */
 export function _resetForTesting(): void {
   registered = false;
+  _resetOnboardingStatus();
   negotiatorPoller._resetForTesting();
   negotiatorScheduler._resetForTesting();
   dailyDigestScheduler._resetForTesting();
   ambientDiscoveryPoller._resetForTesting();
   ambientDiscoveryScheduler._resetForTesting();
   testMessageScheduler._resetForTesting();
+  acceptedOpportunityPoller._resetForTesting();
+  acceptedOpportunityScheduler._resetForTesting();
+  welcomeWatcher._resetForTesting();
 }

@@ -3,10 +3,15 @@ import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
 import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, stripUuids, stripIntroducerMentions } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
+import { and, eq } from 'drizzle-orm';
+
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { opportunityQueue } from '../queues/opportunity.queue';
+import db from '../lib/drizzle/drizzle';
+import { userSocials } from '../schemas/database.schema';
+import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
 
 const logger = log.service.from("OpportunityService");
 
@@ -347,7 +352,11 @@ export class OpportunityService {
       }
     }
 
-    const updated = await this.db.updateOpportunityStatus(opportunityId, status);
+    const updated = await this.db.updateOpportunityStatus(
+      opportunityId,
+      status,
+      status === 'accepted' ? userId : undefined,
+    );
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
     }
@@ -390,6 +399,59 @@ export class OpportunityService {
       opportunity: updated,
       counterpartUserId,
     };
+  }
+
+  /**
+   * Approve an introduction: validate the user is an introducer with
+   * `approved: false`, flip the approved flag, and transition the
+   * opportunity to `pending` (which triggers negotiation).
+   *
+   * @param opportunityId - The opportunity ID
+   * @param userId - The user approving (must be an introducer)
+   * @returns Success object or error with status
+   */
+  async approveIntroduction(
+    opportunityId: string,
+    userId: string,
+  ): Promise<{ success: true } | { error: string; status: number }> {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+
+    const actor = opp.actors.find((a) => a.userId === userId);
+    if (!actor || actor.role !== 'introducer') {
+      return { error: 'Not authorized — user is not an introducer on this opportunity', status: 403 };
+    }
+
+    const TERMINAL_STATUSES = new Set(['pending', 'negotiating', 'accepted', 'rejected', 'expired']);
+
+    if (actor.approved === true) {
+      // Approval already flipped — only retry the status transition if it hasn't landed yet.
+      // This handles the case where a prior call flipped approved but failed to transition status.
+      if (TERMINAL_STATUSES.has(opp.status)) {
+        return { success: true };
+      }
+    } else {
+      // Flip approved flag
+      const updated = await this.db.updateOpportunityActorApproval(opportunityId, userId, true);
+      if (!updated) {
+        return { error: 'Failed to update approval', status: 500 };
+      }
+    }
+
+    // Transition to pending (triggers negotiation)
+    const statusResult = await this.updateOpportunityStatus(opportunityId, 'pending', userId);
+    if (statusResult && 'error' in statusResult) {
+      logger.error('[OpportunityService.approveIntroduction] status transition failed', {
+        opportunityId,
+        userId,
+        error: statusResult.error,
+      });
+      return { error: 'Failed to trigger negotiation after approval', status: 500 };
+    }
+
+    return { success: true };
   }
 
   /**
@@ -508,7 +570,7 @@ export class OpportunityService {
     });
 
     // Only flip status once we know the chat destination exists.
-    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted');
+    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted', userId);
     if (!updated) {
       return { error: 'Failed to accept opportunity', status: 500 };
     }
@@ -905,6 +967,20 @@ export class OpportunityService {
     if (isSelfIncluded) return { allowed: true };
     
     return { allowed: true };
+  }
+
+  /**
+   * Look up a user's Telegram handle from user_socials.
+   * Returns the normalized handle (no @ prefix, no URL) or null.
+   */
+  async getCounterpartTelegramHandle(userId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ value: userSocials.value })
+      .from(userSocials)
+      .where(and(eq(userSocials.userId, userId), eq(userSocials.label, 'telegram')))
+      .limit(1);
+
+    return normalizeTelegramHandle(row?.value);
   }
 }
 

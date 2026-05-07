@@ -34,7 +34,15 @@ Bun.serve({
   port,
   hostname: "0.0.0.0",
   fetch(req) {
-    const pathname = new URL(req.url).pathname;
+    const reqUrl = new URL(req.url);
+    const pathname = reqUrl.pathname;
+
+    if (
+      reqUrl.searchParams.get("link_preview") === "false" &&
+      (req.headers.get("user-agent") ?? "").includes("TelegramBot")
+    ) {
+      return new Response("", { status: 403 });
+    }
 
     const filePath = join(DIST, pathname);
     if (pathname !== "/" && existsSync(filePath) && statSync(filePath).isFile()) {

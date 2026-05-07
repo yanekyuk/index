@@ -18,8 +18,16 @@ import type {
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { NetworkMembershipEvents } from '../events/network_membership.event';
-
 const logger = log.lib.from('database.adapter');
+
+function detectSocialLabel(value: string): string {
+  const lower = value.toLowerCase();
+  if (lower.includes('linkedin.com')) return 'linkedin';
+  if (lower.includes('x.com') || lower.includes('twitter.com')) return 'twitter';
+  if (lower.includes('github.com')) return 'github';
+  if (lower.includes('t.me') || lower.includes('telegram.me')) return 'telegram';
+  return 'custom';
+}
 
 /** Sentinel participant ID for the built-in chat agent. */
 export const SYSTEM_AGENT_ID = 'system-agent';
@@ -108,6 +116,7 @@ interface CreateIntentInput {
   referentialAnchor?: string | null;
   felicityAuthority?: number | null;
   felicitySincerity?: number | null;
+  felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
@@ -120,6 +129,7 @@ interface UpdateIntentInput {
   referentialAnchor?: string | null;
   felicityAuthority?: number | null;
   felicitySincerity?: number | null;
+  felicityClarity?: number | null;
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
@@ -180,7 +190,7 @@ interface NetworkMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions } = schema;
+const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions, userSocials } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -261,6 +271,7 @@ export class IntentDatabaseAdapter {
           referentialAnchor: data.referentialAnchor ?? undefined,
           felicityAuthority: data.felicityAuthority ?? undefined,
           felicitySincerity: data.felicitySincerity ?? undefined,
+          felicityClarity: data.felicityClarity ?? undefined,
           intentMode: data.intentMode ?? undefined,
           speechActType: data.speechActType ?? undefined,
         })
@@ -292,6 +303,7 @@ export class IntentDatabaseAdapter {
       if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
       if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
       if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.felicityClarity !== undefined) updateData.felicityClarity = data.felicityClarity;
       if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
       if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
@@ -610,6 +622,9 @@ export class IntentDatabaseAdapter {
       .limit(1);
     const user = result[0];
     if (!user) return null;
+    const socialRows = await db.select()
+      .from(schema.userSocials)
+      .where(eq(schema.userSocials.userId, userId));
     return {
       id: user.id,
       name: user.name ?? '',
@@ -617,7 +632,7 @@ export class IntentDatabaseAdapter {
       intro: user.intro ?? null,
       avatar: user.avatar ?? null,
       location: user.location ?? null,
-      socials: user.socials ?? null,
+      socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       onboarding: user.onboarding ?? null,
       isGhost: user.isGhost ?? false,
       deletedAt: user.deletedAt ?? null,
@@ -956,21 +971,27 @@ export class ChatDatabaseAdapter {
     }
   }
 
-  async getUser(userId: string): Promise<User | null> {
-    const result = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-    return result[0] ?? null;
+  async getUser(userId: string) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.getUser(userId);
   }
 
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
+    data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }
   ) {
-    // Delegate to ProfileDatabaseAdapter which has the merge logic
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.updateUser(userId, data);
+  }
+
+  async getUserSocials(userId: string) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.getUserSocials(userId);
+  }
+
+  async setUserSocials(userId: string, socials: { label: string; value: string }[]) {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.setUserSocials(userId, socials);
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
@@ -1014,7 +1035,7 @@ export class ChatDatabaseAdapter {
    */
   async findDuplicateUser(
     userId: string,
-    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+    socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
     const profileAdapter = new ProfileDatabaseAdapter();
     return profileAdapter.findDuplicateUser(userId, socials);
@@ -1047,6 +1068,7 @@ export class ChatDatabaseAdapter {
           referentialAnchor: data.referentialAnchor ?? undefined,
           felicityAuthority: data.felicityAuthority ?? undefined,
           felicitySincerity: data.felicitySincerity ?? undefined,
+          felicityClarity: data.felicityClarity ?? undefined,
           intentMode: data.intentMode ?? undefined,
           speechActType: data.speechActType ?? undefined,
         })
@@ -1078,6 +1100,7 @@ export class ChatDatabaseAdapter {
       if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
       if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
       if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.felicityClarity !== undefined) updateData.felicityClarity = data.felicityClarity;
       if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
       if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
@@ -1250,6 +1273,12 @@ export class ChatDatabaseAdapter {
       .where(sql`'owner' = ANY(${schema.networkMembers.permissions})`)
       .as('owner_members');
 
+    // Experiment networks remain hidden from public-discovery lists.
+    const experimentFilter = or(
+      eq(schema.networks.isExperiment, false),
+      isNull(schema.networks.isExperiment),
+    );
+
     const rows = await db
       .select({
         id: schema.networks.id,
@@ -1259,6 +1288,7 @@ export class ChatDatabaseAdapter {
         imageUrl: schema.networks.imageUrl,
         permissions: schema.networks.permissions,
         isPersonal: schema.networks.isPersonal,
+        isExperiment: schema.networks.isExperiment,
         ownerId: ownerMembers.userId,
         createdAt: schema.networks.createdAt,
         updatedAt: schema.networks.updatedAt,
@@ -1277,7 +1307,8 @@ export class ChatDatabaseAdapter {
           or(
             eq(schema.networks.isPersonal, false),
             eq(ownerMembers.userId, userId)
-          )
+          ),
+          experimentFilter
         )
       )
       .orderBy(desc(schema.networks.isPersonal), desc(schema.networks.createdAt));
@@ -1296,6 +1327,7 @@ export class ChatDatabaseAdapter {
           imageUrl: row.imageUrl,
           permissions: row.permissions,
           isPersonal: row.isPersonal,
+          isExperiment: row.isExperiment,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
@@ -1349,6 +1381,7 @@ export class ChatDatabaseAdapter {
         and(
           isNull(schema.networks.deletedAt),
           eq(schema.networks.isPersonal, false),
+          or(eq(schema.networks.isExperiment, false), isNull(schema.networks.isExperiment)),
           inArray(schema.networks.id, currentUserIndexIds),
           inArray(schema.networks.id, targetUserIndexIds),
         )
@@ -2059,6 +2092,106 @@ export class ChatDatabaseAdapter {
     await db.update(networks).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(networks.id, networkId));
   }
 
+  /**
+   * Cascading soft delete for an experiment network.
+   *
+   * Soft-deletes users who were *invited into* this experiment (i.e. have a
+   * network-scoped personal agent permissioned on this network) along with
+   * their data (intents, agents, API keys, personal networks, network
+   * memberships). Organic users who happen to be members but were not
+   * provisioned through the invitation flow are NOT cascaded — they keep their
+   * accounts.
+   *
+   * @param networkId - The experiment network to delete
+   */
+  async softDeleteExperimentNetwork(networkId: string): Promise<void> {
+    const now = new Date();
+
+    // Identify experimentally-onboarded users: those who own at least one
+    // agent with a network-scoped permission on this network. These are the
+    // users provisioned by networkInvitationService.invite() (headless/CSV).
+    const experimentUsers = await db
+      .selectDistinct({ id: schema.users.id })
+      .from(schema.users)
+      .innerJoin(schema.agents, eq(schema.agents.ownerId, schema.users.id))
+      .innerJoin(
+        schema.agentPermissions,
+        eq(schema.agentPermissions.agentId, schema.agents.id),
+      )
+      .where(and(
+        eq(schema.agentPermissions.scope, 'network'),
+        eq(schema.agentPermissions.scopeId, networkId),
+        isNull(schema.users.deletedAt),
+        isNull(schema.agents.deletedAt),
+      ));
+
+    const userIds = experimentUsers.map(u => u.id);
+
+    if (userIds.length > 0) {
+      // Soft-delete users
+      await db
+        .update(schema.users)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(schema.users.id, userIds));
+
+      // Archive their intents (intents use archivedAt, not deletedAt)
+      await db
+        .update(schema.intents)
+        .set({ archivedAt: now, updatedAt: now })
+        .where(inArray(schema.intents.userId, userIds));
+
+      // Delete their intent_networks (hard delete, same as existing softDeleteNetwork)
+      await db
+        .delete(schema.intentNetworks)
+        .where(inArray(schema.intentNetworks.intentId,
+          db.select({ id: schema.intents.id }).from(schema.intents).where(inArray(schema.intents.userId, userIds))
+        ));
+
+      // Soft-delete their network memberships
+      await db
+        .update(schema.networkMembers)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(schema.networkMembers.userId, userIds));
+
+      // Soft-delete their personal networks
+      const personalNetworkIds = await db
+        .select({ networkId: schema.personalNetworks.networkId })
+        .from(schema.personalNetworks)
+        .where(inArray(schema.personalNetworks.userId, userIds));
+
+      if (personalNetworkIds.length > 0) {
+        await db
+          .update(schema.networks)
+          .set({ deletedAt: now, updatedAt: now })
+          .where(inArray(schema.networks.id, personalNetworkIds.map(p => p.networkId)));
+      }
+
+      // Soft-delete their agents
+      await db
+        .update(schema.agents)
+        .set({ deletedAt: now, updatedAt: now })
+        .where(inArray(schema.agents.ownerId, userIds));
+
+      // Disable their API keys
+      await db
+        .update(schema.apikeys)
+        .set({ enabled: false, updatedAt: now })
+        .where(inArray(schema.apikeys.userId, userIds));
+    }
+
+    // Delete experiment network memberships (hard delete, same pattern as existing)
+    await db.delete(schema.networkMembers).where(eq(schema.networkMembers.networkId, networkId));
+
+    // Delete intent_networks for the experiment network
+    await db.delete(schema.intentNetworks).where(eq(schema.intentNetworks.networkId, networkId));
+
+    // Soft-delete the experiment network itself
+    await db
+      .update(schema.networks)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(eq(schema.networks.id, networkId));
+  }
+
   async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
     const result = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).limit(1);
     const profile = result[0];
@@ -2418,6 +2551,8 @@ export class ChatDatabaseAdapter {
         prompt: networks.prompt,
         imageUrl: networks.imageUrl,
         permissions: networks.permissions,
+        isPersonal: networks.isPersonal,
+        isExperiment: networks.isExperiment,
         createdAt: networks.createdAt,
         updatedAt: networks.updatedAt,
         ownerId: networkMembers.userId,
@@ -2453,6 +2588,8 @@ export class ChatDatabaseAdapter {
       prompt: row.prompt,
       imageUrl: row.imageUrl,
       permissions: row.permissions,
+      isPersonal: row.isPersonal,
+      isExperiment: row.isExperiment,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
@@ -2652,9 +2789,10 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
-    return this.opportunityAdapter.updateOpportunityStatus(id, status);
+    return this.opportunityAdapter.updateOpportunityStatus(id, status, acceptedBy);
   }
   async updateOpportunityActorApproval(
     id: string,
@@ -2738,7 +2876,7 @@ export class ChatDatabaseAdapter {
         isGhost: true,
       })
       .onConflictDoUpdate({
-        target: schema.users.email,
+        target: [schema.users.email],
         set: {
           name: sql`EXCLUDED."name"`,
           updatedAt: sql`now()`,
@@ -3417,24 +3555,24 @@ export class ProfileDatabaseAdapter {
       });
   }
 
-  async getUser(userId: string): Promise<User | null> {
+  async getUser(userId: string) {
     const result = await db.select()
       .from(schema.users)
       .where(eq(schema.users.id, userId))
       .limit(1);
-    return result[0] ?? null;
+    const user = result[0];
+    if (!user) return null;
+    const socials = await this.getUserSocials(userId);
+    return { ...user, socials };
   }
 
   /**
-   * Update user account fields (name, intro, location, socials).
-   * Merges socials with existing values so callers can set individual social
-   * fields (e.g. only linkedin) without overwriting the rest.
+   * Update user account fields (name, intro, location).
    */
   async updateUser(
     userId: string,
-    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] }; onboarding?: OnboardingState }
-  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
-    // Load current user to merge socials
+    data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }
+  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; onboarding?: OnboardingState | null } | null> {
     const current = await this.getUser(userId);
     if (!current) return null;
 
@@ -3443,19 +3581,6 @@ export class ProfileDatabaseAdapter {
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.intro !== undefined) updateFields.intro = data.intro;
     if (data.location !== undefined) updateFields.location = data.location;
-    if (data.onboarding !== undefined) updateFields.onboarding = data.onboarding;
-
-    if (data.socials) {
-      // Merge with existing socials instead of overwriting
-      const existingSocials = current.socials ?? {};
-      const merged = { ...existingSocials };
-      if (data.socials.x !== undefined) merged.x = data.socials.x;
-      if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
-      if (data.socials.github !== undefined) merged.github = data.socials.github;
-      if (data.socials.telegram !== undefined) merged.telegram = data.socials.telegram;
-      if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
-      updateFields.socials = merged;
-    }
 
     if (data.onboarding !== undefined) {
       const existingOnboarding = current.onboarding ?? {};
@@ -3469,6 +3594,7 @@ export class ProfileDatabaseAdapter {
 
     const updated = result[0];
     if (!updated) return null;
+    const socials = await this.getUserSocials(userId);
     return {
       id: updated.id,
       name: updated.name,
@@ -3476,9 +3602,35 @@ export class ProfileDatabaseAdapter {
       intro: updated.intro,
       avatar: updated.avatar,
       location: updated.location,
-      socials: updated.socials as { x?: string; linkedin?: string; github?: string; telegram?: string; websites?: string[] } | null,
+      socials,
       onboarding: (updated as { onboarding?: unknown }).onboarding as OnboardingState | null,
     };
+  }
+
+  async getUserSocials(userId: string): Promise<Array<{ id: string; userId: string; label: string; value: string }>> {
+    const rows = await db.select()
+      .from(schema.userSocials)
+      .where(eq(schema.userSocials.userId, userId))
+      .orderBy(asc(schema.userSocials.createdAt), asc(schema.userSocials.id));
+    return rows.map(r => ({ id: r.id, userId: r.userId, label: r.label, value: r.value }));
+  }
+
+  async setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.userSocials).where(eq(schema.userSocials.userId, userId));
+      if (socials.length > 0) {
+        const filtered = socials.filter(s => s.value.trim() !== '');
+        if (filtered.length > 0) {
+          await tx.insert(schema.userSocials).values(
+            filtered.map(s => ({
+              userId,
+              label: detectSocialLabel(s.value) === 'custom' ? s.label : detectSocialLabel(s.value),
+              value: s.value.trim(),
+            })),
+          );
+        }
+      }
+    });
   }
 
   /**
@@ -3603,26 +3755,26 @@ export class ProfileDatabaseAdapter {
    */
   async findDuplicateUser(
     userId: string,
-    socials: { x?: string; linkedin?: string; github?: string; websites?: string[] },
+    socials: Array<{ id: string; userId: string; label: string; value: string }>,
   ): Promise<{ id: string } | null> {
-    const handles: { field: string; value: string }[] = [];
-    if (socials.linkedin) handles.push({ field: 'linkedin', value: socials.linkedin.toLowerCase() });
-    if (socials.github) handles.push({ field: 'github', value: socials.github.toLowerCase() });
-    if (socials.x) handles.push({ field: 'x', value: socials.x.toLowerCase() });
+    const handles = socials
+      .filter(s => ['linkedin', 'github', 'twitter', 'telegram'].includes(s.label))
+      .map(s => ({ label: s.label, value: s.value.toLowerCase() }));
 
     if (handles.length === 0) return null;
 
     const conditions = handles.map(
-      (h) => sql`LOWER(${schema.users.socials}->>'${sql.raw(h.field)}') = ${h.value}`,
+      (h) => sql`(LOWER(${schema.userSocials.value}) = ${h.value} AND ${schema.userSocials.label} = ${h.label})`,
     );
 
     const results = await db
-      .select({ id: schema.users.id, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
-      .from(schema.users)
+      .selectDistinct({ id: schema.userSocials.userId, isGhost: schema.users.isGhost, createdAt: schema.users.createdAt })
+      .from(schema.userSocials)
+      .innerJoin(schema.users, eq(schema.userSocials.userId, schema.users.id))
       .where(
         and(
           sql`(${sql.join(conditions, sql` OR `)})`,
-          not(eq(schema.users.id, userId)),
+          not(eq(schema.userSocials.userId, userId)),
           isNull(schema.users.deletedAt),
         ),
       )
@@ -4005,11 +4157,21 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
   ): Promise<OpportunityRow | null> {
+    if (status === 'accepted' && !acceptedBy) {
+      throw new Error('acceptedBy is required when status is accepted');
+    }
+    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (status === 'accepted') {
+      updates.acceptedBy = acceptedBy;
+    } else {
+      updates.acceptedBy = null;
+    }
     const [row] = await db
       .update(opportunities)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(opportunities.id, id))
       .returning();
     return row ? toOpportunityRow(row) : null;
@@ -4496,7 +4658,7 @@ interface UserWithGraph {
   name: string | null;
   intro: string | null;
   location: string | null;
-  socials: unknown;
+  socials: Array<{ id: string; userId: string; label: string; value: string }>;
   onboarding: unknown;
   avatar: string | null;
   timezone: string | null;
@@ -4557,22 +4719,36 @@ export class UserDatabaseAdapter {
   /**
    * Find multiple users by IDs. Returns public profile fields only (same shape as single-user API).
    */
-  async findByIds(userIds: string[]): Promise<Array<Pick<typeof users.$inferSelect, 'id' | 'name' | 'intro' | 'avatar' | 'location' | 'socials' | 'isGhost' | 'createdAt' | 'updatedAt'>>> {
+  async findByIds(userIds: string[]): Promise<Array<{ id: string; name: string; intro: string | null; avatar: string | null; location: string | null; socials: Array<{ id: string; userId: string; label: string; value: string }>; isGhost: boolean; createdAt: Date; updatedAt: Date }>> {
     if (userIds.length === 0) return [];
-    const result = await db.select({
+    const userRows = await db.select({
       id: users.id,
       name: users.name,
       intro: users.intro,
       avatar: users.avatar,
       location: users.location,
-      socials: users.socials,
       isGhost: users.isGhost,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt,
     })
       .from(users)
       .where(inArray(users.id, userIds));
-    return result;
+
+    const socialRows = await db.select()
+      .from(userSocials)
+      .where(inArray(userSocials.userId, userIds));
+
+    const socialsByUser = new Map<string, Array<{ id: string; userId: string; label: string; value: string }>>();
+    for (const s of socialRows) {
+      const arr = socialsByUser.get(s.userId) ?? [];
+      arr.push({ id: s.id, userId: s.userId, label: s.label, value: s.value });
+      socialsByUser.set(s.userId, arr);
+    }
+
+    return userRows.map(u => ({
+      ...u,
+      socials: socialsByUser.get(u.id) ?? [],
+    }));
   }
 
   /**
@@ -4594,7 +4770,6 @@ export class UserDatabaseAdapter {
     name?: string;
     intro?: string;
     location?: string;
-    socials?: Record<string, string>;
   }): Promise<typeof users.$inferSelect> {
     const [row] = await db.insert(users)
       .values({
@@ -4602,7 +4777,6 @@ export class UserDatabaseAdapter {
         name: data.name ?? data.email.split('@')[0],
         intro: data.intro ?? null,
         location: data.location ?? null,
-        socials: data.socials ?? null,
       })
       .returning();
     if (!row) throw new Error('User insert did not return a row');
@@ -4698,8 +4872,13 @@ export class UserDatabaseAdapter {
 
     const { user, settings, profile } = userResult[0];
 
+    const socialRows = await db.select()
+      .from(userSocials)
+      .where(eq(userSocials.userId, userId));
+
     return {
       ...user,
+      socials: socialRows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value })),
       profile,
       notificationPreferences: settings?.preferences as {
         connectionUpdates: boolean;
@@ -4711,13 +4890,26 @@ export class UserDatabaseAdapter {
     };
   }
 
+  async getSocials(userId: string): Promise<Array<{ id: string; userId: string; label: string; value: string }>> {
+    const rows = await db.select()
+      .from(userSocials)
+      .where(eq(userSocials.userId, userId));
+    return rows.map(s => ({ id: s.id, userId: s.userId, label: s.label, value: s.value }));
+  }
+
+  async setSocials(userId: string, socials: { label: string; value: string }[]): Promise<void> {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.setUserSocials(userId, socials);
+  }
+
   /**
    * Update user
    */
   async update(userId: string, data: Partial<User>): Promise<typeof users.$inferSelect | null> {
+    const { socials: _socials, ...rest } = data as Partial<User> & { socials?: unknown };
     const result = await db.update(users)
       .set({
-        ...data,
+        ...rest,
         updatedAt: new Date()
       })
       .where(eq(users.id, userId))
@@ -5259,6 +5451,8 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     deleteProfile: () => db.deleteProfile(authUserId),
     getUser: () => db.getUser(authUserId),
     updateUser: (data: Parameters<ChatDatabaseAdapter['updateUser']>[1]) => db.updateUser(authUserId, data),
+    getUserSocials: () => db.getUserSocials(authUserId),
+    setUserSocials: (socials: { label: string; value: string }[]) => db.setUserSocials(authUserId, socials),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Intent Operations
@@ -5378,7 +5572,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (!opportunity) throw new Error('Opportunity not found');
       if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
         throw new Error('Access denied: opportunity not visible to user');
-      return db.updateOpportunityStatus(id, status);
+      return db.updateOpportunityStatus(id, status, status === 'accepted' ? authUserId : undefined);
     },
     getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
       db.getAcceptedOpportunitiesBetweenActors(authUserId, counterpartUserId),
@@ -5583,13 +5777,13 @@ export function createSystemDatabase(
       verifyScope(networkId);
       return db.getOpportunitiesForNetwork(networkId, options);
     },
-    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1], acceptedBy?: string) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
       const opportunityIndexId = opportunity.context?.networkId;
       if (!opportunityIndexId) throw new Error('Opportunity not found');
       verifyScope(opportunityIndexId);
-      return db.updateOpportunityStatus(id, status);
+      return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
     },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);
@@ -7325,10 +7519,20 @@ export class ConversationDatabaseAdapter {
   async updateOpportunityStatus(
     id: string,
     status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
   ): Promise<{ id: string; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired' } | null> {
+    if (status === 'accepted' && !acceptedBy) {
+      throw new Error('acceptedBy is required when status is accepted');
+    }
+    const updates: Record<string, unknown> = { status, updatedAt: new Date() };
+    if (status === 'accepted') {
+      updates.acceptedBy = acceptedBy;
+    } else {
+      updates.acceptedBy = null;
+    }
     const [row] = await db
       .update(opportunities)
-      .set({ status, updatedAt: new Date() })
+      .set(updates)
       .where(eq(opportunities.id, id))
       .returning({ id: opportunities.id, status: opportunities.status });
     return row ?? null;

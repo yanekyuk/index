@@ -136,6 +136,24 @@ export interface ScopedDepsFactory {
 }
 
 /**
+ * Computes the index scope passed to the per-request scoped DB factory. When
+ * `networkScopeId` is non-null, the agent is bound to a single network and
+ * may only reach that network plus the user's personal index. Otherwise the
+ * full set of the user's network memberships is returned.
+ */
+export const computeAgentIndexScope = (
+  userNetworks: { networkId: string; isPersonal?: boolean | null }[],
+  networkScopeId: string | null | undefined,
+): string[] => {
+  if (!networkScopeId) {
+    return userNetworks.map((m) => m.networkId);
+  }
+  return userNetworks
+    .filter((m) => m.networkId === networkScopeId || m.isPersonal === true)
+    .map((m) => m.networkId);
+};
+
+/**
  * Creates an MCP server with all protocol tools registered.
  * Tools resolve auth per-request via the HTTP request available in ServerContext.
  *
@@ -226,8 +244,8 @@ export function createMcpServer(
             };
           }
 
-          // Resolve authenticated identity (userId + optional agentId)
-          const { userId, agentId, isSessionAuth } = await authResolver.resolveIdentity(httpReq);
+          // Resolve authenticated identity (userId + optional agentId + optional network scope)
+          const { userId, agentId, isSessionAuth, networkScopeId } = await authResolver.resolveIdentity(httpReq);
 
           // Resolve chat context for the user (mark as MCP — no interactive UI available)
           const context = await resolveChatContext({ database: deps.database, userId });
@@ -255,8 +273,12 @@ export function createMcpServer(
             };
           }
 
-          // Build per-request scoped databases via injected factory
-          const indexScope = context.userNetworks.map((m) => m.networkId);
+          // Build per-request scoped databases via injected factory.
+          // Network-scoped agents are clamped to their bound network plus the user's
+          // personal index — they cannot reach other networks even when the user is
+          // a member of them. The personal-index reachability is preserved so the
+          // agent can still manage its owner's profile and contacts.
+          const indexScope = computeAgentIndexScope(context.userNetworks, networkScopeId ?? null);
           const scopedDbs = scopedDepsFactory.create(userId, indexScope);
 
           // Override deps with per-request scoped databases

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
+import { AuthGuard, AuthOrApiKeyGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { intentService } from '../services/intent.service';
@@ -60,7 +61,7 @@ export class IntentController {
    * @returns The created intent
    */
   @Post('/confirm')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async confirm(req: Request, user: AuthenticatedUser) {
     const raw = await req.json().catch(() => ({}));
     const parsed = ConfirmSchema.safeParse(raw);
@@ -73,6 +74,10 @@ export class IntentController {
     const { proposalId, description, networkId } = parsed.data;
 
     logger.verbose('Intent confirm requested', { userId: user.id, proposalId });
+
+    if (networkId) {
+      await assertAgentNetworkScope(req, networkId);
+    }
 
     try {
       const created = await intentService.createFromProposal(user.id, description, proposalId, networkId);

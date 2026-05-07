@@ -14,6 +14,7 @@ import { useNetworks } from '@/contexts/APIContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
+import MasterKeyDialog from '@/components/MasterKeyDialog';
 
 
 interface ChatSession {
@@ -42,6 +43,7 @@ export default function Sidebar() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
+  const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
@@ -58,18 +60,24 @@ export default function Sidebar() {
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => {
     try {
       const createRequest = {
         title: indexData.name,
         prompt: indexData.prompt,
         imageUrl: indexData.imageUrl,
-        joinPolicy: indexData.joinPolicy
+        joinPolicy: indexData.joinPolicy,
+        isExperiment: indexData.isExperiment,
       };
       const newIndex = await indexesService.createNetwork(createRequest);
-      addIndex(newIndex);
+      const { masterKey, ...network } = newIndex;
+      addIndex(network);
       setCreateIndexModalOpen(false);
-      success('Index created successfully');
+      if (masterKey) {
+        setMasterKeyModal({ networkId: network.id, masterKey });
+      } else {
+        success('Index created successfully');
+      }
     } catch (err) {
       console.error('Error creating index:', err);
       error('Failed to create index');
@@ -354,6 +362,16 @@ export default function Sidebar() {
         onOpenChange={setCreateIndexModalOpen}
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
+      />
+
+      <MasterKeyDialog
+        open={!!masterKeyModal}
+        masterKey={masterKeyModal?.masterKey ?? ''}
+        onClose={() => {
+          const networkId = masterKeyModal?.networkId;
+          setMasterKeyModal(null);
+          if (networkId) navigate(`/networks/${networkId}`);
+        }}
       />
     </div>
   );

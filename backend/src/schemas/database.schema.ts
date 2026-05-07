@@ -22,14 +22,6 @@ export interface OnboardingState {
   invitationCode?: string;
 }
 
-export interface UserSocials {
-  x?: string;
-  linkedin?: string;
-  github?: string;
-  telegram?: string;
-  websites?: string[];
-}
-
 export interface TelegramPrefs {
   chatId: string;
   sessionId?: string;       // lazily created on first outbound message
@@ -59,7 +51,6 @@ export const users = pgTable('users', {
   avatar: text('avatar'),
   intro: text('intro'),
   location: text('location'),
-  socials: json('socials').$type<UserSocials>(),
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
   timezone: text('timezone').default('UTC'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
@@ -73,6 +64,19 @@ export const users = pgTable('users', {
 }, (table) => ({
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
   usersKeyUnique: uniqueIndex('users_key_unique').on(table.key),
+}));
+
+export const userSocials = pgTable('user_socials', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  value: text('value').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  userSocialsUserIdIdx: index('idx_user_socials_user_id').on(table.userId),
+  userSocialsCanonicalUniqueIdx: uniqueIndex('uniq_user_socials_user_label')
+    .on(table.userId, table.label)
+    .where(sql`${table.label} <> 'custom'`),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -251,7 +255,7 @@ export const hydeDocuments = pgTable('hyde_documents', {
 }));
 
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -294,6 +298,7 @@ export const opportunities = pgTable('opportunities', {
   context: jsonb('context').$type<OpportunityContext>().notNull(),
   confidence: numeric('confidence').notNull(),
   status: opportunityStatusEnum('status').notNull().default('pending'),
+  acceptedBy: text('accepted_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -319,6 +324,7 @@ export const intents = pgTable('intents', {
   speechActType: speechActTypeEnum('speech_act_type'),
   felicityAuthority: integer('felicity_authority'),
   felicitySincerity: integer('felicity_sincerity'),
+  felicityClarity: integer('felicity_clarity'),
   status: intentStatusEnum('status').default('ACTIVE'),
 }, (table) => [
   index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
@@ -331,6 +337,8 @@ export const networks = pgTable('networks', {
   prompt: text('prompt'),
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
+  isExperiment: boolean('is_experiment').default(false).notNull(),
+  experimentMasterKeyHash: text('experiment_master_key_hash'),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
@@ -545,6 +553,7 @@ export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
   memberOf: many(networkMembers),
+  socials: many(userSocials),
   notificationSettings: one(userNotificationSettings, {
     fields: [users.id],
     references: [userNotificationSettings.userId],
@@ -552,6 +561,13 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(userProfiles, {
     fields: [users.id],
     references: [userProfiles.userId],
+  }),
+}));
+
+export const userSocialsRelations = relations(userSocials, ({ one }) => ({
+  user: one(users, {
+    fields: [userSocials.userId],
+    references: [users.id],
   }),
 }));
 

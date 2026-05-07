@@ -185,8 +185,8 @@ export class AgentController {
     }
 
     try {
-      const agent = await agentService.getById(agentId, user.id);
-      return Response.json({ agent });
+      const result = await agentService.getMe(agentId, user.id);
+      return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err, 404));
     }
@@ -564,7 +564,38 @@ export class AgentController {
     try {
       await agentService.getById(agentId, user.id);
       await agentService.touchLastSeen(agentId);
-      const opportunities = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
+      const result = await opportunityDeliveryService.fetchPendingCandidates(agentId, limit);
+      return Response.json({ opportunities: result.opportunities, totalPending: result.totalPending });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Get('/:id/opportunities/accepted')
+  @UseGuards(AuthOrApiKeyGuard)
+  async getAcceptedOpportunities(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    const url = new URL(req.url);
+    const limitParam = url.searchParams.get('limit');
+    let limit: number | undefined;
+    if (limitParam !== null && limitParam !== '') {
+      const parsed = Number(limitParam);
+      if (!Number.isFinite(parsed)) {
+        return jsonError('limit must be a finite number', 400);
+      }
+      limit = parsed;
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+
+    try {
+      await agentService.getById(agentId, user.id);
+      await agentService.touchLastSeen(agentId);
+      const opportunities = await opportunityDeliveryService.fetchAcceptedCandidates(agentId, frontendUrl, limit);
       return Response.json({ opportunities });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));

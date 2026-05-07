@@ -72,7 +72,7 @@ const opportunityPickupMock = mock(async (_agentId: string) => {
   return null;
 });
 
-const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number) => []);
+const fetchPendingCandidatesMock = mock(async (_agentId: string, _limit?: number) => ({ opportunities: [], totalPending: 0 }));
 
 const opportunityDeliveryInstance = {
   pickupPending: opportunityPickupMock,

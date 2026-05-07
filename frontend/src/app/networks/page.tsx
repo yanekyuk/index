@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Plus, Users, Loader2 } from 'lucide-react';
@@ -7,6 +7,7 @@ import ClientLayout from '@/components/ClientLayout';
 import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
+import MasterKeyDialog from '@/components/MasterKeyDialog';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useNetworks } from '@/contexts/APIContext';
@@ -25,16 +26,13 @@ export default function NetworksPage() {
   const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
+  const [masterKeyModal, setMasterKeyModal] = useState<{ networkId: string; masterKey: string } | null>(null);
 
   const allNetworks = [...(rawIndexes || [])].filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
     if (!a.isPersonal && b.isPersonal) return 1;
     return (a.title || '').localeCompare(b.title || '');
   });
-
-  useEffect(() => {
-    if (activeTab === 'discover') loadPublicNetworks();
-  }, [activeTab]);
 
   const loadPublicNetworks = async () => {
     try {
@@ -67,17 +65,23 @@ export default function NetworksPage() {
     }
   };
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; isExperiment?: boolean }) => {
     try {
       const newIndex = await indexesService.createNetwork({
         title: indexData.name,
         prompt: indexData.prompt,
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
+        isExperiment: indexData.isExperiment,
       });
-      addIndex(newIndex);
+      const { masterKey, ...network } = newIndex;
+      addIndex(network);
       setCreateNetworkModalOpen(false);
-      navigate(`/networks/${newIndex.id}`);
+      if (masterKey) {
+        setMasterKeyModal({ networkId: network.id, masterKey });
+      } else {
+        navigate(`/networks/${network.id}`);
+      }
       success('Network created successfully');
     } catch (err) {
       console.error('Error creating network:', err);
@@ -104,7 +108,11 @@ export default function NetworksPage() {
               )}
             </div>
 
-            <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+            <Tabs.Root value={activeTab} onValueChange={(v) => {
+              const tab = v as typeof activeTab;
+              setActiveTab(tab);
+              if (tab === 'discover') loadPublicNetworks();
+            }}>
               <Tabs.List className="flex border-b border-gray-200 mb-8">
                 <Tabs.Trigger
                   value="my-networks"
@@ -221,6 +229,16 @@ export default function NetworksPage() {
         onOpenChange={setCreateNetworkModalOpen}
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
+      />
+
+      <MasterKeyDialog
+        open={!!masterKeyModal}
+        masterKey={masterKeyModal?.masterKey ?? ''}
+        onClose={() => {
+          const networkId = masterKeyModal?.networkId;
+          setMasterKeyModal(null);
+          if (networkId) navigate(`/networks/${networkId}`);
+        }}
       />
     </ClientLayout>
   );

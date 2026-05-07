@@ -27,6 +27,7 @@ import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
+import { ScopeViolationError } from './guards/agent-scope.guard';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
@@ -349,8 +350,18 @@ Bun.serve({
               error: error instanceof Error ? error.message : String(error),
             });
             const message = error instanceof Error ? error.message : 'Internal Server Error';
+            // Map agent-scope violations to 403 (network-scoped API keys hitting
+            // a network they aren't bound to)
+            if (error instanceof ScopeViolationError) {
+              return new Response(JSON.stringify({ error: 'forbidden', detail: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+            }
             // Map common auth errors
-            if (message === 'Access token required' || message === 'Invalid or expired access token') {
+            if (
+              message === 'Access token required' ||
+              message === 'Access token or API key required' ||
+              message === 'Invalid or expired access token' ||
+              message === 'Invalid API key'
+            ) {
               return new Response(JSON.stringify({ error: message }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             if (message === 'User not found' || message === 'Account deactivated') {

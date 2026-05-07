@@ -14,17 +14,17 @@ export interface OnboardingState {
   invitationCode?: string;
 }
 
-/** Social-media handles stored as JSON on the user record. */
-export interface UserSocials {
-  x?: string;
-  linkedin?: string;
-  github?: string;
-  websites?: string[];
+/** Single social-link row from the user_socials table. */
+export interface UserSocial {
+  id: string;
+  userId: string;
+  label: string;
+  value: string;
 }
 
 /** Detection metadata recorded when an opportunity is created. */
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment' | 'introducer_discovery';
   createdBy?: Id<'users'> | string;
   createdByName?: string;
   triggeredBy?: Id<'intents'>;
@@ -71,7 +71,7 @@ export interface UserRecord {
   intro?: string | null;
   avatar?: string | null;
   location?: string | null;
-  socials?: UserSocials | null;
+  socials: UserSocial[];
   onboarding?: OnboardingState | null;
   isGhost?: boolean;
   deletedAt?: Date | null;
@@ -131,6 +131,8 @@ export interface CreateIntentData {
   felicityAuthority?: number | null;
   /** Felicity sincerity score from verifier (0-100) */
   felicitySincerity?: number | null;
+  /** Felicity clarity score from verifier (0-100) */
+  felicityClarity?: number | null;
   /** Donnellan intent mode */
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
@@ -160,6 +162,8 @@ export interface UpdateIntentData {
   felicityAuthority?: number | null;
   /** Felicity sincerity score from verifier (0-100) */
   felicitySincerity?: number | null;
+  /** Felicity clarity score from verifier (0-100) */
+  felicityClarity?: number | null;
   /** Donnellan intent mode */
   intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
   /** Speech act category used by protocol enum */
@@ -469,7 +473,10 @@ export interface Database {
    * @param data - Partial user fields to update
    * @returns The updated user record or null if not found
    */
-  updateUser(userId: string, data: { name?: string; intro?: string; location?: string; socials?: UserSocials; onboarding?: OnboardingState }): Promise<UserRecord | null>;
+  updateUser(userId: string, data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }): Promise<UserRecord | null>;
+
+  getUserSocials(userId: string): Promise<UserSocial[]>;
+  setUserSocials(userId: string, socials: { label: string; value: string }[]): Promise<void>;
 
   /**
    * Soft-delete a ghost user and all their contact memberships.
@@ -488,7 +495,7 @@ export interface Database {
    * @param socials - Enriched social handles to match against
    * @returns The matching user's id, or null if no match
    */
-  findDuplicateUser(userId: string, socials: UserSocials): Promise<{ id: string } | null>;
+  findDuplicateUser(userId: string, socials: UserSocial[]): Promise<{ id: string } | null>;
 
   /**
    * Merge a ghost user (source) into a target user.
@@ -1130,7 +1137,8 @@ export interface Database {
    */
   updateOpportunityStatus(
     id: string,
-    status: OpportunityStatus
+    status: OpportunityStatus,
+    acceptedBy?: string,
   ): Promise<Opportunity | null>;
 
   /**
@@ -1343,7 +1351,10 @@ export interface UserDatabase {
   getUser(): Promise<UserRecord | null>;
 
   /** Update the authenticated user's account fields. */
-  updateUser(data: { name?: string; intro?: string; location?: string; socials?: UserSocials; onboarding?: OnboardingState }): Promise<UserRecord | null>;
+  updateUser(data: { name?: string; intro?: string; location?: string; onboarding?: OnboardingState }): Promise<UserRecord | null>;
+
+  getUserSocials(): Promise<UserSocial[]>;
+  setUserSocials(socials: { label: string; value: string }[]): Promise<void>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Intent Operations (own only, ALL intents - not index-scoped)
@@ -1475,7 +1486,7 @@ export interface UserDatabase {
   /** Get a specific opportunity (if user is an actor). */
   getOpportunity(id: string): Promise<Opportunity | null>;
 
-  /** Update an opportunity's status (if user is an actor). */
+  /** Update an opportunity's status (if user is an actor). acceptedBy is derived from the auth context. */
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
 
   /** Get accepted opportunities between the authenticated user and another actor. */
@@ -1599,7 +1610,7 @@ export interface SystemDatabase {
   getOpportunitiesForNetwork(networkId: string, options?: OpportunityQueryOptions): Promise<Opportunity[]>;
 
   /** Update an opportunity's status (system-level). */
-  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
+  updateOpportunityStatus(id: string, status: OpportunityStatus, acceptedBy?: string): Promise<Opportunity | null>;
 
   /** Check if opportunity exists between actors in an index. */
   opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean>;
@@ -1669,7 +1680,7 @@ export interface SystemDatabase {
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost' | 'findDuplicateUser' | 'mergeGhostUser' | 'getUserSocials' | 'setUserSocials'
 >;
 
 /**
@@ -1690,6 +1701,8 @@ export type ChatGraphCompositeDatabase = Pick<
   // ProfileGraph subgraph requirements
   | 'getUser'
   | 'updateUser'
+  | 'getUserSocials'
+  | 'setUserSocials'
   | 'saveProfile'
   | 'softDeleteGhost'
   // IntentGraph subgraph requirements (getActiveIntents already included)
@@ -1969,6 +1982,8 @@ export type OpportunityControllerDatabase = Pick<
   // owned by OpportunityService — services cannot import other services.
   | 'getOrCreateDM'
   | 'unhideConversation'
+  // Approve-introduction endpoint: flip introducer actor's approved flag.
+  | 'updateOpportunityActorApproval'
 >;
 
 /**

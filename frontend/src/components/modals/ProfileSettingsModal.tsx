@@ -3,7 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Camera, Trash2, ImagePlus } from "lucide-react";
+import { X, Trash2, ImagePlus } from "lucide-react";
 import { User } from "@/lib/types";
 import { useAuth } from "@/contexts/APIContext";
 import { validateFiles } from "@/lib/file-validation";
@@ -65,14 +65,17 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Social links state
-  const [socialX, setSocialX] = useState(user?.socials?.x || '');
-  const [socialLinkedin, setSocialLinkedin] = useState(user?.socials?.linkedin || '');
-  const [socialGithub, setSocialGithub] = useState(user?.socials?.github || '');
-  const [socialTelegram, setSocialTelegram] = useState(user?.socials?.telegram || '');
-  const [websites, setWebsites] = useState<string[]>(
-    user?.socials?.websites || []
+  const [socials, setSocials] = useState<Array<{ label: string; value: string }>>(
+    (user?.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value }))
   );
+  const getSocial = (label: string) => socials.find(s => s.label === label)?.value ?? '';
+  const setSocial = (label: string, value: string) => {
+    setSocials(prev => {
+      const without = prev.filter(s => s.label !== label);
+      return value ? [...without, { label, value }] : without;
+    });
+  };
+  const customSocials = socials.filter(s => !['linkedin', 'twitter', 'github', 'telegram'].includes(s.label));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const authService = useAuth();
@@ -101,21 +104,6 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     }
   }, []);
 
-  const addWebsite = () => {
-    if (websites.length < 3) {
-      setWebsites([...websites, '']);
-    }
-  };
-
-  const removeWebsite = (index: number) => {
-    setWebsites(websites.filter((_, i) => i !== index));
-  };
-
-  const updateWebsite = (index: number, value: string) => {
-    const updated = [...websites];
-    updated[index] = value;
-    setWebsites(updated);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,16 +118,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
         avatarFilename = await authService.uploadAvatar(avatarFile);
       }
 
-      // Build socials object
-      const socials = {
-        ...(socialX && { x: socialX }),
-        ...(socialLinkedin && { linkedin: socialLinkedin }),
-        ...(socialGithub && { github: socialGithub }),
-        ...(socialTelegram && { telegram: socialTelegram }),
-        ...(websites.length > 0 && {
-          websites: websites.filter(w => w)
-        })
-      };
+      const socialsPayload = socials.filter(s => s.value.trim() !== '');
 
       const updatedUser = await authService.updateProfile({
         name: name || undefined,
@@ -147,7 +126,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
         location: location || undefined,
         avatar: avatarFilename || undefined,
         timezone: timezone || undefined,
-        socials: Object.keys(socials).length > 0 ? socials : undefined,
+        socials: socialsPayload,
       });
 
       onUserUpdate(updatedUser);
@@ -159,7 +138,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     }
   };
 
-  // Reset form when modal opens
+  /* eslint-disable react-hooks/set-state-in-effect -- sync form fields from prop when modal opens */
   React.useEffect(() => {
     if (open && user) {
       setName(user.name);
@@ -169,13 +148,10 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
       setAvatarFile(null);
       setAvatarPreview(null);
       setAvatarError(null);
-      setSocialX(user.socials?.x || '');
-      setSocialLinkedin(user.socials?.linkedin || '');
-      setSocialGithub(user.socials?.github || '');
-      setSocialTelegram(user.socials?.telegram || '');
-      setWebsites(user.socials?.websites || []);
+      setSocials((user.socials ?? []).map((s: { label: string; value: string }) => ({ label: s.label, value: s.value })));
     }
   }, [open, user]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -296,70 +272,37 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             <div className="space-y-3">
               <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-4">Socials</h3>
 
-              {/* X (Twitter) */}
-              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
-                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
-                  x.com/
+              {[
+                { prefix: "x.com/", label: "twitter", value: getSocial('twitter'), onChange: (v: string) => setSocial('twitter', v) },
+                { prefix: "linkedin.com/in/", label: "linkedin", value: getSocial('linkedin'), onChange: (v: string) => setSocial('linkedin', v) },
+                { prefix: "github.com/", label: "github", value: getSocial('github'), onChange: (v: string) => setSocial('github', v) },
+                { prefix: "t.me/", label: "telegram", value: getSocial('telegram'), onChange: (v: string) => setSocial('telegram', v) },
+              ].map(({ prefix, label, value, onChange }) => (
+                <div key={label} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
+                  <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
+                    {prefix}
+                  </div>
+                  <Input
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  />
                 </div>
-                <Input
-                  id="socialX"
-                  value={socialX}
-                  onChange={(e) => setSocialX(e.target.value)}
-                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                />
-              </div>
+              ))}
 
-              {/* LinkedIn */}
-              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
-                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
-                  linkedin.com/in/
-                </div>
-                <Input
-                  id="socialLinkedin"
-                  value={socialLinkedin}
-                  onChange={(e) => setSocialLinkedin(e.target.value)}
-                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                />
-              </div>
-
-              {/* GitHub */}
-              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
-                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
-                  github.com/
-                </div>
-                <Input
-                  id="socialGithub"
-                  value={socialGithub}
-                  onChange={(e) => setSocialGithub(e.target.value)}
-                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                />
-              </div>
-
-              {/* Telegram */}
-              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
-                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
-                  t.me/
-                </div>
-                <Input
-                  id="socialTelegram"
-                  value={socialTelegram}
-                  onChange={(e) => setSocialTelegram(e.target.value)}
-                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
-                />
-              </div>
-
-              {/* Custom Websites */}
-              {websites.map((website, index) => (
+              {customSocials.map((social, index) => (
                 <div key={index} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
                   <Input
-                    value={website}
-                    onChange={(e) => updateWebsite(index, e.target.value)}
+                    value={social.value}
+                    onChange={(e) => {
+                      setSocials(prev => prev.map(s => s === social ? { label: 'custom', value: e.target.value } : s));
+                    }}
                     placeholder="https://example.com"
                     className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                   <button
                     type="button"
-                    onClick={() => removeWebsite(index)}
+                    onClick={() => setSocials(prev => prev.filter(s => s !== social))}
                     className="px-3 py-2 text-gray-400 hover:text-red-500 transition-colors border-l border-gray-200"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -367,11 +310,10 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                 </div>
               ))}
 
-              {/* Add Website Button */}
-              {websites.length < 3 && (
+              {customSocials.length < 3 && (
                 <button
                   type="button"
-                  onClick={addWebsite}
+                  onClick={() => setSocials(prev => [...prev, { label: 'custom', value: '' }])}
                   className="w-full flex items-center justify-center px-3 py-2 border border-gray-200 rounded-sm text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors duration-150 font-ibm-plex-mono text-sm"
                 >
                   +

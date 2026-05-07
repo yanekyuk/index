@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "users_email_organic_unique" ON "users" USING btree ("email") WHERE "users"."experiment_network_id" IS NULL;
