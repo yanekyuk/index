@@ -65,6 +65,14 @@ export const resolveAgentNetworkScopeById = async (agentId: string): Promise<str
  * @throws If the agent has multiple distinct network scopes
  */
 export const resolveAgentNetworkScope = async (req: Request): Promise<string | null> => {
+  // JWT auth wins: if the caller is a session/JWT user, ignore any incidental
+  // `x-api-key` header (which may be forwarded by a proxy or carried over from
+  // a prior request) so they aren't unexpectedly 403'd by an unrelated key.
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) return null;
+  const queryToken = new URL(req.url, 'http://localhost').searchParams.get('token');
+  if (queryToken) return null;
+
   const agentId = await resolveApiKeyAgentId(req);
   if (!agentId) return null;
   return resolveAgentNetworkScopeById(agentId);

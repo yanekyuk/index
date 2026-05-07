@@ -23,9 +23,13 @@ export const networkInvitationTemplate = (
   const safeNetwork = escapeHtml(p.networkName);
   const safeKey = escapeHtml(p.apiKey);
   const safeCmd = escapeHtml(p.connectCommand);
+  // Strip CR/LF and other control chars from the network name before splicing
+  // it into the subject header — defends against header injection if someone
+  // ever sets a malicious title on a network they own.
+  const subjectName = p.networkName.replace(/[\r\n\t\f\v\0]+/g, ' ').trim().slice(0, 200);
 
   return {
-    subject: `Your invitation to ${p.networkName}`,
+    subject: `Your invitation to ${subjectName}`,
     html: `<div style="font-family: Arial, sans-serif;">
   <p>You've been added to <strong>${safeNetwork}</strong> on Index Network.</p>
   <p>Your personal agent's API key:</p>

@@ -440,7 +440,7 @@ export class NetworkOpportunityController {
    * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
@@ -487,7 +487,7 @@ export class NetworkOpportunityController {
    * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
    */
   @Post('/:networkId/opportunities')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthOrApiKeyGuard)
   async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {

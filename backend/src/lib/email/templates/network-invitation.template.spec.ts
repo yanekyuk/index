@@ -41,4 +41,13 @@ describe('networkInvitationTemplate', () => {
     });
     expect(out.html).not.toContain('<script>x</script>');
   });
+
+  test('strips CR/LF from the subject to prevent header injection', () => {
+    const out = networkInvitationTemplate({
+      networkName: 'Evil\r\nBcc: leak@example.com\r\nSubject: pwned',
+      apiKey: 'k',
+      connectCommand: 'cmd',
+    });
+    expect(out.subject).not.toMatch(/[\r\n]/);
+  });
 });

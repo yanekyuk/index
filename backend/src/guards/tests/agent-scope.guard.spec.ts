@@ -98,4 +98,18 @@ describe('agent-scope.guard', () => {
   test('resolveAgentNetworkScopeById returns null for unknown agent id', async () => {
     expect(await resolveAgentNetworkScopeById('00000000-0000-0000-0000-000000000000')).toBeNull();
   });
+
+  test('returns null when JWT bearer header is present, even with x-api-key', async () => {
+    const req = new Request('http://localhost/test', {
+      headers: { Authorization: 'Bearer some.jwt.token', 'x-api-key': scopedKey },
+    });
+    expect(await resolveAgentNetworkScope(req)).toBeNull();
+  });
+
+  test('returns null when ?token= query param is present, even with x-api-key', async () => {
+    const req = new Request('http://localhost/test?token=foo', {
+      headers: { 'x-api-key': scopedKey },
+    });
+    expect(await resolveAgentNetworkScope(req)).toBeNull();
+  });
 });
