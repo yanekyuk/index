@@ -342,6 +342,11 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   importMembers: async (networkId: string, members: Array<{ email: string; name?: string; bio?: string; location?: string; socials: { label: string; value: string }[] }>): Promise<{ imported: number; skipped: number }> => {
     return api.post(`/networks/${networkId}/members/import`, { members });
   },
+
+  // Invite a single member to an experiment network by email
+  inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; agentProvisioned: boolean }> => {
+    return api.post(`/networks/${networkId}/members/invite`, { email, name });
+  },
 });
 
 // Non-authenticated service for public endpoints

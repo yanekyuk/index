@@ -4,6 +4,7 @@ import { ExperimentMasterKeyGuard, type ExperimentNetwork } from '../guards/expe
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { experimentService, type ImportRow } from '../services/experiment.service';
+import { networkInvitationService } from '../services/network-invitation.service';
 import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('network');
@@ -275,6 +276,50 @@ export class NetworkController {
     } catch (err: unknown) {
       logger.error('CSV parse failed', { networkId: params.id, error: errorMessage(err) });
       return Response.json({ error: 'Failed to parse CSV' }, { status: 400 });
+    }
+  }
+
+  /**
+   * Invite a single member to an experiment network by email. Owner-only.
+   * Idempotent: re-inviting an existing user just ensures membership.
+   * For new users, provisions a network-scoped agent + API key and emails the
+   * invitation with a connect command.
+   */
+  @Post('/:id/members/invite')
+  @UseGuards(AuthOrApiKeyGuard)
+  async inviteMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    const body = await req.json().catch(() => ({})) as { email?: string; name?: string };
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    if (!email) {
+      return Response.json({ error: 'email is required' }, { status: 400 });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return Response.json({ error: 'Invalid email format' }, { status: 400 });
+    }
+
+    try {
+      const result = await networkInvitationService.invite({
+        networkId: params.id,
+        email,
+        name: body.name,
+      });
+      return Response.json({
+        user: { id: result.user.id, email: result.user.email },
+        created: result.created,
+        agentProvisioned: result.agentProvisioned,
+      }, { status: result.created ? 201 : 200 });
+    } catch (err: unknown) {
+      logger.error('Invite by email failed', { networkId: params.id, error: errorMessage(err) });
+      return Response.json({ error: 'Invite failed' }, { status: 500 });
     }
   }
 

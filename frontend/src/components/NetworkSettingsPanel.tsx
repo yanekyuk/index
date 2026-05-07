@@ -330,6 +330,25 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   };
 
+  const handleInviteMember = async (email: string) => {
+    if (isAddingContact) return;
+    setIsAddingContact(true);
+    try {
+      const result = await indexesService.inviteMember(index.id, email);
+      setMemberSearchQuery('');
+      setSuggestedUsers([]);
+      setShowSuggestions(false);
+      setSearchHasQueried(false);
+      await loadMembers();
+      success(result.created ? 'Invitation sent' : 'Member added');
+    } catch (err) {
+      console.error('Error inviting member:', err);
+      error('Failed to invite member');
+    } finally {
+      setIsAddingContact(false);
+    }
+  };
+
   const autoImportContacts = async (toolkit: string) => {
     const svc = createIntegrationsService(api);
     info(`Importing contacts from ${toolkitLabel(toolkit)}...`, undefined, 30000);
@@ -702,13 +721,15 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                   {memberSearchQuery.includes('@') ? (
                     <button
                       className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
-                      onClick={() => handleAddContact(memberSearchQuery)}
+                      onClick={() => currentIndex.isExperiment ? handleInviteMember(memberSearchQuery) : handleAddContact(memberSearchQuery)}
                       disabled={isAddingContact}
                     >
                       <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <Plus className="h-3.5 w-3.5 text-gray-500" />
                       </div>
-                      <span className="text-sm text-black flex-1 truncate">Add "{memberSearchQuery}"</span>
+                      <span className="text-sm text-black flex-1 truncate">
+                        {currentIndex.isExperiment ? `Invite "${memberSearchQuery}"` : `Add "${memberSearchQuery}"`}
+                      </span>
                     </button>
                   ) : (
                     <div className="px-3 py-2.5 text-sm text-gray-400">No results found</div>
