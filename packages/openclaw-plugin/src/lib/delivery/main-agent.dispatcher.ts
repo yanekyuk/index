@@ -36,6 +36,12 @@ import type { OpenClawPluginApi } from '../openclaw/plugin-api.js';
 export interface DispatchContext {
   /** The fully-rendered prompt to hand to the agent. */
   prompt: string;
+  /**
+   * Human-readable label shown in OpenClaw's hooks UI. Without it, every
+   * dispatch shows up as the gateway's default "Hook" and operators can't
+   * tell the seven dispatch types apart.
+   */
+  name: string;
   /** Idempotency key sent as the `idempotency-key` header. */
   idempotencyKey: string;
   /** Optional per-call timeout. Defaults to 120 seconds. */
@@ -231,6 +237,7 @@ export async function dispatchToMainAgent(
   const url = `http://127.0.0.1:${port}${hooksPath}/agent`;
   const body: Record<string, unknown> = {
     message: ctx.prompt,
+    name: ctx.name,
     wakeMode: 'now',
     deliver: true,
   };

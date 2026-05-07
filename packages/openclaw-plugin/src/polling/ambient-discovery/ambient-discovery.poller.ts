@@ -196,6 +196,7 @@ export async function handle(
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
+    name: 'Index — ambient discovery',
     idempotencyKey: `index:delivery:opportunity-batch:${config.agentId}:${dateStr}:${batchHash}`,
   });
 

@@ -55,6 +55,7 @@ export async function handle(
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
+    name: 'Index — test message',
     idempotencyKey: `index:delivery:test:${reservation.id}:${reservation.reservationToken}`,
   });
 

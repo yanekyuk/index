@@ -63,6 +63,7 @@ describe('dispatchToMainAgent', () => {
 
   const ctx: DispatchContext = {
     prompt: 'PROMPT BODY',
+    name: 'Index — test dispatch',
     idempotencyKey: 'key-1',
   };
 
@@ -108,6 +109,7 @@ describe('dispatchToMainAgent', () => {
     expect(headers['idempotency-key']).toBe('key-1');
     const body = JSON.parse(call.init?.body as string) as Record<string, unknown>;
     expect(body.message).toBe('PROMPT BODY');
+    expect(body.name).toBe('Index — test dispatch');
     expect(body.deliver).toBe(true);
     expect(body.wakeMode).toBe('now');
     expect(body.sessionKey).toBe('agent:main:telegram:direct:69340471');
