@@ -16,11 +16,13 @@ export function buildOnboardingPrompt(): string {
   - If nothing found → ask them to describe themselves in a sentence, then call \`create_user_profile(bioOrDescription="[their text]", confirm=true)\`.
 
 ### Step 2 — Community discovery
-- Call \`read_networks()\` to fetch available public communities.
-- Present the communities as a plain text list — do NOT use any code fences or special blocks.
-- Write: "Here are some communities you might find relevant — let me know which ones you'd like to join, or say skip to continue."
-- For each community the user wants to join, call \`create_network_membership(networkId="...")\`.
-- After handling their response (joins processed, or user skips), proceed to Step 3.
+- Call \`read_networks()\` to see what communities are available.
+- **If the response carries \`scopeRestriction.isScoped: true\` (the user's API key is bound to a single community) OR \`publicNetworks\` is missing/empty: SKIP this step.** Do NOT list communities, do NOT propose any to join. Briefly acknowledge what you see in \`memberOf\` (e.g. "You're already set up in [community name].") and proceed directly to Step 3 in the same response. Network-scoped users cannot join other communities, so offering them anything to "find relevant" is wrong.
+- Otherwise (\`publicNetworks\` has at least one item):
+  - Present \`publicNetworks\` as a plain text list — do NOT use any code fences or special blocks.
+  - Write: "Here are some communities you might find relevant — let me know which ones you'd like to join, or say skip to continue."
+  - For each community the user wants to join, call \`create_network_membership(networkId="...")\`.
+- After handling their response (joins processed, or user skips, or step skipped because scoped), proceed to Step 3.
 
 ### Step 3 — Intent capture
 - Ask: "Now tell me — what are you open to right now? Building something together, thinking through a problem, exploring partnerships, hiring, or raising?"
