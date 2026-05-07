@@ -435,15 +435,17 @@ When executing implementation plans, **always use subagent-driven development wi
 
 ### Receiving Code Review (`/receiving-code-review`)
 
-When handling CodeRabbitAI reviews on PRs, follow this workflow:
+Code reviews on this project are done by **GitHub Copilot**, triggered manually by the user (via the Reviewers menu on the PR, or `gh pr edit PR-NUMBER --add-reviewer @copilot`). Copilot does not auto-review on push and replies do not trigger it — only an explicit re-review request does.
 
-1. **Fetch unresolved conversations**: Use `gh api` to list all review comments on the PR. Focus on unresolved conversation threads from CodeRabbitAI.
+When handling Copilot reviews on PRs, follow this workflow:
+
+1. **Fetch unresolved conversations**: Use `gh api` to list all review comments on the PR. Focus on unresolved conversation threads from `github-copilot[bot]`.
 2. **Evaluate each conversation**: For each unresolved thread, decide whether a code fix is actually needed:
-   - **Fix needed**: Implement the fix, push, and let the resolved code speak for itself.
-   - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns). Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
-3. **Resolve all conversations**: Every conversation must be resolved (either by fixing or by responding with reasoning) before the PR can merge. Zero unresolved conversations is the merge gate.
+   - **Fix needed**: Implement the fix, push, then **manually resolve the conversation** (Copilot does not auto-resolve when commits are pushed or suggestions are applied).
+   - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns), then resolve it. Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
+3. **Resolve all conversations**: Every conversation must be manually resolved before the PR can merge.
 
-> **IMPORTANT:** Always reply directly in each conversation thread using the replies endpoint. Never post a top-level PR comment to address review feedback — CodeRabbitAI tracks resolution per conversation thread, and a top-level comment does not mark threads as resolved or create memory for the bot.
+> **IMPORTANT:** Copilot never sees follow-up comments and will not respond to `@copilot` mentions in threads — replies are for human context only. On re-review, Copilot may re-raise already-resolved comments; that is expected behavior.
 
 **Key commands:**
 ```bash
@@ -452,4 +454,7 @@ gh api repos/{owner}/{repo}/pulls/{pr}/comments
 
 # Reply to a specific review comment thread (USE THIS — not gh pr comment)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body="..."
+
+# Request a Copilot review on an existing PR
+gh pr edit PR-NUMBER --add-reviewer @copilot
 ```
