@@ -2,8 +2,18 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
+
+const sendEmailSpy = mock(async () => ({ data: null, skipped: false }));
+mock.module('../../lib/email/transport.helper', () => ({
+  executeSendEmail: sendEmailSpy,
+}));
+
+import { inArray } from "drizzle-orm";
+
 import { NetworkController } from "../network.controller";
+import db from "../../lib/drizzle/drizzle";
+import * as schema from "../../schemas/database.schema";
 import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
@@ -160,6 +170,106 @@ describe("NetworkController Integration", () => {
 
       expect(res.status).toBe(200);
       expect(data).toBeDefined();
+    });
+  });
+
+  describe("POST /:id/members/invite (experiment networks)", () => {
+    let experimentNetworkId: string;
+    const inviteeUserIds: string[] = [];
+
+    beforeAll(async () => {
+      const req = new Request("http://localhost/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Invite Test Experiment", isExperiment: true }),
+      });
+      const res = await controller.create(req, mockUser());
+      const data = (await res.json()) as { network?: { id: string } };
+      experimentNetworkId = data.network!.id;
+    });
+
+    afterAll(async () => {
+      if (inviteeUserIds.length > 0) {
+        // FK chain: agent_permissions.user_id and apikey.user_id cascade on user
+        // delete; networkMembers and personalNetworks do NOT, so clean those
+        // explicitly before dropping the users.
+        const personalRows = await db
+          .select({ networkId: schema.personalNetworks.networkId })
+          .from(schema.personalNetworks)
+          .where(inArray(schema.personalNetworks.userId, inviteeUserIds));
+        const personalNetworkIds = personalRows.map((r) => r.networkId);
+
+        await db.delete(schema.networkMembers).where(inArray(schema.networkMembers.userId, inviteeUserIds));
+        await db.delete(schema.personalNetworks).where(inArray(schema.personalNetworks.userId, inviteeUserIds));
+        await db.delete(schema.users).where(inArray(schema.users.id, inviteeUserIds));
+        if (personalNetworkIds.length > 0) {
+          await db.delete(schema.networks).where(inArray(schema.networks.id, personalNetworkIds));
+        }
+      }
+      if (experimentNetworkId) await indexAdapter.deleteNetworkAndMembers(experimentNetworkId);
+    });
+
+    test("returns 400 when email is missing", async () => {
+      const req = new Request(`http://localhost/networks/${experimentNetworkId}/members/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const res = await controller.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toBe("email is required");
+    });
+
+    test("returns 400 when email format is invalid", async () => {
+      const req = new Request(`http://localhost/networks/${experimentNetworkId}/members/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "not-an-email" }),
+      });
+      const res = await controller.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toBe("Invalid email format");
+    });
+
+    test("returns 403 when network is not an experiment network", async () => {
+      const req = new Request(`http://localhost/networks/${createdIndexId}/members/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: `target-${Date.now()}@example.com` }),
+      });
+      const res = await controller.inviteMember(req, mockUser(), { id: createdIndexId });
+
+      expect(res.status).toBe(403);
+    });
+
+    test("returns 201 with provisioned flags for a new email", async () => {
+      sendEmailSpy.mockClear();
+      const inviteeEmail = `invitee-${Date.now()}@example.com`;
+      const req = new Request(`http://localhost/networks/${experimentNetworkId}/members/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: inviteeEmail }),
+      });
+      const res = await controller.inviteMember(req, mockUser(), { id: experimentNetworkId });
+      const data = (await res.json()) as {
+        user?: { id: string; email: string };
+        created?: boolean;
+        alreadyMember?: boolean;
+        agentProvisioned?: boolean;
+      };
+
+      expect(res.status).toBe(201);
+      expect(data.created).toBe(true);
+      expect(data.alreadyMember).toBe(false);
+      expect(data.agentProvisioned).toBe(true);
+      expect(data.user?.email).toBe(inviteeEmail);
+      expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+
+      if (data.user?.id) inviteeUserIds.push(data.user.id);
     });
   });
 

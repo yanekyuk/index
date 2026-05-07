@@ -21,10 +21,12 @@ export interface InviteParams {
 
 export interface InviteResult {
   user: { id: string; email: string };
-  /** Raw API key; only present when a new agent was provisioned. Null when reusing an existing user. */
+  /** Raw API key; only present when a scoped agent was provisioned in this call. */
   apiKey: string | null;
   /** True if the user was newly created. */
   created: boolean;
+  /** True if the user was already a member of this network. */
+  alreadyMember: boolean;
   /** True if the agent + permissions + key were created in this call. */
   agentProvisioned: boolean;
 }
@@ -40,9 +42,10 @@ export const SCOPED_INVITED_AGENT_ACTIONS = [
 class NetworkInvitationService {
   /**
    * Idempotent invite. Ensures user, personal network, and network membership
-   * always exist; for newly-created users only, also provisions a network-
-   * scoped personal agent and an API key. Returns the raw key once on first
-   * creation; subsequent invites for the same user return null.
+   * always exist; provisions a network-scoped personal agent and API key
+   * (and emails the connect command) whenever the user does not already have
+   * a scoped agent for this network. Reusing a user who was created via
+   * another path (e.g. ghost contact) still yields a key + email.
    *
    * @param params - networkId, email, optional name
    * @returns InviteResult — see field docs
@@ -52,11 +55,15 @@ class NetworkInvitationService {
     const { user, created } = await this.findOrCreateUser(email, params.name);
 
     await ensurePersonalNetwork(user.id);
-    await this.joinNetwork(user.id, params.networkId);
+    const { alreadyMember } = await this.joinNetwork(user.id, params.networkId);
 
-    if (!created) {
-      logger.info('[NetworkInvitation] Reusing existing user', { userId: user.id, networkId: params.networkId });
-      return { user, apiKey: null, created: false, agentProvisioned: false };
+    const hasAgent = await this.hasScopedAgent(user.id, params.networkId);
+    if (hasAgent) {
+      logger.info('[NetworkInvitation] Skipping provisioning; scoped agent already exists', {
+        userId: user.id,
+        networkId: params.networkId,
+      });
+      return { user, apiKey: null, created, alreadyMember, agentProvisioned: false };
     }
 
     const apiKey = await this.provisionScopedAgent(user.id, params.networkId);
@@ -75,7 +82,27 @@ class NetworkInvitationService {
       networkId: params.networkId,
     });
 
-    return { user, apiKey, created: true, agentProvisioned: true };
+    return { user, apiKey, created, alreadyMember, agentProvisioned: true };
+  }
+
+  private async hasScopedAgent(userId: string, networkId: string): Promise<boolean> {
+    // Inner-join on agents and require deletedAt IS NULL: agentDatabaseAdapter
+    // .deleteAgent() soft-deletes the agent and hard-deletes its api keys but
+    // leaves the agent_permissions row intact. Without the join, a user whose
+    // agent has been deleted would short-circuit re-provisioning and end up
+    // with no working key.
+    const [row] = await db
+      .select({ id: schema.agentPermissions.id })
+      .from(schema.agentPermissions)
+      .innerJoin(schema.agents, eq(schema.agents.id, schema.agentPermissions.agentId))
+      .where(and(
+        eq(schema.agentPermissions.userId, userId),
+        eq(schema.agentPermissions.scope, 'network'),
+        eq(schema.agentPermissions.scopeId, networkId),
+        isNull(schema.agents.deletedAt),
+      ))
+      .limit(1);
+    return Boolean(row);
   }
 
   private async lookupNetworkName(networkId: string): Promise<string> {
@@ -167,11 +194,13 @@ class NetworkInvitationService {
     return { user: newUser, created: true };
   }
 
-  private async joinNetwork(userId: string, networkId: string): Promise<void> {
-    await db
+  private async joinNetwork(userId: string, networkId: string): Promise<{ alreadyMember: boolean }> {
+    const inserted = await db
       .insert(schema.networkMembers)
       .values({ networkId, userId, permissions: ['member'], autoAssign: true })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ userId: schema.networkMembers.userId });
+    return { alreadyMember: inserted.length === 0 };
   }
 
   /**
