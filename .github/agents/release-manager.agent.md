@@ -111,12 +111,10 @@ Omit any section that has no entries.
 
 ## Step 5: Determine the release version
 
-The release version is the highest version across all packages touched in this
-release (use the post-bump value verified in Step 3). If packages have
-different version numbers, use the openclaw-plugin version as the canonical
-release label (it is the most user-facing artifact).
+This is a monorepo with no canonical package. Use the release date as the
+release label.
 
-Format: `vMAJOR.MINOR.PATCH`
+Format: `vYYYY.MM.DD`
 
 ## Step 6: Open the release PR
 
