@@ -100,6 +100,7 @@ export async function handle(
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
+    name: 'Index — accepted opportunity',
     idempotencyKey: `index:delivery:accepted-batch:${config.agentId}:${dateStr}:${batchHash}`,
   });
 

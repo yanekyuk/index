@@ -155,6 +155,7 @@ async function dispatchWelcome(
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
+    name: 'Index — welcome',
     idempotencyKey: `index:delivery:welcome:${config.agentId}:${new Date().toISOString().slice(0, 10)}`,
   });
 

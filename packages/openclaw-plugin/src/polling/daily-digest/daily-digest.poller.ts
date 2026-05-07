@@ -110,6 +110,7 @@ export async function handle(
 
   const dispatch = await dispatchToMainAgent(api, {
     prompt,
+    name: 'Index — daily digest',
     idempotencyKey: `index:delivery:daily-digest:${config.agentId}:${dateStr}:${batchHash}`,
   });
 
