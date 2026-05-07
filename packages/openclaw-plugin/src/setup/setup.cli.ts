@@ -3,7 +3,7 @@
  *
  * Registered via `api.registerCli()` and invoked as:
  *
- *   openclaw index setup
+ *   openclaw index connect
  *
  * Collects url, apiKey, and mainAgentToolUse, resolves the caller's
  * agentId from the API key via GET /api/agents/me, then writes plugin
@@ -204,7 +204,7 @@ export async function runSetup(ctx: SetupContext): Promise<void> {
   if (existingHooksToken && existingHooksToken === gatewayAuthToken) {
     throw new Error(
       'hooks.token must be distinct from gateway.auth.token. ' +
-        'Run `openclaw config unset hooks.token` and re-run setup to regenerate.',
+        'Run `openclaw config unset hooks.token` and re-run `openclaw index connect` to regenerate.',
     );
   }
 
@@ -363,15 +363,68 @@ function setConfigValue(cfg: Record<string, unknown>, dotPath: string, value: un
   obj[parts[parts.length - 1]] = value;
 }
 
+async function runInteractiveSetup(cfg: Record<string, unknown>): Promise<void> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  const ctx: SetupContext = {
+    cfg,
+    prompt: async (label, opts) => {
+      const defaultSuffix = opts?.default ? ` [${opts.default}]` : '';
+      if (opts?.secret) {
+        // Suppress readline echo for secret input (e.g. API key).
+        const rlAny = rl as unknown as { _writeToOutput: (s: string) => void };
+        const orig = rlAny._writeToOutput;
+        rlAny._writeToOutput = () => {};
+        process.stdout.write(`${label}${defaultSuffix}: `);
+        const answer = await rl.question('');
+        rlAny._writeToOutput = orig;
+        process.stdout.write('\n');
+        return answer.trim() || opts?.default || '';
+      }
+      const answer = await rl.question(`${label}${defaultSuffix}: `);
+      return answer.trim() || opts?.default || '';
+    },
+    select: async (label, choices) => {
+      while (true) {
+        console.log(`\n${label}:`);
+        choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.label}`));
+        const answer = await rl.question('Selection: ');
+        const idx = parseInt(answer.trim(), 10) - 1;
+        if (choices[idx]) return choices[idx].value;
+        console.log(`  Please enter a number between 1 and ${choices.length}.`);
+      }
+    },
+    configSet: async (dotPath, value) => {
+      setConfigValue(cfg, dotPath, value);
+    },
+    fetchAgentId: defaultFetchAgentId,
+  };
+
+  try {
+    await runSetup(ctx);
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+    console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
+    console.log('Restart the gateway to apply changes: openclaw gateway restart');
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
+  } finally {
+    rl.close();
+  }
+}
+
 /**
  * Registers the `openclaw index connect` CLI command.
  *
  * Usage:
- *   openclaw index connect --api-key <key> [--url <url>]
+ *   openclaw index connect                             # interactive wizard
+ *   openclaw index connect --api-key <key>             # non-interactive, all defaults
+ *   openclaw index connect --api-key <key> --url <url> --digest-time 09:00 --no-digest
  *
- * Reads the existing ~/.openclaw/openclaw.json (if any), runs a headless
- * setup with the supplied key, and writes the result back to disk. Idempotent
- * — safe to re-run with the same or a new key.
+ * Without --api-key the interactive wizard runs. With --api-key a headless
+ * setup runs using the supplied flags (all optional, defaulting to sensible
+ * values). Idempotent — safe to re-run with the same or a new key.
  */
 export function registerConnectCli(
   program: Parameters<typeof registerSetupCli>[0],
@@ -379,40 +432,50 @@ export function registerConnectCli(
   // Guard against duplicate registration.
   if (program.commands?.some((c) => c.name() === 'connect')) return;
 
-  type ConnectOpts = { apiKey: string; url: string };
+  interface CommandBuilder {
+    description(d: string): CommandBuilder;
+    option(f: string, d: string, dflt?: string): CommandBuilder;
+    action(fn: (opts: ConnectOpts) => Promise<void>): void;
+  }
+  type ConnectOpts = {
+    apiKey?: string;
+    url: string;
+    digestTime?: string;
+    /** false when --no-digest is passed; true otherwise (commander default). */
+    digest: boolean;
+    mainAgentToolUse?: string;
+  };
 
-  (
-    program as unknown as {
-      command(n: string): {
-        description(d: string): {
-          requiredOption(f: string, d: string): {
-            option(f: string, d: string, dflt: string): {
-              action(fn: (opts: ConnectOpts) => Promise<void>): void;
-            };
-          };
-        };
-      };
-    }
-  )
+  (program as unknown as { command(n: string): CommandBuilder })
     .command('connect')
-    .description('Non-interactive setup using an API key (e.g. from EdgeClaw signup)')
-    .requiredOption('--api-key <key>', 'API key returned by the headless signup endpoint')
-    .option('--url <url>', 'Index Network frontend URL', DEFAULT_URL)
+    .description('Connect to Index Network (no flags: interactive wizard; --api-key: non-interactive)')
+    .option('--api-key <key>', 'API key for non-interactive setup')
+    .option('--url <url>', 'Index Network URL', DEFAULT_URL)
+    .option('--digest-time <HH:MM>', 'Digest time in 24-hour local time (non-interactive)')
+    .option('--no-digest', 'Disable daily digest (non-interactive)')
+    .option('--main-agent-tool-use <mode>', 'Main agent tool use: enabled | disabled (non-interactive)')
     .action(async (opts: ConnectOpts) => {
       const cfg = readOpenClawConfig();
-      try {
-        const updated = await runHeadlessSetup({
-          url: opts.url,
-          apiKey: opts.apiKey,
-          existingCfg: cfg,
-        });
-        fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
-        console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
-        console.log('Restart the gateway to apply changes: openclaw gateway restart');
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exitCode = 1;
+      if (opts.apiKey) {
+        try {
+          const updated = await runHeadlessSetup({
+            url: opts.url,
+            apiKey: opts.apiKey,
+            digestEnabled: opts.digest,
+            digestTime: opts.digestTime,
+            mainAgentToolUse: opts.mainAgentToolUse as 'enabled' | 'disabled' | undefined,
+            existingCfg: cfg,
+          });
+          fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+          fs.writeFileSync(CONFIG_PATH, JSON.stringify(updated, null, 2));
+          console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
+          console.log('Restart the gateway to apply changes: openclaw gateway restart');
+        } catch (err) {
+          console.error(err instanceof Error ? err.message : String(err));
+          process.exitCode = 1;
+        }
+      } else {
+        await runInteractiveSetup(cfg);
       }
     });
 }
@@ -427,47 +490,16 @@ export function registerSetupCli(
   // Guard against duplicate registration — OpenClaw may invoke the callback multiple times.
   if (program.commands?.some((c) => c.name() === 'setup')) return;
 
+  const deprecationWarning =
+    opts?.deprecationWarning ??
+    'Note: `openclaw index setup` is deprecated. Use `openclaw index connect` instead.';
+
   program
     .command('setup')
-    .description('Interactive setup wizard for Index Network')
+    .description('[Deprecated] Interactive setup wizard — use `openclaw index connect` instead')
     .action(async () => {
-      if (opts?.deprecationWarning) {
-        console.warn(opts.deprecationWarning);
-      }
-
+      console.warn(deprecationWarning);
       const cfg = readOpenClawConfig();
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-      const ctx: SetupContext = {
-        cfg,
-        prompt: async (label, opts) => {
-          const defaultSuffix = opts?.default ? ` [${opts.default}]` : '';
-          const answer = await rl.question(`${label}${defaultSuffix}: `);
-          return answer.trim() || opts?.default || '';
-        },
-        select: async (label, choices) => {
-          console.log(`\n${label}:`);
-          choices.forEach((c, i) => console.log(`  ${i + 1}. ${c.label}`));
-          const answer = await rl.question('Selection: ');
-          const idx = parseInt(answer.trim(), 10) - 1;
-          return choices[idx]?.value ?? '';
-        },
-        configSet: async (dotPath, value) => {
-          setConfigValue(cfg, dotPath, value);
-        },
-        fetchAgentId: defaultFetchAgentId,
-      };
-
-      try {
-        await runSetup(ctx);
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
-        console.log('\n✓ Config written to ~/.openclaw/openclaw.json');
-        console.log('Restart the gateway to apply changes: openclaw gateway restart');
-      } catch (err) {
-        console.error(err instanceof Error ? err.message : String(err));
-        process.exitCode = 1;
-      } finally {
-        rl.close();
-      }
+      await runInteractiveSetup(cfg);
     });
 }

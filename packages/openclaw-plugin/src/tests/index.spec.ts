@@ -63,11 +63,11 @@ describe('register(api)', () => {
     _resetForTesting();
   });
 
-  test('logs warning and does not start polling without agentId/apiKey', () => {
+  test('does not warn or start polling without agentId/apiKey (non-gateway context)', () => {
     const fake = buildFakeApi({});
     register(fake.api);
 
-    expect(fake.logger.warn).toHaveBeenCalled();
+    expect(fake.logger.warn).not.toHaveBeenCalled();
     expect(fake.logger.info).not.toHaveBeenCalled();
   });
 
@@ -158,12 +158,27 @@ describe('register(api)', () => {
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');
   });
 
-  test('warns user to run openclaw index setup when not configured', () => {
+  test('does not warn during CLI invocations (no "gateway" in argv)', () => {
     const fake = buildFakeApi({});
     register(fake.api);
 
-    const warnMsg = fake.logger.warn.mock.calls[0]?.[0];
-    expect(warnMsg).toContain('openclaw index setup');
+    const warnCalls = fake.logger.warn.mock.calls as string[][];
+    const configWarn = warnCalls.find((args) => args[0].includes('not configured'));
+    expect(configWarn).toBeUndefined();
+  });
+
+  test('warns in gateway context when not configured', () => {
+    const orig = process.argv;
+    process.argv = [...orig, 'gateway'];
+    try {
+      const fake = buildFakeApi({});
+      register(fake.api);
+
+      const warnMsg = (fake.logger.warn.mock.calls as string[][])[0]?.[0];
+      expect(warnMsg).toContain('openclaw index connect');
+    } finally {
+      process.argv = orig;
+    }
   });
 
   test('falls back to protocolUrl and warns about migration', () => {
@@ -176,7 +191,7 @@ describe('register(api)', () => {
     const warnCalls = fake.logger.warn.mock.calls as string[][];
     const migrationWarn = warnCalls.find((args) => args[0].includes('deprecated'));
     expect(migrationWarn).toBeTruthy();
-    expect(migrationWarn![0]).toContain('openclaw index setup');
+    expect(migrationWarn![0]).toContain('openclaw index connect');
 
     expect(fake.configSetCalls.length).toBe(1);
     expect((fake.configSetCalls[0].value as any).url).toBe('https://protocol.index.network/mcp');

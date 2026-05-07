@@ -8,7 +8,7 @@ The Index Network plugin for OpenClaw. Opportunities surface inside your existin
 
 ```bash
 openclaw plugins install @indexnetwork/openclaw-plugin
-openclaw index setup
+openclaw index connect
 ```
 
 The wizard asks for your Index Network URL and API key (generated at https://index.network/agents), then bootstraps everything else.
@@ -27,7 +27,7 @@ On first run the bootstrap skill registers the Index Network MCP server in your 
 - **Persistent session** (recommended) — paste a personal agent key generated at https://index.network/agents. Every tool call is authenticated automatically.
 - **Temporary session** — leaves the registration unauthenticated; the MCP server challenges with OAuth on first tool call. Only works if your runtime can open a browser window.
 
-After auth, the plugin starts its polling loops and registers the `openclaw index setup` CLI command. Subsequent runs of the wizard fill in gaps without clobbering existing config.
+After auth, the plugin starts its polling loops and registers the `openclaw index connect` CLI command. Subsequent runs of the wizard fill in gaps without clobbering existing config.
 
 ## Configuration
 
@@ -43,7 +43,7 @@ The plugin reads these keys under `plugins.entries.indexnetwork-openclaw-plugin.
 | `digestEnabled` | `true` | Set `false` to disable daily digest. |
 | `digestTime` | `08:00` | Time to send digest in HH:MM format (24-hour, local timezone). |
 
-Prefer `openclaw index setup` over manual edits — it resolves your `agentId` from the API key automatically and keeps `hooks.*` configured correctly for opportunity dispatch.
+Prefer `openclaw index connect` over manual edits — it resolves your `agentId` from the API key automatically and keeps `hooks.*` configured correctly for opportunity dispatch.
 
 ## Daily digest
 
@@ -72,8 +72,8 @@ Configure OpenClaw's log scrubbing at the workspace level if you want either pat
 **OAuth never opens a browser** — switch to persistent session mode.
 
 **Opportunities picked up but not rendered** — check OpenClaw gateway logs:
-- `Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset` → re-run `openclaw index setup` to bootstrap hooks.
-- `/hooks/agent returned 401: hooks.token rejected` → run `openclaw config unset hooks.token` and re-run setup.
+- `Cannot dispatch to main agent: hooks.enabled=false or hooks.token unset` → re-run `openclaw index connect` to bootstrap hooks.
+- `/hooks/agent returned 401: hooks.token rejected` → run `openclaw config unset hooks.token` and re-run `openclaw index connect`.
 - `/hooks/agent returned 404` → confirm `hooks.enabled=true` in `~/.openclaw/openclaw.json`.
 
 **Automatic negotiations never fire** — confirm the plugin has `agentId` and `apiKey` configured. Check OpenClaw gateway logs for poll errors. Verify your agent exists at https://index.network/agents.
