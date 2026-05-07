@@ -183,7 +183,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
                       {isPublic
                         ? <Globe className="w-3.5 h-3.5" />
                         : <Lock className="w-3.5 h-3.5" />}
-                      {isPublic ? 'Public' : 'Private'}
+                      {isPublic ? 'Public' : network.isExperiment ? 'Experiment' : 'Private'}
                     </span>
                     {network._count?.members !== undefined && (
                       <span className="flex items-center gap-1.5 text-xs text-gray-500">
