@@ -14,20 +14,39 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 4. Hash the set of returned opportunity IDs. Read `memory/heartbeat-state.json` and compare against `lastAmbientHash`. If the hash matches, reply `NO_REPLY` — no new signal since the previous pass.
 
 5. **Per-dispatch cap (the routing rule):**
-   - At most **3 direct opportunities** — `feedCategory: "connection"`, i.e. the receiver is a party of the opportunity but not the introducer.
-   - At most **3 introducer opportunities** — `feedCategory: "connector-flow"`, i.e. the receiver IS the introducer.
+   - At most **3 direct opportunities** — `feedCategory: "connection"`. The receiver is a party of the opportunity. The opportunity may or may not have an introducer; the only constraint is that the receiver is NOT the introducer. These are people the user might want to reach out to directly.
+   - At most **3 introducer opportunities** — `feedCategory: "connector-flow"`. The receiver IS the introducer between other parties. These are NOT surfaced as "people to message" — they are surfaced as **community intents the user might know someone for**.
    - If more than 3 of either type qualify, surface the highest-signal ones and let the rest fall to the morning digest.
 
 6. **Quality bar:** a candidate qualifies only when you can write a one-sentence reason that is specific to *this* user's situation and would not read identically for any other user. Generic framings ("interesting profile", "might be useful", "works in a related space") do not qualify; drop them.
 
 7. **If nothing qualifies after the bar:** reply `NO_REPLY`. Telling the user there's nothing worth interrupting them for is itself an interruption. The morning digest will sweep what's still pending.
 
-8. **If at least one qualifies:** send the message via the `message` tool, mimicking the *Ambient update* exemplar in `AGENTS.md`:
-   - Opener: `**New conversations worth starting**` if any direct candidates qualified, otherwise `**Where you can help your community**`.
-   - Flat prose with inline links. No bullet-list-of-links, no pipe rows, no tables, no link strips.
-   - For each **direct** (`connection`): link the person's name to `profileUrl`, embed `acceptUrl` on a verb phrase like "message {Name}", and append `&msg=` followed by a URI-encoded 2–4 sentence first-person greeting referencing something specific from the candidate's bio. The base URL + token portion stays untouched; only append the message parameter.
-   - For each **introducer** (`connector-flow`): embed `acceptUrl` on "make intro" or a fitting verb phrase. **No `&msg=`** — connector accepts trigger an introduction approval, not a direct conversation.
-   - If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting for you, let me know if you want to see them.`
+8. **If at least one qualifies:** send the message via the `message` tool. Compose one or both of the following sections (skip a section that has zero qualifying candidates), mimicking the *Ambient update* exemplar in `AGENTS.md`. Flat prose, inline links — no bullet-list-of-links, no pipe rows, no tables, no link strips.
+
+   **Section A — direct candidates** (only if any direct candidates qualified)
+
+   Header: `**New conversations worth starting**`
+
+   For each direct (`connection`):
+   - Link the person's name to `profileUrl`.
+   - Embed `acceptUrl` on a verb phrase like "message {Name}".
+   - Append `&msg=` followed by a URI-encoded 2–4 sentence first-person greeting referencing something specific from the candidate's bio. Base URL + token portion stays untouched.
+
+   **Section B — introducer candidates** (only if any introducer candidates qualified)
+
+   Header: `**Help your community find their opportunities**`
+
+   Lead-in line: `A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.`
+
+   For each introducer (`connector-flow`), the line is about the OTHER party's open intent — what they're looking for — NOT about the user's overlap with them. **The receiver (current user) is not connecting with this person; they are being asked whether they know someone who fits.**
+   - **Do NOT link the person's name** — render it in plain text. The card here is an intent, not a profile to message.
+   - Render the line as: `{Name} — {their need / what they're looking for, 1–2 sentences drawn from `mainText`}. {short connector verb phrase}, [make intro]({acceptUrl})`
+   - **No `&msg=` greeting** — connector accepts trigger an introduction approval, not a direct conversation.
+   - Example shape (from a well-formed exemplar):
+     `Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)`
+
+   If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting for you, let me know if you want to see them.`
 
 9. For every opportunity you mention in the message, call `confirm_opportunity_delivery(opportunityId, trigger="ambient")`. Do NOT confirm for opportunities you skipped.
 

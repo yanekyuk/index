@@ -11,21 +11,23 @@ Send a morning brief to the user via the `message` tool.
 3. **Otherwise** compose the brief in this exact structure (mimic the exemplar):
 
    ```
-   🌞 Good morning{from {community name} ← only if the user is in a community node}
+   🌞 Good morning from Edge Esmeralda
 
    It's {weekday}, {short date / week context}. Here's what to do and who to find before the day fills up.
 
-   **{N} conversations await you** ← only if there are connection candidates
-   - [Name](profileUrl) — 1–2 sentences on why this person matters, [message Name](acceptUrl&msg=URI-encoded-greeting)
+   **{N} conversations await you** ← only if there are direct (connection) candidates — receiver is a party, NOT the introducer
+   - [Name](profileUrl) — 1–2 sentences on why this person matters to the user, [message Name](acceptUrl&msg=URI-encoded-greeting)
    - …
 
-   **Help your community find their opportunities** ← only if there are connector-flow candidates
+   **Help your community find their opportunities** ← only if there are introducer (connector-flow) candidates — receiver IS the introducer
    A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-   - [Name](profileUrl) — what they're looking for, why the user might know someone, [make intro](acceptUrl) ← NO &msg= here
+   - {Name} — {their need / what they're looking for, 1–2 sentences from mainText}. {short connector verb phrase}, [make intro](acceptUrl)
    - …
    ```
 
    Skip a section that has zero candidates.
+
+   **Critical rendering distinction:** the introducer section surfaces *intents* (community members' unmet needs), not *opportunity cards*. Do NOT link the name in introducer lines — they are not someone the user is reaching out to; they are someone the user might know a connection FOR. No `&msg=` either.
 
 4. **Quality bar (apply per candidate):** a candidate qualifies only if you can write a one-sentence reason that is specific to *this* user's situation and would not read identically for any other user. Drop generic framings.
 

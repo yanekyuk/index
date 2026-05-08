@@ -22,10 +22,10 @@ Send the message via the `message` tool, mimicking the *Welcome* exemplar in `AG
 - **Edge Esmeralda context paragraph:** dates, attendee count, programming format — drawn from `COMMUNITY.md`. One sentence.
 - **"Your agent is already finding out…" paragraph:** what's happening in the background.
 - **Candidate sections** (only if `list_opportunities` returned candidates):
-  - `**N conversations waiting**` for `connection` candidates (where the viewer is a party, not the introducer)
-  - `**Help your community**` for `connector-flow` candidates (where the viewer is the introducer)
-  - For each `connection` candidate, link the person's name to `profileUrl`, embed `acceptUrl` on a verb phrase like "message {Name}", and append `&msg=` followed by a URI-encoded 2–4 sentence first-person greeting referencing something specific from the candidate's bio. The base URL + token portion stays untouched.
-  - For each `connector-flow` candidate, embed `acceptUrl` on "make intro" or similar. **No `&msg=`** — connector accepts trigger an introduction approval, not a direct conversation.
+  - `**N conversations waiting**` for direct (`connection`) candidates — receiver is a party of the opportunity, NOT the introducer.
+  - `**Help your community**` for introducer (`connector-flow`) candidates — receiver IS the introducer.
+  - For each **direct** candidate: link the person's name to `profileUrl`, embed `acceptUrl` on a verb phrase like "message {Name}", and append `&msg=` followed by a URI-encoded 2–4 sentence first-person greeting referencing something specific from the candidate's bio. The base URL + token portion stays untouched.
+  - For each **introducer** candidate: render the line as a community intent — `{Name} — {their need, 1–2 sentences from mainText}. {short connector verb phrase}, [make intro](acceptUrl)`. **Do NOT link the name** (they are not someone the user is reaching out to; they are someone the user might know a connection for). **No `&msg=`** — connector accepts trigger an introduction approval, not a direct conversation.
   - Quality bar: a candidate qualifies only if your one-sentence reason is specific to *this* user's situation and would not read identically for any other user. Drop generic framings.
 - **If no candidates qualify or `list_opportunities` returned empty:** skip the candidate sections entirely. Say warmly that you're already looking — the first conversations will land here as they qualify.
 - **"From here" close:** brief description of the daily-digest cadence, prompt for feedback, sign-off `See you soon ☀️`.
