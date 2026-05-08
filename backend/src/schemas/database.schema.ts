@@ -79,6 +79,34 @@ export const userSocials = pgTable('user_socials', {
     .where(sql`${table.label} <> 'custom'`),
 }));
 
+export const connectLinks = pgTable(
+  'connect_links',
+  {
+    code: text('code').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    opportunityId: text('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    greeting: text('greeting'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    uqKindPerRecipient: uniqueIndex('connect_links_kind_recipient_uq').on(
+      t.opportunityId,
+      t.userId,
+      t.kind,
+    ),
+    idxExpires: index('connect_links_expires_at_idx').on(t.expiresAt),
+  }),
+);
+
+export type ConnectLink = typeof connectLinks.$inferSelect;
+export type NewConnectLink = typeof connectLinks.$inferInsert;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Better Auth tables (sessions, accounts, verifications)
 // ═══════════════════════════════════════════════════════════════════════════════
