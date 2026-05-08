@@ -255,6 +255,10 @@ function getOrCreateMcpServer(): McpServer {
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     chatSession: deps.chatSession,
     deliveryLedger: deps.deliveryLedger,
+    mintConnectToken: deps.mintConnectToken,
+    mintConnectLink: deps.mintConnectLink,
+    frontendUrl: deps.frontendUrl,
+    apiBaseUrl: deps.apiBaseUrl,
     graphs,
   };
 
