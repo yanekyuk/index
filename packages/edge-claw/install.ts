@@ -135,17 +135,23 @@ function findTelegramSession(): { sessionKey: string; to: string } | null {
   } catch {
     return null;
   }
+  // Telegram bot delivery needs a numeric chatId — `telegram:<digits>`.
+  // Reject sessions whose `to` is the username form (`telegram:@handle`),
+  // a group placeholder (`telegram:@telegram`), or has no concrete `lastTo`.
+  // OpenClaw can register multiple Telegram sessions per peer (one per
+  // surface form); without this filter the most-recent entry can be a
+  // username-shaped session that never resolves to a real Bot API chat.
+  const TELEGRAM_NUMERIC = /^telegram:-?\d+$/;
   const candidates = Object.entries(map)
     .filter(([key, val]) => {
-      if (!key.startsWith("agent:main:telegram:")) return false;
-      const to = val.origin?.to ?? val.lastTo ?? "";
-      return to.startsWith("telegram:");
+      if (!key.startsWith("agent:main:telegram:direct:")) return false;
+      const to = val.lastTo ?? val.origin?.to ?? "";
+      return TELEGRAM_NUMERIC.test(to);
     })
     .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   const top = candidates[0];
   if (!top) return null;
-  const to = top[1].origin?.to ?? top[1].lastTo ?? "";
-  if (!to.startsWith("telegram:")) return null;
+  const to = top[1].lastTo ?? top[1].origin?.to ?? "";
   return { sessionKey: top[0], to };
 }
 
