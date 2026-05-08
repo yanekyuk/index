@@ -3,6 +3,7 @@ export interface BlogPost {
   title: string;
   date: string;
   description?: string;
+  meta_description?: string;
   image?: string;
   content?: string;
 }
@@ -11,6 +12,7 @@ interface Frontmatter {
   title?: string;
   date?: string;
   description?: string;
+  meta_description?: string;
   image?: string;
   [key: string]: string | undefined;
 }
@@ -121,6 +123,7 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
       title: data.title || 'Untitled',
       date: data.date || new Date().toISOString().split('T')[0],
       description: data.description,
+      meta_description: data.meta_description,
       content: transformedContent,
       image,
     };

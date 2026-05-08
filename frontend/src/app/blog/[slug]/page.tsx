@@ -147,21 +147,38 @@ const markdownComponents: Components = {
 export default function BlogPostPage() {
   const { slug } = useParams();
   const [post, setPost] = useState<BlogPost | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedSlug, setLoadedSlug] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+
+  const loading = loadedSlug !== slug;
 
   useEffect(() => {
     if (!slug) return;
-    setLoading(true);
     getPostBySlug(slug).then((result) => {
       if (result) {
         setPost(result);
       } else {
         setNotFound(true);
       }
-      setLoading(false);
+      setLoadedSlug(slug);
     });
   }, [slug]);
+
+  useEffect(() => {
+    if (!post) return;
+    const metaDesc = post.meta_description || post.description;
+    if (!metaDesc) return;
+    let tag = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!tag) {
+      tag = document.createElement('meta');
+      tag.name = 'description';
+      document.head.appendChild(tag);
+    }
+    tag.content = metaDesc;
+    return () => {
+      tag!.content = '';
+    };
+  }, [post]);
 
   if (loading) {
     return (
