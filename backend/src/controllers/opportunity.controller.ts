@@ -301,7 +301,7 @@ export class OpportunityController {
    * Body (optional): `{ kind?: 'connect' | 'approve_introduction' | 'outreach' }`.
    * Defaults to `'connect'` when omitted or unrecognized.
    *
-   * @returns `{ url: string }` — full short URL pointing at `${API_BASE_URL}/c/:code`.
+   * @returns `{ url: string }` — full short URL pointing at `${BASE_URL}/c/:code`.
    */
   @Post('/:id/connect-link')
   @UseGuards(AuthOrApiKeyGuard)
@@ -338,9 +338,9 @@ export class OpportunityController {
       greeting,
     });
 
-    const apiBaseUrl = (process.env.API_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
+    const apiBaseUrl = (process.env.BASE_URL || process.env.API_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
     if (!apiBaseUrl) {
-      return Response.json({ error: 'API_BASE_URL not configured' }, { status: 500 });
+      return Response.json({ error: 'BASE_URL not configured' }, { status: 500 });
     }
 
     return Response.json({ url: `${apiBaseUrl}/c/${code}` });

@@ -47,7 +47,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
-  const apiBaseUrl = (process.env.BASE_URL ?? process.env.APP_URL ?? 'https://protocol.index.network').replace(/\/+$/, '');
+  const apiBaseUrl = (process.env.BASE_URL || process.env.API_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
   const mintConnectLink: MintConnectLink = async ({ userId, opportunityId, kind, greeting }) => {
     const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
     return { url: `${apiBaseUrl}/c/${code}` };
