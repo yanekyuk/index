@@ -1,8 +1,8 @@
 # BOOTSTRAP.md — Coming online
 
-_You're Edge Claw. The installer has already wired up your tools and pre-staged the gateway config — your MCP server is registered, telegram tidepooling is off, and the workspace markdown bundle is in place._
+_You're Edge Claw. The installer has already wired up your tools and pre-staged everything — your MCP server is registered, telegram tidepooling is off, background cron jobs are running, and the workspace markdown bundle is in place. The gateway was restarted before this turn._
 
-What's left is **runtime**: greet the user, run their onboarding, install your background cron jobs, send a welcome message. Then delete this file.
+What's left is **runtime**: greet the user, run their onboarding, send a welcome message. Then delete this file.
 
 This is your one-time first-run ritual. Run it end-to-end. Until it's done, do not send unsolicited messages, do not call discovery tools, and do not run heartbeat tasks.
 
@@ -80,43 +80,7 @@ Call `complete_onboarding()`. This is required — do not skip it.
 
 Update `USER.md` with what you learned in this conversation. Capture only the things the user said directly — name, what to call them, timezone, anything they explicitly told you to remember. Do **not** paraphrase what `create_user_profile` returned; that lives behind the protocol. `USER.md` is the lived notebook, not a duplicate of the structured record.
 
-## Step 7 — Install your background cron jobs
-
-You need two persistent cron jobs: one for negotiation pickup (every minute, silent), one for the daily morning digest (08:00 host-local). Both run in isolated sessions with `--light-context` (the per-task prompts under `~/.openclaw/workspace/prompts/` are self-contained).
-
-Run, in your shell. First make sure `openclaw` is reachable (the npm-global bin may not be on the exec PATH by default):
-
-```bash
-export PATH="$HOME/.npm/bin:$HOME/.local/bin:$PATH"
-
-# Negotiation pickup — every minute, silent
-openclaw cron add \
-  --name "Edge Claw — negotiation pickup" \
-  --every 1m \
-  --session isolated \
-  --light-context \
-  --message "$(cat ~/.openclaw/workspace/prompts/negotiation.md)"
-
-# Daily morning digest — 08:00 host-local
-openclaw cron add \
-  --name "Edge Claw — daily digest" \
-  --cron "0 8 * * *" \
-  --session isolated \
-  --light-context \
-  --announce \
-  --channel last \
-  --message "$(cat ~/.openclaw/workspace/prompts/digest.md)"
-```
-
-Verify both jobs landed:
-
-```bash
-openclaw cron list
-```
-
-You should see both names in the output. If `cron list` reports zero jobs, the gateway either rejected your `cron add` (re-read the error) or `cron.enabled` is false in config. Tell the user — do not silently move on.
-
-## Step 8 — First ambient pass (welcome message)
+## Step 7 — First ambient pass (welcome message)
 
 Now run a single ambient pass to deliver the welcome message. **Do NOT repeat the broker intro from Step 1** — the welcome opener is just `Welcome to {community name}` as a standalone line, then go straight to the community context paragraph. The user already met you minutes ago; restating "I'm Edge Claw, your broker. I help the right people..." reads as filler.
 
@@ -124,7 +88,7 @@ Now run a single ambient pass to deliver the welcome message. **Do NOT repeat th
 2. **If the response is non-empty**, send a welcome message using the *Welcome* exemplar in `AGENTS.md` (single-line opener, community context paragraph, the two candidate sections, the "From here" close). For each opportunity you mention, call `confirm_opportunity_delivery(opportunityId, trigger="welcome")`.
 3. **If the response is empty**, send only the single-line opener, the community context paragraph, and the "From here" close — acknowledge warmly that you're already looking. The welcome always fires regardless of candidate count.
 
-## Step 9 — Delete this file
+## Step 8 — Delete this file
 
 You don't need a bootstrap script anymore. Run, in your shell:
 

@@ -15,10 +15,13 @@
  *     OpenClaw-plugin installs.
  *   - Copies the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
  *     IDENTITY, TOOLS, HEARTBEAT, prompts/*) into `~/.openclaw/workspace/`.
+ *   - Installs the two background cron jobs (negotiation pickup, daily digest)
+ *     so they are active before the agent's first turn.
+ *   - Restarts the gateway so all config changes and cron jobs take effect.
  *
  * Anything the agent should *do at runtime* (greet the user, create their
- * profile, install cron jobs, send the welcome message, delete BOOTSTRAP.md)
- * stays in BOOTSTRAP.md — the installer does not impersonate the agent.
+ * profile, send the welcome message, delete BOOTSTRAP.md) stays in
+ * BOOTSTRAP.md — the installer does not impersonate the agent.
  *
  * Usage:
  *   bun install.ts <INDEX_API_KEY>
@@ -86,6 +89,42 @@ function patchOpenclawConfig(apiKey: string): void {
   }
 }
 
+function installCronJobs(): void {
+  const npmBin = `${process.env.HOME}/.npm/bin`;
+  const localBin = `${process.env.HOME}/.local/bin`;
+  const env = { ...process.env, PATH: `${npmBin}:${localBin}:${process.env.PATH}` };
+  const workspaceDir = join(homedir(), ".openclaw", "workspace");
+
+  console.log("→ installing cron jobs");
+
+  execSync(
+    `openclaw cron add \
+      --name "Edge Claw — negotiation pickup" \
+      --every 1m \
+      --session isolated \
+      --light-context \
+      --message "$(cat ${workspaceDir}/prompts/negotiation.md)"`,
+    { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
+  );
+
+  execSync(
+    `openclaw cron add \
+      --name "Edge Claw — daily digest" \
+      --cron "0 8 * * *" \
+      --session isolated \
+      --light-context \
+      --announce \
+      --channel last \
+      --message "$(cat ${workspaceDir}/prompts/digest.md)"`,
+    { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
+  );
+}
+
+function restartGateway(): void {
+  console.log("→ restarting gateway");
+  execSync("openclaw gateway restart", { stdio: ["ignore", "ignore", "inherit"] });
+}
+
 function copyWorkspaceFiles(): void {
   if (!existsSync(SOURCE_WORKSPACE)) {
     console.error(`error: bundled workspace missing at ${SOURCE_WORKSPACE}`);
@@ -128,13 +167,14 @@ function main(): void {
 
   patchOpenclawConfig(apiKey);
   copyWorkspaceFiles();
+  installCronJobs();
+  restartGateway();
 
   console.log("");
   console.log("✓ installed");
   console.log("");
   console.log("next:");
-  console.log("  1. restart the gateway:  openclaw gateway restart");
-  console.log("  2. send any message in your chat — Edge Claw will run BOOTSTRAP.md");
+  console.log("  send any message in your chat — Edge Claw will run BOOTSTRAP.md");
 }
 
 main();
