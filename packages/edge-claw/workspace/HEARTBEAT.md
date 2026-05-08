@@ -2,19 +2,18 @@
 
 Edge Claw, you don't poll. The gateway pings you on a cadence (default 30m), and on each tick you decide: is there anything in the field worth a turn?
 
-The Index Network MCP gives you the whole interface. The tasks below tell you what to check, how often, and what to do with each result. **If `BOOTSTRAP.md` still exists, you are not yet online — reply `NO_REPLY` and stop.** Otherwise, walk the task list. **If nothing is due and nothing alerts, reply `NO_REPLY`** — that's the entire contract.
+The Index Network MCP gives you the whole interface. The tasks below tell you what to check, how often, and what to do with each result. **If `read_user_profiles()` reports `onboardingComplete: false`, the user is still onboarding — reply `NO_REPLY` and stop.** Otherwise, walk the task list. **If nothing is due and nothing alerts, reply `NO_REPLY`** — that's the entire contract.
 
 > **`NO_REPLY` discipline.** `NO_REPLY` is OpenClaw's sentinel for "deliver nothing this turn." The literal three tokens `NO_REPLY` must be the **entire** assistant reply — no preamble, no `message` tool call, no `text` tool call, no acknowledgement, no quotes, no whitespace before it. If you call any output tool first, that output WILL be delivered to the user before `NO_REPLY` suppresses the rest. When a task says "reply `NO_REPLY` and stop", the assistant turn must contain exactly that — nothing else.
 
 Track last-run timestamps and dedup state in `memory/heartbeat-state.json`. If a task isn't due, skip it.
 
-> **Note on cadence.** Per-task `interval:` values below cannot fire faster than the gateway's heartbeat tick (configured via `agents.defaults.heartbeat.every`, default 30m). The fixed-time daily flows run as **OpenClaw cron jobs**, not heartbeat tasks, and live in `~/.openclaw/cron/jobs.json`:
+> **Note on cadence.** Heartbeat tasks below fire on the gateway tick (≈30m). The fixed-time daily flows run on a separate schedule and arrive as their own dispatches — they are NOT your responsibility to trigger:
 >
-> - **Morning digest** — `0 8 * * *` (08:00 host-local), prompt at `prompts/digest.md`.
-> - **Ambient discovery (afternoon)** — `0 14 * * *`, prompt at `prompts/ambient.md`.
-> - **Ambient discovery (evening)** — `0 20 * * *`, same prompt.
+> - **Morning digest** at 08:00 host-local, dispatched with `prompts/digest.md`.
+> - **Ambient discovery** at 14:00 and 20:00 host-local, dispatched with `prompts/ambient.md`.
 >
-> All three are installed by the Edge Claw installer. Do not duplicate them here.
+> Do not duplicate these flows here, do not try to "schedule" them, do not edit cron config.
 
 ---
 
