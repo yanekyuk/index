@@ -36,7 +36,14 @@
  *   INDEX_API_KEY=... bun install.ts
  */
 
-import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,6 +101,73 @@ function patchOpenclawConfig(apiKey: string): void {
     console.log("→ migrated legacy mcp.servers.index-network");
   } catch {
     // Entry didn't exist — fine.
+  }
+}
+
+/**
+ * Reads `~/.openclaw/agents/main/sessions/sessions.json` and returns the
+ * most-recently-updated Telegram-bound session, or `null` if the user has
+ * not yet messaged Edge Claw on Telegram. Used to bind cron deliveries to
+ * the user's actual chat instead of `--channel last`, which fails for cron
+ * jobs because they run in fresh isolated sessions with no `lastTo`.
+ */
+function findTelegramSession(): { sessionKey: string; to: string } | null {
+  const sessionsPath = join(
+    homedir(),
+    ".openclaw",
+    "agents",
+    "main",
+    "sessions",
+    "sessions.json",
+  );
+  if (!existsSync(sessionsPath)) return null;
+  let map: Record<
+    string,
+    {
+      origin?: { provider?: string; to?: string };
+      lastChannel?: string;
+      lastTo?: string;
+      updatedAt?: number;
+    }
+  >;
+  try {
+    map = JSON.parse(readFileSync(sessionsPath, "utf-8"));
+  } catch {
+    return null;
+  }
+  const candidates = Object.entries(map)
+    .filter(([key, val]) => {
+      if (!key.startsWith("agent:main:telegram:")) return false;
+      const to = val.origin?.to ?? val.lastTo ?? "";
+      return to.startsWith("telegram:");
+    })
+    .sort(([, a], [, b]) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  const top = candidates[0];
+  if (!top) return null;
+  const to = top[1].origin?.to ?? top[1].lastTo ?? "";
+  if (!to.startsWith("telegram:")) return null;
+  return { sessionKey: top[0], to };
+}
+
+function bindCronsToTelegram(
+  session: { sessionKey: string; to: string },
+  env: NodeJS.ProcessEnv,
+): void {
+  console.log(`→ binding crons to ${session.to}`);
+  let raw: string;
+  try {
+    raw = execSync("openclaw cron list --json", { encoding: "utf8", env });
+  } catch {
+    console.warn("  warning: could not list crons to bind delivery");
+    return;
+  }
+  const parsed = JSON.parse(raw) as { jobs?: Array<{ id: string; name: string }> };
+  for (const job of parsed.jobs ?? []) {
+    if (!job.name.startsWith("Edge Claw")) continue;
+    execSync(
+      `openclaw cron edit ${job.id} --session-key ${session.sessionKey} --channel telegram --to ${session.to}`,
+      { stdio: ["ignore", "ignore", "inherit"], env },
+    );
   }
 }
 
@@ -207,13 +281,28 @@ function main(): void {
   patchOpenclawConfig(apiKey);
   copyWorkspaceFiles();
   installCronJobs();
-  restartGateway();
+
+  const npmBin = `${process.env.HOME}/.npm/bin`;
+  const localBin = `${process.env.HOME}/.local/bin`;
+  const env = { ...process.env, PATH: `${npmBin}:${localBin}:${process.env.PATH}` };
+  const session = findTelegramSession();
+  if (session) {
+    bindCronsToTelegram(session, env);
+    console.log("→ skipping gateway restart (Telegram session already active)");
+  } else {
+    restartGateway();
+  }
 
   console.log("");
   console.log("✓ installed");
   console.log("");
-  console.log("next:");
-  console.log("  send any message in your chat — Edge Claw will run BOOTSTRAP.md");
+  if (session) {
+    console.log("crons are bound to your Telegram chat — digest, ambient passes will deliver.");
+  } else {
+    console.log("next:");
+    console.log("  1. send any message to Edge Claw on Telegram");
+    console.log("  2. re-run `bun install.ts <key>` to bind cron deliveries to that chat");
+  }
 }
 
 main();
