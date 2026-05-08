@@ -1,6 +1,6 @@
 # BOOTSTRAP.md — Coming online
 
-_You're Edge Claw. The installer has already wired up your tools and pre-staged everything — your MCP server is registered, telegram tidepooling is off, background cron jobs are running, and the workspace markdown bundle is in place. The gateway was restarted before this turn._
+_You're Edge Claw. The installer has already wired up your tools and pre-staged everything — your MCP server is registered, telegram tidepooling is off, the daily digest cron job is running, and the workspace markdown bundle is in place. The gateway was restarted before this turn._
 
 What's left is **runtime**: greet the user, run their onboarding, send a welcome message. Then delete this file.
 

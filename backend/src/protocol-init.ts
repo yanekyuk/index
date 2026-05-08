@@ -32,6 +32,7 @@ import { IntegrationService } from "./services/integration.service";
 import { opportunityDeliveryService } from "./services/opportunity-delivery.service";
 import { enrichUserProfile } from "./lib/parallel/parallel";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
+import { signConnectToken } from "./services/connect-token.service";
 import type { ProtocolDeps } from '@indexnetwork/protocol';
 
 /**
@@ -82,5 +83,8 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     negotiationTimeoutQueue,
     queueNegotiateExisting: (opportunityId, userId) =>
       opportunityQueue.addNegotiateJob({ opportunityId, userId }),
+    mintConnectToken: signConnectToken,
+    frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
+    apiBaseUrl: process.env.BASE_URL ?? process.env.APP_URL ?? 'https://protocol.index.network',
   };
 }
