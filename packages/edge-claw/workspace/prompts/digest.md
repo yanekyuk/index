@@ -16,7 +16,7 @@ Send a morning brief to the user via the `message` tool.
    It's {weekday}, {short date / week context}. Here's what to do and who to find before the day fills up.
 
    **{N} conversations await you** ← only if there are direct (connection) candidates — receiver is a party, NOT the introducer
-   - [Name](profileUrl) — 1–2 sentences on why this person matters to the user, [message Name](acceptUrl&msg=URI-encoded-greeting)
+   - [Name](profileUrl) — 1–2 sentences on why this person matters to the user, [message Name](acceptUrl)
    - …
 
    **Help your community find their opportunities** ← only if there are introducer (connector-flow) candidates — receiver IS the introducer
@@ -29,13 +29,13 @@ Send a morning brief to the user via the `message` tool.
 
    **Critical rendering distinction for the introducer section:** these are *community intents* the user might know someone for — NOT opportunity cards.
    - DO link the person's name to their `profileUrl` (the same Telegram-or-index.network resolution as the direct section).
-   - Do NOT link the opportunity — no `acceptUrl`, no `&msg=`. The trailing `make intro` is plain text, not a hyperlink. The connect/accept link belongs only in the direct (`connection`) section. If the user wants to act on an introducer item, they reply to the agent and the agent handles it next turn.
+   - Do NOT link the opportunity — no `acceptUrl`. The trailing `make intro` is plain text, not a hyperlink. The connect/accept link belongs only in the direct (`connection`) section. If the user wants to act on an introducer item, they reply to the agent and the agent handles it next turn.
 
 4. **Quality bar (apply per candidate):** a candidate qualifies only if you can write a one-sentence reason that is specific to *this* user's situation and would not read identically for any other user. Drop generic framings.
 
 5. **URL rules:** weave links into prose. The strip-the-URLs test is the rule — if a reader removes every link, the prose still reads coherently. NO bullet-list-of-links, NO link tables, NO action strips, NO blockquote whose body is link labels.
 
-6. **Greeting composition (connection candidates only):** for each `connection` candidate, append `&msg=` (or `?text=` for `t.me`) followed by a URI-encoded short greeting (2–4 sentences, first-person from the user, references something specific from the candidate's bio). The base URL + token portion stays untouched; only append the message parameter. **Do NOT compose a greeting for `connector-flow` candidates** — those trigger an introduction approval, not a direct conversation.
+6. **acceptUrl handling (connection candidates only):** Embed `acceptUrl` verbatim on a short verb phrase. The URL is opaque — do not append, encode, or modify any part of it. The backend has already prepared the greeting that will pre-fill the conversation when the user clicks. **`connector-flow` candidates carry no `acceptUrl`** — those trigger an introduction approval, not a direct conversation.
 
 7. For every opportunity you mention in the brief, call `confirm_opportunity_delivery(opportunityId, trigger="digest")`. Do NOT confirm for opportunities you skipped.
 

@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/edge-claw",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "On-device personal broker for the Index Network — installer + workspace bundle for OpenClaw.",
   "license": "MIT",
   "type": "module",
