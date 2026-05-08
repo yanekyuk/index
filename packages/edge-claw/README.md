@@ -9,7 +9,6 @@ It is the successor to [`@indexnetwork/openclaw-plugin`](https://github.com/inde
 Once installed, Edge Claw:
 
 - **Runs onboarding** the first time you message it (greet → profile lookup → community discovery → first signal → `complete_onboarding` → silent capture of your platform handle).
-- **Picks up negotiation turns every minute** in an isolated cron session. Silent, no user-facing output. Decides `propose / counter / accept / reject / question` on your behalf using your profile, signals, seed assessment, and (if present) a discovery query.
 - **Sends a morning digest at 08:00 host-local time** with the connections worth your attention and the asks where you can help.
 - **Surfaces ambient discoveries** on the heartbeat tick — capped at 2/day, quality-bar gated, anything skipped lands in the digest.
 - **Notifies you when someone accepts** a connection on your behalf.
@@ -33,63 +32,54 @@ bun packages/edge-claw/install.ts <YOUR_INDEX_API_KEY>
 INDEX_API_KEY=<YOUR_INDEX_API_KEY> bun packages/edge-claw/install.ts
 ```
 
-The installer does three things and **does not impersonate the agent**:
+The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
-2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool "Tidepooling..." status drafts into your chat.
-3. Copies the workspace markdown bundle (`BOOTSTRAP.md`, `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`, `prompts/*.md`) into `~/.openclaw/workspace/`.
+2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
+3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
+4. Installs the daily digest cron job (`0 8 * * *`).
+5. Restarts the gateway so everything takes effect.
 
-After the installer:
+Send any message in your chat. Edge Claw runs `BOOTSTRAP.md` end-to-end on the first turn, sends a welcome message, and deletes `BOOTSTRAP.md` so subsequent sessions skip the ritual.
+
+## Reset
+
+To tear down Edge Claw and start fresh (leaves Telegram token, OpenRouter key, and gateway config untouched):
 
 ```bash
-openclaw gateway restart
+bun packages/edge-claw/reset.ts
 ```
 
-Send any message in your chat. Edge Claw runs `BOOTSTRAP.md` end-to-end on the first turn, installs its cron jobs, sends a welcome message, and deletes `BOOTSTRAP.md` so subsequent sessions skip the ritual.
+Then re-install:
+
+```bash
+bun packages/edge-claw/install.ts <YOUR_INDEX_API_KEY>
+```
+
+Pass `--wipe-user` to also remove `USER.md` and the `memory/` directory:
+
+```bash
+bun packages/edge-claw/reset.ts --wipe-user
+```
 
 ## Workspace layout
 
 | File | Purpose |
 | --- | --- |
-| `BOOTSTRAP.md` | One-time first-run ritual: greet, run onboarding, capture platform handle, install cron jobs, welcome, delete self. Gets deleted by the agent in the last step. |
-| `AGENTS.md` | Operating instructions + canonical voice exemplars (welcome, morning digest, ambient update, greeting drafts). The exemplars are the bar for tone, structure, and information density. |
+| `BOOTSTRAP.md` | One-time first-run ritual: greet, run onboarding, capture platform handle, welcome, delete self. Gets deleted by the agent in the last step. |
+| `AGENTS.md` | Operating instructions + canonical voice exemplars (welcome, morning digest, ambient update, greeting drafts). |
 | `SOUL.md` | Voice, banned vocabulary, "never name the plumbing", boundaries, continuity. |
 | `IDENTITY.md` | Edge Claw record (name, vibe, emoji). |
 | `USER.md` | Lived notebook — populated by `BOOTSTRAP.md` from the user's onboarding answers. |
 | `TOOLS.md` | MCP endpoint, full tool family list, output translation table, channel formatting, URL preservation rule. |
 | `HEARTBEAT.md` | Background tasks that run on the OpenClaw heartbeat tick: ambient discovery, accepted opportunities, signal freshness, memory curation. |
-| `prompts/negotiation.md` | Self-contained prompt for the every-1m negotiation pickup cron. |
 | `prompts/digest.md` | Self-contained prompt for the daily 08:00 digest cron. |
 
 ## Architecture
 
-Time-sensitive work runs as **OpenClaw cron jobs**, not heartbeat tasks:
-
-- The heartbeat tick is configurable but its default is 30m. Per-task `interval:` values in `HEARTBEAT.md` can't fire faster than the tick.
-- Cron has its own scheduler (`every 1m` for negotiation pickup, cron-string `0 8 * * *` for the digest), runs in isolated sessions with `--light-context` so each tick is cheap, and announces deliveries to the user's last channel.
-
-The two cron jobs are installed by `BOOTSTRAP.md` Step 7 via `openclaw cron add`. If the OpenClaw CLI's gateway scope check rejects the call, the CLI falls back to writing `~/.openclaw/cron/jobs.json` directly — the jobs still land.
+Time-sensitive work (the daily digest) runs as an **OpenClaw cron job**, not a heartbeat task — cron has its own scheduler and runs in isolated sessions with `--light-context` so each tick is cheap. The cron job is installed by `install.ts` and restarts with the gateway.
 
 The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick because 30-minute latency is acceptable for those flows.
-
-## Testing a from-scratch install
-
-```bash
-# Wipe what BOOTSTRAP.md owns
-openclaw config unset mcp.servers.index
-openclaw config unset channels.telegram.streaming.mode
-
-# Drop the workspace md bundle
-rm -rf ~/.openclaw/workspace/{BOOTSTRAP,AGENTS,SOUL,IDENTITY,USER,TOOLS,HEARTBEAT}.md ~/.openclaw/workspace/prompts
-
-# Re-run the installer
-bun packages/edge-claw/install.ts <YOUR_INDEX_API_KEY>
-
-# Restart and message your agent
-openclaw gateway restart
-```
-
-For a clean main-session test, also reset the OpenClaw main session via the Control UI — otherwise the agent may resume from a half-completed bootstrap turn.
 
 ## License
 
