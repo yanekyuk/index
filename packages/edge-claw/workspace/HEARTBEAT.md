@@ -8,30 +8,17 @@ The Index Network MCP gives you the whole interface. The tasks below tell you wh
 
 Track last-run timestamps and dedup state in `memory/heartbeat-state.json`. If a task isn't due, skip it.
 
-> **Note on cadence.** Per-task `interval:` values below cannot fire faster than the gateway's heartbeat tick (configured via `agents.defaults.heartbeat.every`, default 30m). The fixed-time **daily morning digest** (08:00 host-local) runs as an **OpenClaw cron job**, not a heartbeat task. It is installed by the Edge Claw installer and lives in `~/.openclaw/cron/jobs.json`. Do not duplicate it here.
+> **Note on cadence.** Per-task `interval:` values below cannot fire faster than the gateway's heartbeat tick (configured via `agents.defaults.heartbeat.every`, default 30m). The fixed-time daily flows run as **OpenClaw cron jobs**, not heartbeat tasks, and live in `~/.openclaw/cron/jobs.json`:
+>
+> - **Morning digest** — `0 8 * * *` (08:00 host-local), prompt at `prompts/digest.md`.
+> - **Ambient discovery (afternoon)** — `0 14 * * *`, prompt at `prompts/ambient.md`.
+> - **Ambient discovery (evening)** — `0 20 * * *`, same prompt.
+>
+> All three are installed by the Edge Claw installer. Do not duplicate them here.
 
 ---
 
 tasks:
-
-- name: ambient-discovery
-  interval: 30m
-  prompt: |
-    Real-time pass. Skipping is the default; surfacing is the exception. Interrupt the user only for candidates that genuinely earn the interruption — anything you skip lands in tonight's digest, so silence here is not a loss, it's correct routing.
-
-    1. Call `list_opportunities(status="pending", limit=10)`.
-    2. If empty, reply `NO_REPLY` and stop.
-    3. Hash the set of returned opportunity IDs. If it matches the hash you saved last tick (in `memory/heartbeat-state.json` under `lastAmbientHash`), reply `NO_REPLY` — no new signal.
-    4. Look up today's ambient delivery count from `memory/heartbeat-state.json` under `ambientDeliveredToday` (reset at host-local midnight). The cap is **2 ambient messages per day**. If the cap is exhausted, produce no output (no text, no acknowledgement, no confirm call). Reply `NO_REPLY`. The daily digest will sweep what's still pending.
-    5. **Per-dispatch cap:** at most 3 `connection` candidates and at most 3 `connector-flow` candidates in this single reply. If more than 3 of either type qualify, surface the highest-signal ones and let the rest fall to the digest.
-    6. **Quality bar:** a candidate qualifies only if you can write a one-sentence reason that is specific to *this* user's situation and would not read identically for any other user. Generic framings ("interesting profile", "might be useful", "works in a related space") do not qualify; drop them.
-    7. **If none qualify after the bar:** produce no output at all — no text, no acknowledgement, no "nothing for now" note. Telling the user there's nothing worth interrupting them for is itself an interruption. Reply `NO_REPLY`.
-    8. **If at least one qualifies:** mimic the *Ambient update* exemplar in `AGENTS.md`. Open with `**New conversations worth starting**` (or `**Where you can help your community**` if all qualifying candidates are `connector-flow`). Flat list, inline links — no bullet-list-of-links, no pipe rows, no tables.
-       - For each `connection`: link the person's name to `profileUrl`, embed `acceptUrl` on a verb phrase like "message {Name}", and append `&msg=` (or `?text=` for `t.me`) followed by a URI-encoded short greeting (2–4 sentences, first-person from the user, references something specific from the candidate's bio). Base URL + token portion stays untouched.
-       - For each `connector-flow`: embed `acceptUrl` on "make intro" or a fitting verb phrase. **No `&msg=`** — connector accepts trigger an introduction approval, not a direct conversation.
-    9. If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting for you, let me know if you want to see them.`
-    10. For every opportunity you mention, call `confirm_opportunity_delivery(opportunityId, trigger="ambient")`. Do **not** call confirm for opportunities you did not mention.
-    11. Update `memory/heartbeat-state.json` with the new `lastAmbientHash` and bump `ambientDeliveredToday`.
 
 - name: accepted-opportunities
   interval: 30m

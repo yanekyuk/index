@@ -10,7 +10,7 @@ Once installed, Edge Claw:
 
 - **Runs onboarding** the first time you message it (greet → profile lookup → community discovery → first signal → `complete_onboarding` → silent capture of your platform handle).
 - **Sends a morning digest at 08:00 host-local time** with the connections worth your attention and the asks where you can help.
-- **Surfaces ambient discoveries** on the heartbeat tick — capped at 2/day, quality-bar gated, anything skipped lands in the digest.
+- **Surfaces ambient discoveries twice daily at 14:00 and 20:00 host-local** — selective per pass: max 3 direct (you're a party) + 3 introducer (you'd make the intro), quality-bar gated. Anything skipped lands in tomorrow's digest.
 - **Notifies you when someone accepts** a connection on your behalf.
 - **Curates memory** every few days — distills daily notes into long-term `MEMORY.md`.
 
@@ -38,7 +38,7 @@ The installer:
 2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
 3. Bootstraps the gateway hooks subsystem (`hooks.enabled`, `hooks.token`, `hooks.allowRequestSessionKey`, `hooks.allowedSessionKeyPrefixes ⊇ ["agent:main:"]`) so the welcome can be dispatched without waiting for a chat turn. Reuses the existing `hooks.token` if one is already set.
 4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
-5. Installs the daily digest cron job (`0 8 * * *`).
+5. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
 6. Restarts the gateway so all config changes take effect.
 7. Dispatches the welcome ambient pass via `POST /hooks/agent`.
 
@@ -82,6 +82,7 @@ bun packages/edge-claw/reset.ts --wipe-user
 | `HEARTBEAT.md` | Background tasks that run on the OpenClaw heartbeat tick: ambient discovery, accepted opportunities, signal freshness, memory curation. |
 | `prompts/welcome.md` | Self-contained prompt for the welcome ambient pass — used by both `BOOTSTRAP.md` Step 6 and the install-time hooks dispatch. Self-dedupes via `memory/welcome-state.json` and gates on server-side `onboardingComplete`. |
 | `prompts/digest.md` | Self-contained prompt for the daily 08:00 digest cron. |
+| `prompts/ambient.md` | Self-contained prompt for the 14:00 + 20:00 ambient discovery crons. Selective: max 3 direct + 3 introducer per dispatch, dedup via `memory/heartbeat-state.json:lastAmbientHash`. |
 
 ## Architecture
 

@@ -20,8 +20,10 @@
  *   - Copies the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
  *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY, prompts/*) into
  *     `~/.openclaw/workspace/`.
- *   - Installs the daily digest cron job so it is active before the agent's
- *     first turn.
+ *   - Installs three cron jobs: the daily morning digest (08:00), and two
+ *     ambient discovery passes (14:00 and 20:00 host-local). Each pass is
+ *     selective — max 3 direct + 3 introducer opportunities per dispatch,
+ *     gated on the same quality bar.
  *   - Restarts the gateway so all config changes and cron jobs take effect.
  *   - Dispatches the welcome ambient pass via the gateway hooks endpoint.
  *     The welcome.md prompt itself checks `onboardingComplete` server-side:
@@ -194,6 +196,30 @@ function installCronJobs(): void {
       --announce \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/digest.md)"`,
+    { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
+  );
+
+  execSync(
+    `openclaw cron add \
+      --name "Edge Claw — ambient discovery (afternoon)" \
+      --cron "0 14 * * *" \
+      --session isolated \
+      --light-context \
+      --announce \
+      --channel last \
+      --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
+    { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
+  );
+
+  execSync(
+    `openclaw cron add \
+      --name "Edge Claw — ambient discovery (evening)" \
+      --cron "0 20 * * *" \
+      --session isolated \
+      --light-context \
+      --announce \
+      --channel last \
+      --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
   );
 }
