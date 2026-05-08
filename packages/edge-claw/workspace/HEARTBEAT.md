@@ -27,8 +27,8 @@ tasks:
     1. Call `list_opportunities(status="accepted_unnotified")` (or the equivalent — read the tool description).
     2. If empty, reply `NO_REPLY`.
     3. For each accepted opportunity:
-       - If `telegramHandle` is present, compose a contextual deep link in the format `https://t.me/{handle}?text={URI-encoded greeting}` where the greeting is a short first-person message from the user (2–4 sentences) referencing what they have in common based on the headline and summary. Embed it on a verb phrase like "send {Name} a message on Telegram".
-       - If `telegramHandle` is null, embed `conversationUrl` on a verb phrase like "continue the conversation".
+       - Embed `acceptUrl` on a verb phrase like "send {Name} a message". The URL is a short backend redirect — paste it verbatim, do not append query parameters, do not compose a `t.me` URL. The greeting and Telegram handle resolution happen server-side.
+       - If `acceptUrl` is missing, embed `conversationUrl` on "continue the conversation".
     4. Frame the notification warmly — this is good news.
     5. For every opportunity you mention, call `confirm_opportunity_delivery(opportunityId, trigger="accepted")`.
 
