@@ -154,9 +154,13 @@ function ensureHooksConfig(): string {
     });
   }
 
+  // OpenClaw requires "hook:" in the allowed prefixes when hooks.defaultSessionKey
+  // is unset; "agent:main:" is what dispatches into the user's main session.
   const prefixes = new Set(config.hooks?.allowedSessionKeyPrefixes ?? []);
-  if (!prefixes.has("agent:main:")) {
-    prefixes.add("agent:main:");
+  const requiredPrefixes = ["agent:main:", "hook:"];
+  const missing = requiredPrefixes.filter((p) => !prefixes.has(p));
+  if (missing.length > 0) {
+    for (const p of missing) prefixes.add(p);
     const prefixesJson = JSON.stringify([...prefixes]);
     execSync(`openclaw config set hooks.allowedSessionKeyPrefixes '${prefixesJson}' --strict-json`, {
       stdio: ["ignore", "ignore", "inherit"],
