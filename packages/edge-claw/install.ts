@@ -95,6 +95,19 @@ function installCronJobs(): void {
   const env = { ...process.env, PATH: `${npmBin}:${localBin}:${process.env.PATH}` };
   const workspaceDir = join(homedir(), ".openclaw", "workspace");
 
+  // Remove existing Edge Claw cron jobs before re-adding to stay idempotent.
+  try {
+    const raw = execSync("openclaw cron list --json", { encoding: "utf8", env });
+    const parsed = JSON.parse(raw) as { jobs?: Array<{ id: string; name: string }> };
+    for (const job of parsed.jobs ?? []) {
+      if (job.name.startsWith("Edge Claw")) {
+        execSync(`openclaw cron remove ${job.id}`, { stdio: "ignore", env });
+      }
+    }
+  } catch {
+    // Gateway may be mid-restart; proceed and let cron add handle any conflicts.
+  }
+
   console.log("→ installing cron jobs");
 
   execSync(
@@ -112,7 +125,11 @@ function installCronJobs(): void {
 
 function restartGateway(): void {
   console.log("→ restarting gateway");
-  execSync("openclaw gateway restart", { stdio: ["ignore", "ignore", "inherit"] });
+  try {
+    execSync("openclaw gateway restart", { stdio: ["ignore", "ignore", "inherit"] });
+  } catch {
+    console.warn("  warning: could not restart gateway — run manually: openclaw gateway restart");
+  }
 }
 
 function copyWorkspaceFiles(): void {

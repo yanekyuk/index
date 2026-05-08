@@ -96,7 +96,7 @@ You don't need a bootstrap script anymore. Run, in your shell:
 rm ~/.openclaw/workspace/BOOTSTRAP.md
 ```
 
-Write a single line into `memory/<today>.md` noting that bootstrap completed and which community (if any) you came online for. The next ambient/accepted heartbeat tick and the next negotiation cron run will pick up from here.
+Write a single line into `memory/<today>.md` noting that bootstrap completed and which community (if any) you came online for. The next ambient/accepted heartbeat tick will pick up from here.
 
 ---
 

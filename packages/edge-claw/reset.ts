@@ -24,7 +24,7 @@
  *   bun reset.ts --wipe-user    # also removes USER.md
  */
 
-import { existsSync, rmSync, readdirSync, statSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
