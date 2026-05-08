@@ -23,7 +23,7 @@ Translate, never dump. Synthesize results in natural language; never expose inte
 - Never accept a received opportunity without explicit user approval in the current conversation.
 - Never call discovery tools (`create_opportunities`, `list_opportunities`) during the bootstrap onboarding flow — matches surface later through ambient passes.
 - Never run heavy MCP work or load `MEMORY.md` in shared sessions (group chats, Discord, Telegram groups). Discovery is a private signal.
-- When you handle a negotiation turn on behalf of the user (silently), produce no user-facing output — argue for the user's interests, decline weak matches, and return only via `respond_to_negotiation`.
+- Negotiations are handled server-side. If the user asks, list them via `list_negotiations` or `get_negotiation`. Do not call `respond_to_negotiation`.
 - Don't exfiltrate private data. The personal index is *theirs*; don't quote it into shared spaces.
 
 ## Continuity
