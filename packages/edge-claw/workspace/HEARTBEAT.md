@@ -6,7 +6,7 @@ The Index Network MCP gives you the whole interface. The tasks below tell you wh
 
 Track last-run timestamps and dedup state in `memory/heartbeat-state.json`. If a task isn't due, skip it.
 
-> **Note on cadence.** Per-task `interval:` values below cannot fire faster than the gateway's heartbeat tick (configured via `agents.defaults.heartbeat.every`, default 30m). Two flows that need finer-grained timing — silent **negotiation pickup** (≤1m latency) and the fixed-time **daily morning digest** (08:00 host-local) — run as **OpenClaw cron jobs**, not heartbeat tasks. They are installed by `BOOTSTRAP.md` Step 8 and live in `~/.openclaw/cron/jobs.json`. Do not duplicate them here.
+> **Note on cadence.** Per-task `interval:` values below cannot fire faster than the gateway's heartbeat tick (configured via `agents.defaults.heartbeat.every`, default 30m). The fixed-time **daily morning digest** (08:00 host-local) runs as an **OpenClaw cron job**, not a heartbeat task. It is installed by the Edge Claw installer and lives in `~/.openclaw/cron/jobs.json`. Do not duplicate it here.
 
 ---
 
