@@ -36,17 +36,15 @@ The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-3. Bootstraps the gateway hooks subsystem (`hooks.enabled`, `hooks.token`, `hooks.allowRequestSessionKey`, `hooks.allowedSessionKeyPrefixes ⊇ ["agent:main:"]`) so the welcome can be dispatched without waiting for a chat turn. Reuses the existing `hooks.token` if one is already set.
-4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
-5. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
-6. Restarts the gateway so all config changes take effect.
-7. Dispatches the welcome ambient pass via `POST /hooks/agent`.
+3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
+4. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
+5. Restarts the gateway so all config changes take effect.
 
-The welcome behavior is server-driven via `read_user_profiles().onboardingComplete`:
+Send any message in your chat to bring Edge Claw online:
 
-- **Already onboarded** (e.g. you reinstalled or migrated machines): the dispatched welcome reads the server-side onboarding flag, sees you're done, and lands in your last-active chat session.
-- **Not yet onboarded**: the dispatched welcome no-ops (replies `NO_REPLY`). Send any message — Edge Claw runs `BOOTSTRAP.md` end-to-end and delivers the welcome at the end of the ritual.
-- **Onboarding got reset server-side**: the next session starts with `onboardingComplete: false`, the agent re-runs `BOOTSTRAP.md` (which is *not* deleted at the end of onboarding, by design), and the welcome fires again.
+- **Not yet onboarded**: the agent calls `read_user_profiles()` at session start, sees `onboardingComplete: false`, and runs `BOOTSTRAP.md` — which delivers the welcome at the end of the ritual.
+- **Already onboarded** (e.g. you reinstalled or migrated machines): the agent skips `BOOTSTRAP.md` and chats normally. The next ambient pass (14:00 / 20:00) or daily digest (08:00) picks you back up.
+- **Onboarding got reset server-side**: the next session sees `onboardingComplete: false` and re-runs `BOOTSTRAP.md` from the still-staged file (it's *not* deleted at the end of onboarding, by design).
 
 ## Reset
 
