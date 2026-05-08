@@ -11,12 +11,8 @@
  *   - Disables Telegram progress-draft "tidepooling" so the streaming-off
  *     setting is loaded on the very first gateway start (not deferred until
  *     the first bootstrap turn drains).
- *   - Cleans up legacy `mcp.servers.index-network` entries from pre-0.22.0
- *     OpenClaw-plugin installs.
- *   - Bootstraps the OpenClaw gateway hooks subsystem (hooks.enabled,
- *     hooks.token, hooks.allowRequestSessionKey, hooks.allowedSessionKeyPrefixes)
- *     so the installer can dispatch the welcome message via POST /hooks/agent
- *     without waiting for the user to chat first.
+ *   - Cleans up legacy `mcp.servers.index-network` entries from earlier
+ *     installs.
  *   - Copies the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
  *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY, prompts/*) into
  *     `~/.openclaw/workspace/`.
@@ -25,46 +21,31 @@
  *     selective — max 3 direct + 3 introducer opportunities per dispatch,
  *     gated on the same quality bar.
  *   - Restarts the gateway so all config changes and cron jobs take effect.
- *   - Dispatches the welcome ambient pass via the gateway hooks endpoint.
- *     The welcome.md prompt itself checks `onboardingComplete` server-side:
- *     if the user has not yet onboarded, the dispatch no-ops (the welcome
- *     will be delivered by BOOTSTRAP.md once the user finishes the ritual);
- *     if the user is already onboarded, the welcome lands in the
- *     last-active chat session.
  *
  * Anything the agent should *do at runtime* (greet the user, create their
  * profile, send the welcome message body) stays in BOOTSTRAP.md /
  * prompts/welcome.md — the installer does not impersonate the agent.
+ *
+ * The welcome message is delivered by `BOOTSTRAP.md` Step 6 at the end of
+ * onboarding for new users. Already-onboarded users who reinstall don't get
+ * an automatic welcome — the next ambient (14:00 / 20:00) or digest (08:00)
+ * pass picks them up.
  *
  * Usage:
  *   bun install.ts <INDEX_API_KEY>
  *   INDEX_API_KEY=... bun install.ts
  */
 
-import { existsSync, mkdirSync, copyFileSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
 
 const PROTOCOL_MCP_URL = "https://protocol.index.network/mcp";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SOURCE_WORKSPACE = join(SCRIPT_DIR, "workspace");
 const TARGET_WORKSPACE = join(homedir(), ".openclaw", "workspace");
-const OPENCLAW_CONFIG = join(homedir(), ".openclaw", "openclaw.json");
-const WELCOME_NAME = "Edge Claw — welcome";
-
-interface OpenclawConfig {
-  gateway?: { port?: number };
-  hooks?: {
-    enabled?: boolean;
-    token?: string;
-    path?: string;
-    allowRequestSessionKey?: boolean;
-    allowedSessionKeyPrefixes?: string[];
-  };
-}
 
 function readApiKey(): string {
   const fromArg = process.argv[2]?.trim();
@@ -89,15 +70,6 @@ function ensureOpenclawAvailable(): void {
   }
 }
 
-function readOpenclawConfig(): OpenclawConfig {
-  if (!existsSync(OPENCLAW_CONFIG)) return {};
-  try {
-    return JSON.parse(readFileSync(OPENCLAW_CONFIG, "utf8")) as OpenclawConfig;
-  } catch {
-    return {};
-  }
-}
-
 function patchOpenclawConfig(apiKey: string): void {
   const mcpEntry = JSON.stringify({
     url: PROTOCOL_MCP_URL,
@@ -115,59 +87,14 @@ function patchOpenclawConfig(apiKey: string): void {
     stdio: ["ignore", "ignore", "inherit"],
   });
 
-  // One-shot cleanup so users who installed the pre-0.22.0 OpenClaw-plugin do
-  // not end up with two MCP entries pointing at the same server.
+  // One-shot cleanup so users who installed earlier versions don't end up
+  // with two MCP entries pointing at the same server.
   try {
     execSync("openclaw config unset mcp.servers.index-network", { stdio: "ignore" });
     console.log("→ migrated legacy mcp.servers.index-network");
   } catch {
     // Entry didn't exist — fine.
   }
-}
-
-/**
- * Returns the (possibly newly-generated) hooks bearer token. Idempotent:
- * if `hooks.token` is already set in openclaw.json, reuse it so we don't
- * break a co-installed openclaw-plugin that also relies on it.
- */
-function ensureHooksConfig(): string {
-  const config = readOpenclawConfig();
-  const existingToken = config.hooks?.token;
-  const token = existingToken && existingToken.length > 0
-    ? existingToken
-    : randomBytes(32).toString("hex");
-
-  if (!existingToken) {
-    console.log("→ generating hooks.token");
-    execSync(`openclaw config set hooks.token '${token}'`, {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-  }
-
-  if (config.hooks?.enabled !== true) {
-    console.log("→ enabling hooks");
-    execSync("openclaw config set hooks.enabled true", { stdio: ["ignore", "ignore", "inherit"] });
-  }
-  if (config.hooks?.allowRequestSessionKey !== true) {
-    execSync("openclaw config set hooks.allowRequestSessionKey true", {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-  }
-
-  // OpenClaw requires "hook:" in the allowed prefixes when hooks.defaultSessionKey
-  // is unset; "agent:main:" is what dispatches into the user's main session.
-  const prefixes = new Set(config.hooks?.allowedSessionKeyPrefixes ?? []);
-  const requiredPrefixes = ["agent:main:", "hook:"];
-  const missing = requiredPrefixes.filter((p) => !prefixes.has(p));
-  if (missing.length > 0) {
-    for (const p of missing) prefixes.add(p);
-    const prefixesJson = JSON.stringify([...prefixes]);
-    execSync(`openclaw config set hooks.allowedSessionKeyPrefixes '${prefixesJson}' --strict-json`, {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-  }
-
-  return token;
 }
 
 function installCronJobs(): void {
@@ -269,77 +196,7 @@ function copyWorkspaceFiles(): void {
   console.log(`→ staged ${copied} workspace files into ${TARGET_WORKSPACE}`);
 }
 
-/**
- * Dispatch the welcome ambient pass via the gateway hooks endpoint. The
- * welcome.md prompt itself checks `onboardingComplete` and the in-memory
- * dedup flag — this dispatch is safe to run on every install:
- *   - first install / not-onboarded user → prompt returns NO_REPLY
- *     (BOOTSTRAP.md will deliver the welcome at the end of the ritual)
- *   - already-onboarded user → welcome lands in the last-active chat session
- *   - re-install of an already-welcomed user → prompt sees the dedup flag
- *     and returns NO_REPLY
- *
- * After waiting briefly for the gateway to come back up post-restart, we
- * post the welcome prompt to /hooks/agent. Failures are non-fatal — the
- * agent will deliver the welcome via BOOTSTRAP.md on the next chat turn.
- */
-async function dispatchWelcome(hooksToken: string): Promise<void> {
-  const config = readOpenclawConfig();
-  const port = config.gateway?.port;
-  if (!port) {
-    console.warn("  warning: gateway.port unknown — skipping welcome dispatch");
-    return;
-  }
-
-  const hooksPath = (config.hooks?.path ?? "/hooks").replace(/\/+$/, "");
-  const url = `http://127.0.0.1:${port}${hooksPath}/agent`;
-
-  const welcomeMd = readFileSync(join(TARGET_WORKSPACE, "prompts", "welcome.md"), "utf8");
-
-  // Wait up to 10s for the gateway to be reachable post-restart.
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    try {
-      const probe = await fetch(`http://127.0.0.1:${port}/healthz`, {
-        signal: AbortSignal.timeout(500),
-      });
-      if (probe.ok) break;
-    } catch {
-      // not yet
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  console.log("→ dispatching welcome");
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${hooksToken}`,
-        "idempotency-key": `edge-claw:welcome:${new Date().toISOString().slice(0, 10)}`,
-      },
-      body: JSON.stringify({
-        message: welcomeMd,
-        name: WELCOME_NAME,
-        wakeMode: "now",
-        deliver: true,
-        channel: "last",
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.warn(`  warning: welcome dispatch returned ${res.status}: ${detail.slice(0, 200)}`);
-    }
-  } catch (err) {
-    console.warn(
-      `  warning: welcome dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-}
-
-async function main(): Promise<void> {
+function main(): void {
   const apiKey = readApiKey();
   ensureOpenclawAvailable();
 
@@ -348,18 +205,15 @@ async function main(): Promise<void> {
   console.log("");
 
   patchOpenclawConfig(apiKey);
-  const hooksToken = ensureHooksConfig();
   copyWorkspaceFiles();
   installCronJobs();
   restartGateway();
-  await dispatchWelcome(hooksToken);
 
   console.log("");
   console.log("✓ installed");
   console.log("");
   console.log("next:");
-  console.log("  - if you've onboarded before, the welcome should land in your chat shortly");
-  console.log("  - otherwise, send any message — Edge Claw will run BOOTSTRAP.md and welcome you at the end");
+  console.log("  send any message in your chat — Edge Claw will run BOOTSTRAP.md");
 }
 
 main();
