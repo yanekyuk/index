@@ -982,6 +982,58 @@ export class OpportunityService {
 
     return normalizeTelegramHandle(row?.value);
   }
+
+  /**
+   * Telegram handle of the counterpart on an opportunity, given the viewer.
+   * Resolves the counterpart from the opportunity's actors JSONB (excluding
+   * the viewer and any introducer) and looks up their public Telegram handle
+   * in user_socials.
+   *
+   * @param opportunityId - The opportunity to inspect.
+   * @param viewerUserId - The user viewing the opportunity (excluded from counterpart pick).
+   * @returns The counterpart's normalized Telegram handle, or null if there is
+   *   no counterpart, no telegram social, or the opportunity is not found.
+   */
+  async getCounterpartTelegramHandleForOpp(opportunityId: string, viewerUserId: string): Promise<string | null> {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) return null;
+    const counterpart =
+      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== viewerUserId)
+      ?? opp.actors.find((a) => a.userId !== viewerUserId);
+    if (!counterpart) return null;
+    return this.getCounterpartTelegramHandle(counterpart.userId);
+  }
+
+  /**
+   * Conversation id (DM) for the (opportunity, viewer) pair.
+   *
+   * Resolves the counterpart from the opportunity's actors JSONB and returns
+   * the DM conversation id between the viewer and the counterpart via
+   * `getOrCreateDM` (idempotent — does not create a new chat row when one
+   * already exists for the user pair).
+   *
+   * @param opportunityId - The opportunity to inspect.
+   * @param viewerUserId - The user requesting the conversation.
+   * @returns The DM conversation id, or null if the opportunity has no
+   *   resolvable counterpart.
+   */
+  async getConversationIdForOpp(opportunityId: string, viewerUserId: string): Promise<string | null> {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) return null;
+    const counterpart =
+      opp.actors.find((a) => a.role !== 'introducer' && a.userId !== viewerUserId)
+      ?? opp.actors.find((a) => a.userId !== viewerUserId);
+    if (!counterpart) return null;
+    try {
+      const dm = await this.db.getOrCreateDM(viewerUserId, counterpart.userId);
+      return dm.id;
+    } catch (err) {
+      logger.error('[OpportunityService.getConversationIdForOpp] getOrCreateDM failed', {
+        opportunityId, viewerUserId, counterpartUserId: counterpart.userId, error: err,
+      });
+      return null;
+    }
+  }
 }
 
 export const opportunityService = new OpportunityService();
