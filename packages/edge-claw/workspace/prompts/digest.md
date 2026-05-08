@@ -21,13 +21,16 @@ Send a morning brief to the user via the `message` tool.
 
    **Help your community find their opportunities** ← only if there are introducer (connector-flow) candidates — receiver IS the introducer
    A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-   - {Name} — {their need / what they're looking for, 1–2 sentences from mainText}. {short connector verb phrase}, [make intro](acceptUrl)
+   - {Name} — {their need / what they're looking for, 1–2 sentences from mainText}. {short closing phrase}, make intro
    - …
    ```
 
    Skip a section that has zero candidates.
 
-   **Critical rendering distinction:** the introducer section surfaces *intents* (community members' unmet needs), not *opportunity cards*. Do NOT link the name in introducer lines — they are not someone the user is reaching out to; they are someone the user might know a connection FOR. No `&msg=` either.
+   **Critical rendering distinction for the introducer section:** these are *community intents* the user might know someone for — NOT opportunity cards. Render them as **plain prose only**:
+   - Do NOT link the person's name.
+   - Do NOT include any URL — no `acceptUrl`, no `profileUrl`, no `&msg=`. The trailing `make intro` is plain text, not a hyperlink. If the user wants to act on one, they reply to the agent and the agent handles it next turn. Surfacing the URL here is wrong.
+   - The connect/accept link **only** belongs in the direct (`connection`) section.
 
 4. **Quality bar (apply per candidate):** a candidate qualifies only if you can write a one-sentence reason that is specific to *this* user's situation and would not read identically for any other user. Drop generic framings.
 

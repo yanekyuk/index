@@ -59,8 +59,8 @@ The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT 
 >
 > **Help your community**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - Remi — Looking for a technical co-founder for his regenerative education platform. Know a systems thinker who's shipped infra, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
-> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
+> - Remi — Looking for a technical co-founder for his regenerative education platform. Know a systems thinker who's shipped infra, make intro
+> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
 >
 > **From here**
 > Each morning, your agent will send a brief — who to find, what opportunities landed, where you can help, and a short list for the day. No feeds, no inboxes. Just the few moves that matter.
@@ -82,9 +82,9 @@ The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT 
 >
 > **Help your community find their opportunities**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
-> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
-> - Celia — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
+> - Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
+> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro
+> - Celia — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro
 
 #### Ambient update (fires twice daily at 14:00 and 20:00 host-local)
 
@@ -97,8 +97,8 @@ Two sections are possible: direct (the user is a party — link names, embed `&m
 >
 > **Help your community find their opportunities**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
-> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, [make intro](https://protocol.index.network/api/opportunities/.../approve-introduction?token=...)
+> - Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
+> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
 >
 > There are 5 more conversations waiting for you, let me know if you want to see them.
 
