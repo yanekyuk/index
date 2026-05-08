@@ -338,10 +338,15 @@ export class OpportunityController {
       greeting,
     });
 
-    const apiBaseUrl = (process.env.BASE_URL || process.env.API_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
-    if (!apiBaseUrl) {
-      return Response.json({ error: 'BASE_URL not configured' }, { status: 500 });
-    }
+    // Public origin for short links. Falls back to a dev default; matches
+    // the precedence used by protocol-init.ts so MCP-minted and HTTP-minted
+    // URLs share the same host.
+    const apiBaseUrl = (
+      process.env.BASE_URL ||
+      process.env.API_BASE_URL ||
+      process.env.APP_URL ||
+      'http://localhost:3001'
+    ).replace(/\/+$/, '');
 
     return Response.json({ url: `${apiBaseUrl}/c/${code}` });
   }

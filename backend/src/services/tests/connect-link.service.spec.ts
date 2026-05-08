@@ -69,4 +69,44 @@ describe('connect-link service', () => {
   test('resolve returns null for unknown code', async () => {
     expect(await resolveConnectLink('NOPE000000')).toBeNull();
   });
+
+  test('re-mint after expiry rotates the row in place (no unique-constraint deadlock)', async () => {
+    // Mint a fresh link.
+    const a = await mintConnectLink({
+      userId: USER_ID,
+      opportunityId: OPP_ID,
+      kind: 'approve_introduction',
+      greeting: 'first greeting',
+    });
+
+    // Expire it directly in the DB (simulating 30-day TTL elapsed).
+    const past = new Date(Date.now() - 60 * 1000);
+    await db
+      .update(connectLinks)
+      .set({ expiresAt: past })
+      .where(eq(connectLinks.code, a.code));
+
+    // Resolver must reject the expired code.
+    expect(await resolveConnectLink(a.code)).toBeNull();
+
+    // Re-minting must succeed (rotates code + expiresAt + greeting in place)
+    // — without this, the unique index on (opp,user,kind) would deadlock the
+    // insert and the retry loop would throw after 3 attempts.
+    const b = await mintConnectLink({
+      userId: USER_ID,
+      opportunityId: OPP_ID,
+      kind: 'approve_introduction',
+      greeting: 'second greeting',
+    });
+
+    expect(b.code).toMatch(/^[A-Za-z0-9]{10}$/);
+    expect(b.code).not.toBe(a.code);
+    expect(b.greeting).toBe('second greeting');
+
+    // The fresh code resolves; the rotated-out code is gone.
+    const resolved = await resolveConnectLink(b.code);
+    expect(resolved?.userId).toBe(USER_ID);
+    expect(resolved?.greeting).toBe('second greeting');
+    expect(await resolveConnectLink(a.code)).toBeNull();
+  });
 });

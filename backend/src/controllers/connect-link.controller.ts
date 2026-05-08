@@ -46,6 +46,13 @@ export class ConnectLinkController {
     const code = params?.code;
     if (!code) return new Response('Missing code', { status: 400 });
 
+    // Codes are 10-char base62 by construction (see connect-link.service.ts).
+    // Reject malformed codes before hitting the DB to avoid wasted lookups
+    // and make brute-force scanning more expensive.
+    if (!/^[A-Za-z0-9]{10}$/.test(code)) {
+      return new Response(EXPIRED_HTML, { status: 404, headers: { 'Content-Type': 'text/html' } });
+    }
+
     const link = await resolveConnectLink(code);
     if (!link) {
       return new Response(EXPIRED_HTML, { status: 404, headers: { 'Content-Type': 'text/html' } });

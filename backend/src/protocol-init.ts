@@ -47,7 +47,15 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
-  const apiBaseUrl = (process.env.BASE_URL || process.env.API_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
+  // Public origin used to build short connect-links. Production must set one
+  // of BASE_URL / API_BASE_URL / APP_URL; the localhost fallback is dev-only
+  // and matches the documented default in backend/.env.example.
+  const apiBaseUrl = (
+    process.env.BASE_URL ||
+    process.env.API_BASE_URL ||
+    process.env.APP_URL ||
+    'http://localhost:3001'
+  ).replace(/\/+$/, '');
   const mintConnectLink: MintConnectLink = async ({ userId, opportunityId, kind, greeting }) => {
     const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
     return { url: `${apiBaseUrl}/c/${code}` };

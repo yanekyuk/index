@@ -55,17 +55,36 @@ describe('GET /c/:code — connect-link controller', () => {
     await db.delete(users).where(eq(users.id, USER_ID));
   });
 
-  test('unknown code returns 404 with HTML body', async () => {
+  test('unknown but well-formed code returns 404 with HTML body', async () => {
     const res = await controller.resolve(
-      makeRequest('/c/UNKNOWN0000'),
+      makeRequest('/c/Aa0Bb1Cc2D'),
       undefined,
-      { code: 'UNKNOWN0000' },
+      { code: 'Aa0Bb1Cc2D' },
     );
 
     expect(res.status).toBe(404);
     expect(res.headers.get('content-type')).toMatch(/text\/html/);
     const body = await res.text();
     expect(body.length).toBeGreaterThan(0);
+  });
+
+  test('malformed code (wrong length or non-base62) is rejected with 404', async () => {
+    // Wrong length
+    let res = await controller.resolve(
+      makeRequest('/c/TOOSHORT'),
+      undefined,
+      { code: 'TOOSHORT' },
+    );
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).toMatch(/text\/html/);
+
+    // Non-base62 characters
+    res = await controller.resolve(
+      makeRequest('/c/AAAA-BBBBB'),
+      undefined,
+      { code: 'AAAA-BBBBB' },
+    );
+    expect(res.status).toBe(404);
   });
 
   test('valid connect code is reachable (controller resolves the link)', async () => {

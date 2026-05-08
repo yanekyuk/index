@@ -41,6 +41,10 @@ export async function mintConnectLink({
 }: MintArgs): Promise<{ code: string; greeting: string | null }> {
   const now = new Date();
 
+  // Look up any existing row for this recipient — fresh OR expired. The
+  // unique index (opportunityId, userId, kind) doesn't filter on expiresAt,
+  // so an expired row would block fresh inserts. Reuse if fresh; rotate
+  // (UPDATE code + expiresAt + greeting) if expired.
   const [existing] = await db
     .select()
     .from(connectLinks)
@@ -49,15 +53,42 @@ export async function mintConnectLink({
         eq(connectLinks.opportunityId, opportunityId),
         eq(connectLinks.userId, userId),
         eq(connectLinks.kind, kind),
-        gt(connectLinks.expiresAt, now),
       ),
     )
     .limit(1);
 
-  if (existing) return { code: existing.code, greeting: existing.greeting };
+  if (existing && existing.expiresAt > now) {
+    return { code: existing.code, greeting: existing.greeting };
+  }
 
   const expiresAt = new Date(now.getTime() + TTL_DAYS * 24 * 60 * 60 * 1000);
 
+  if (existing) {
+    // Expired row — rotate code + greeting + expiresAt in place.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = generateCode();
+      try {
+        const [row] = await db
+          .update(connectLinks)
+          .set({ code, greeting: greeting ?? null, expiresAt })
+          .where(
+            and(
+              eq(connectLinks.opportunityId, opportunityId),
+              eq(connectLinks.userId, userId),
+              eq(connectLinks.kind, kind),
+            ),
+          )
+          .returning();
+        return { code: row.code, greeting: row.greeting };
+      } catch (err) {
+        // Possible PK collision on the rotated `code`. Retry with a fresh code.
+        if (attempt === 2) throw err;
+      }
+    }
+    throw new Error('mintConnectLink: exhausted code-rotation retries');
+  }
+
+  // No prior row — fresh insert.
   for (let attempt = 0; attempt < 3; attempt++) {
     const code = generateCode();
     try {
@@ -68,7 +99,7 @@ export async function mintConnectLink({
       return { code: row.code, greeting: row.greeting };
     } catch (err) {
       // PK collision (vanishingly unlikely) or unique-violation on (opp,user,kind)
-      // due to a concurrent mint. Re-query and reuse if a racing row exists.
+      // due to a concurrent mint. Re-query and reuse if a racing fresh row exists.
       const [racing] = await db
         .select()
         .from(connectLinks)
