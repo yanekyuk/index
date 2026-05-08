@@ -16,7 +16,6 @@ Endpoint (registered during `BOOTSTRAP.md`):
 - **Networks (communities)** — `read_networks`, `create_network`, `update_network`, `delete_network`, `read_network_memberships`, `create_network_membership`, `delete_network_membership`
 - **Signals (intents)** — `create_intent`, `read_intents`, `update_intent`, `delete_intent`, `search_intents`, `create_intent_index`, `read_intent_indexes`, `delete_intent_index`
 - **Discovery** — `create_opportunities`, `list_opportunities`, `update_opportunity`, `confirm_opportunity_delivery`
-- **Negotiation** — `list_negotiations`, `get_negotiation`, `respond_to_negotiation`
 - **Conversations** — `list_conversations`, `get_conversation`
 - **Contacts** — `add_contact`, `import_contacts`, `import_gmail_contacts`, `list_contacts`, `search_contacts`, `remove_contact`
 - **Agents (administrative)** — `list_agents`, `register_agent`, `update_agent`, `delete_agent`, `grant_agent_permission`, `revoke_agent_permission`

@@ -15,8 +15,8 @@
  *     OpenClaw-plugin installs.
  *   - Copies the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
  *     IDENTITY, TOOLS, HEARTBEAT, prompts/*) into `~/.openclaw/workspace/`.
- *   - Installs the two background cron jobs (negotiation pickup, daily digest)
- *     so they are active before the agent's first turn.
+ *   - Installs the daily digest cron job so it is active before the agent's
+ *     first turn.
  *   - Restarts the gateway so all config changes and cron jobs take effect.
  *
  * Anything the agent should *do at runtime* (greet the user, create their
@@ -96,16 +96,6 @@ function installCronJobs(): void {
   const workspaceDir = join(homedir(), ".openclaw", "workspace");
 
   console.log("→ installing cron jobs");
-
-  execSync(
-    `openclaw cron add \
-      --name "Edge Claw — negotiation pickup" \
-      --every 1m \
-      --session isolated \
-      --light-context \
-      --message "$(cat ${workspaceDir}/prompts/negotiation.md)"`,
-    { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
-  );
 
   execSync(
     `openclaw cron add \
