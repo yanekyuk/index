@@ -19,7 +19,7 @@ Use the runtime-provided startup context first. Do not re-read `AGENTS.md` / `SO
 2. Something is missing from the provided context
 3. You need a deeper follow-up read
 
-Do not pre-fetch network data on startup. Look it up only when you have a reason to (the user asks, a heartbeat task runs, a negotiation turn lands).
+Do not pre-fetch network data on startup. Look it up only when you have a reason to (the user asks, a heartbeat task runs, or a cron pass fires).
 
 ## Memory
 
@@ -53,14 +53,14 @@ The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT 
 > While you unpack, it's been working with other residents' agents in the background, surfacing the people who need what you're building, build adjacent to it, or want to fund it. Here's what landed in the first pass.
 >
 > **3 conversations waiting**
-> - [Maya](https://index.network/...) — Talk to them about agent memory for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya](https://t.me/...?text=...)
-> - [Theo](https://index.network/...) — How information surfaces in decentralized networks. The kind of thinking that sharpens protocol design — [see what you can learn from them](https://t.me/...?text=...)
-> - [Priya](https://index.network/...) — Community-owned data infrastructure. Aligned on ownership, complementary on discovery, could be interesting to [explore your overlap](https://t.me/...?text=...)
+> - [Maya](https://t.me/maya) — Talk to them about agent memory for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
+> - [Theo](https://t.me/theo) — How information surfaces in decentralized networks. The kind of thinking that sharpens protocol design — [see what you can learn from them](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
+> - [Priya](https://index.network/u/...) — Community-owned data infrastructure. Aligned on ownership, complementary on discovery, could be interesting to [explore your overlap](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
 >
 > **Help your community**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - Remi — Looking for a technical co-founder for his regenerative education platform. Know a systems thinker who's shipped infra, make intro
-> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
+> - [Remi](https://t.me/remi) — Looking for a technical co-founder for his regenerative education platform. Know a systems thinker who's shipped infra, make intro
+> - [Kai](https://t.me/kai) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
 >
 > **From here**
 > Each morning, your agent will send a brief — who to find, what opportunities landed, where you can help, and a short list for the day. No feeds, no inboxes. Just the few moves that matter.
@@ -76,15 +76,15 @@ The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT 
 > It's Thursday, Week 2 at Edge Esmeralda. Here's what to do and who to find before the day fills up.
 >
 > **3 conversations await you**
-> - [Maya](https://index.network/...) — Talk to them about agent memory layer for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya](https://t.me/...?text=...)
-> - [Theo](https://index.network/...) — Researching how information surfaces in decentralized networks. That's the type of thinking that sharpens protocol design, [see what you can learn from them](https://t.me/...?text=...)
-> - [Priya](https://index.network/...) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps](https://t.me/...?text=...)
+> - [Maya](https://t.me/maya) — Talk to them about agent memory layer for long-running workflows. Direct overlap with how Index handles persistent context, [message Maya](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
+> - [Theo](https://t.me/theo) — Researching how information surfaces in decentralized networks. That's the type of thinking that sharpens protocol design, [see what you can learn from them](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
+> - [Priya](https://index.network/u/...) — Building community-owned data infrastructure. Aligned on the ownership layer and complementary on discovery, could be interesting to [explore overlaps](https://protocol.index.network/api/opportunities/.../connect?token=...&msg=...)
 >
 > **Help your community find their opportunities**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
-> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro
-> - Celia — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro
+> - [Remi](https://t.me/remi) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
+> - [Kai](https://t.me/kai) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm open conversation, make intro
+> - [Celia](https://index.network/u/...) — Designing governance tooling for popup communities. Coordination, consent, collective decision-making. Point her at the right people, make intro
 
 #### Ambient update (fires twice daily at 14:00 and 20:00 host-local)
 
@@ -97,8 +97,8 @@ Two sections are possible: direct (the user is a party — link names, embed `&m
 >
 > **Help your community find their opportunities**
 > A few residents are looking for something specific. If you know someone who fits, a quick nudge goes a long way.
-> - Remi — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
-> - Kai — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
+> - [Remi](https://t.me/remi) — Looking for a technical co-founder for his regenerative education platform. Needs someone who thinks in systems and has shipped infra. Know anyone, make intro
+> - [Kai](https://t.me/kai) — Needs people deep in decentralized discovery — agent tooling, knowledge graphs, semantic search. Bring one to his 3pm, make intro
 >
 > There are 5 more conversations waiting for you, let me know if you want to see them.
 
