@@ -36,6 +36,7 @@ const CRON_NAME_PREFIX = "Edge Claw";
 const WORKSPACE_FILES = [
   "AGENTS.md",
   "BOOTSTRAP.md",
+  "COMMUNITY.md",
   "HEARTBEAT.md",
   "IDENTITY.md",
   "SOUL.md",

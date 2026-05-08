@@ -44,3 +44,4 @@ Send a morning brief to the user via the `message` tool.
 - Never expose internal IDs, raw JSON, or internal vocabulary in the brief.
 - Honor the strip-the-URLs test. If your draft fails it, rewrite.
 - If `list_opportunities` errors out, reply `NO_REPLY` — do not surface the error to the user from this run; the next day's cron will retry.
+- **`NO_REPLY` discipline.** When you reply `NO_REPLY`, those three tokens must be the **entire** final assistant message — no preamble, no extra `message`/`text` tool call, no acknowledgement. The "send the brief, then reply NO_REPLY" pattern means: emit the `message` tool call for the brief in one step, then in the next step the assistant message is exactly `NO_REPLY` and nothing else.

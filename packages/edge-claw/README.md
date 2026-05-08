@@ -36,11 +36,17 @@ The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
-4. Installs the daily digest cron job (`0 8 * * *`).
-5. Restarts the gateway so everything takes effect.
+3. Bootstraps the gateway hooks subsystem (`hooks.enabled`, `hooks.token`, `hooks.allowRequestSessionKey`, `hooks.allowedSessionKeyPrefixes ⊇ ["agent:main:"]`) so the welcome can be dispatched without waiting for a chat turn. Reuses the existing `hooks.token` if one is already set.
+4. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
+5. Installs the daily digest cron job (`0 8 * * *`).
+6. Restarts the gateway so all config changes take effect.
+7. Dispatches the welcome ambient pass via `POST /hooks/agent`.
 
-Send any message in your chat. Edge Claw runs `BOOTSTRAP.md` end-to-end on the first turn, sends a welcome message, and deletes `BOOTSTRAP.md` so subsequent sessions skip the ritual.
+The welcome behavior is server-driven via `read_user_profiles().onboardingComplete`:
+
+- **Already onboarded** (e.g. you reinstalled or migrated machines): the dispatched welcome reads the server-side onboarding flag, sees you're done, and lands in your last-active chat session.
+- **Not yet onboarded**: the dispatched welcome no-ops (replies `NO_REPLY`). Send any message — Edge Claw runs `BOOTSTRAP.md` end-to-end and delivers the welcome at the end of the ritual.
+- **Onboarding got reset server-side**: the next session starts with `onboardingComplete: false`, the agent re-runs `BOOTSTRAP.md` (which is *not* deleted at the end of onboarding, by design), and the welcome fires again.
 
 ## Reset
 
@@ -66,13 +72,15 @@ bun packages/edge-claw/reset.ts --wipe-user
 
 | File | Purpose |
 | --- | --- |
-| `BOOTSTRAP.md` | One-time first-run ritual: greet, run onboarding, capture platform handle, welcome, delete self. Gets deleted by the agent in the last step. |
-| `AGENTS.md` | Operating instructions + canonical voice exemplars (welcome, morning digest, ambient update, greeting drafts). |
+| `BOOTSTRAP.md` | First-run ritual: greet, run onboarding, capture platform handle, welcome. **Not** deleted at the end — the server's `onboardingComplete` flag is the source of truth, so the file stays around in case onboarding ever needs to be re-run. |
+| `AGENTS.md` | Operating instructions + canonical voice exemplars (welcome, morning digest, ambient update, greeting drafts). The first-run gate checks `onboardingComplete` from `read_user_profiles()`, not local file state. |
+| `COMMUNITY.md` | Edge Esmeralda context — dates, attendee count, programming format, design principles. The agent reads this when composing welcomes and digests. |
 | `SOUL.md` | Voice, banned vocabulary, "never name the plumbing", boundaries, continuity. |
 | `IDENTITY.md` | Edge Claw record (name, vibe, emoji). |
 | `USER.md` | Lived notebook — populated by `BOOTSTRAP.md` from the user's onboarding answers. |
 | `TOOLS.md` | MCP endpoint, full tool family list, output translation table, channel formatting, URL preservation rule. |
 | `HEARTBEAT.md` | Background tasks that run on the OpenClaw heartbeat tick: ambient discovery, accepted opportunities, signal freshness, memory curation. |
+| `prompts/welcome.md` | Self-contained prompt for the welcome ambient pass — used by both `BOOTSTRAP.md` Step 6 and the install-time hooks dispatch. Self-dedupes via `memory/welcome-state.json` and gates on server-side `onboardingComplete`. |
 | `prompts/digest.md` | Self-contained prompt for the daily 08:00 digest cron. |
 
 ## Architecture
