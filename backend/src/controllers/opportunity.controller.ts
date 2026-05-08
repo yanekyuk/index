@@ -6,6 +6,7 @@ import { assertAgentNetworkScope } from '../guards/agent-scope.guard';
 import { AuthGuard, AuthOrApiKeyGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { signConnectToken, verifyConnectToken } from '../services/connect-token.service';
+import { mintConnectLink, type ConnectLinkKind } from '../services/connect-link.service';
 import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
 
@@ -290,6 +291,59 @@ export class OpportunityController {
 
     const token = await signConnectToken(user.id, resolved.id);
     return Response.json({ token });
+  }
+
+  /**
+   * POST /opportunities/:id/connect-link — mint (or reuse) a short-link for the
+   * authenticated recipient. Backend generates the greeting from the rendered
+   * opportunity card and snapshots it on first mint. Returns the full public URL.
+   *
+   * Body (optional): `{ kind?: 'connect' | 'approve_introduction' | 'outreach' }`.
+   * Defaults to `'connect'` when omitted or unrecognized.
+   *
+   * @returns `{ url: string }` — full short URL pointing at `${API_BASE_URL}/c/:code`.
+   */
+  @Post('/:id/connect-link')
+  @UseGuards(AuthOrApiKeyGuard)
+  async createConnectLink(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const id = params?.id;
+    if (!id) {
+      return Response.json({ error: 'Missing opportunity id' }, { status: 400 });
+    }
+
+    let body: { kind?: string } = {};
+    try {
+      body = (await req.json()) as { kind?: string };
+    } catch {
+      // empty body OK
+    }
+    const requestedKind: ConnectLinkKind =
+      body.kind === 'approve_introduction'
+        ? 'approve_introduction'
+        : body.kind === 'outreach'
+          ? 'outreach'
+          : 'connect';
+
+    const resolved = await opportunityService.resolveId(id, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const greeting = await opportunityService.getGreetingForCard(resolved.id, user.id);
+
+    const { code } = await mintConnectLink({
+      userId: user.id,
+      opportunityId: resolved.id,
+      kind: requestedKind,
+      greeting,
+    });
+
+    const apiBaseUrl = (process.env.API_BASE_URL || process.env.APP_URL || '').replace(/\/+$/, '');
+    if (!apiBaseUrl) {
+      return Response.json({ error: 'API_BASE_URL not configured' }, { status: 500 });
+    }
+
+    return Response.json({ url: `${apiBaseUrl}/c/${code}` });
   }
 
   /**

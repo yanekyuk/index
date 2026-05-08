@@ -1,11 +1,11 @@
 import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
-import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, type PresenterDatabase, stripUuids, stripIntroducerMentions } from '@indexnetwork/protocol';
+import { OpportunityGraphFactory, HydeGraphFactory, HomeGraphFactory, MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue, HydeGenerator, LensInferrer, presentOpportunity, type UserInfo, canUserSeeOpportunity, validateOpportunityActors, persistOpportunities, getPrimaryActionLabel, OpportunityPresenter, gatherPresenterContext, getOrCreateDeliveryCardBatch, type PresenterDatabase, stripUuids, stripIntroducerMentions } from '@indexnetwork/protocol';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus, Embedder, HydeCache, OpportunityCache } from '@indexnetwork/protocol';
 import { and, eq } from 'drizzle-orm';
 
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { opportunityQueue } from '../queues/opportunity.queue';
@@ -65,6 +65,8 @@ export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
   private readonly presenter: OpportunityPresenter;
+  private readonly presenterDb: PresenterDatabase;
+  private readonly deliveryCache: RedisCacheAdapter;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -78,6 +80,8 @@ export class OpportunityService {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
     this.presenter = new OpportunityPresenter();
+    this.presenterDb = chatDatabaseAdapter as unknown as PresenterDatabase;
+    this.deliveryCache = new RedisCacheAdapter();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -116,6 +120,41 @@ export class OpportunityService {
   ): () => void {
     this.events.on(event, handler);
     return () => this.events.off(event, handler);
+  }
+
+  /**
+   * Render (or reuse cached) the delivery card for a given (opportunity, viewer)
+   * pair and return the snapshotted greeting string. Returns `''` when the
+   * presenter could not produce one (cache miss + LLM fallback path).
+   *
+   * @param opportunityId - The opportunity to render.
+   * @param viewerUserId - The user the card is being rendered for.
+   * @returns The greeting string, or `''` when unavailable.
+   */
+  async getGreetingForCard(opportunityId: string, viewerUserId: string): Promise<string> {
+    const opp = await this.db.getOpportunity(opportunityId);
+    if (!opp) return '';
+    try {
+      const cards = await getOrCreateDeliveryCardBatch(
+        this.deliveryCache,
+        this.presenter,
+        this.presenterDb,
+        [
+          {
+            id: opp.id,
+            status: opp.status,
+            actors: opp.actors as Array<{ userId: string; role: string }>,
+            interpretation: opp.interpretation,
+            detection: opp.detection,
+          },
+        ],
+        viewerUserId,
+      );
+      return cards.get(opportunityId)?.greeting ?? '';
+    } catch (err) {
+      logger.warn('[OpportunityService] getGreetingForCard failed', { opportunityId, error: err });
+      return '';
+    }
   }
 
   /**
