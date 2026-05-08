@@ -33,7 +33,8 @@ import { opportunityDeliveryService } from "./services/opportunity-delivery.serv
 import { enrichUserProfile } from "./lib/parallel/parallel";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
 import { signConnectToken } from "./services/connect-token.service";
-import type { ProtocolDeps } from '@indexnetwork/protocol';
+import { mintConnectLink as mintConnectLinkSvc } from "./services/connect-link.service";
+import type { MintConnectLink, ProtocolDeps } from '@indexnetwork/protocol';
 
 /**
  * Create the default ProtocolDeps wired to concrete adapters/services.
@@ -46,6 +47,11 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
+  const apiBaseUrl = (process.env.BASE_URL ?? process.env.APP_URL ?? 'https://protocol.index.network').replace(/\/+$/, '');
+  const mintConnectLink: MintConnectLink = async ({ userId, opportunityId, kind, greeting }) => {
+    const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
+    return { url: `${apiBaseUrl}/c/${code}` };
+  };
   return {
     database: chatDatabaseAdapter,
     embedder,
@@ -84,7 +90,8 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     queueNegotiateExisting: (opportunityId, userId) =>
       opportunityQueue.addNegotiateJob({ opportunityId, userId }),
     mintConnectToken: signConnectToken,
+    mintConnectLink,
     frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
-    apiBaseUrl: process.env.BASE_URL ?? process.env.APP_URL ?? 'https://protocol.index.network',
+    apiBaseUrl,
   };
 }

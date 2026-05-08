@@ -52,7 +52,8 @@ export class ConnectLinkController {
     }
 
     const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
-    const greeting = link.greeting ?? '';
+    const greeting = link.greeting
+      ?? (await opportunityService.getGreetingForCard(link.opportunityId, link.userId));
 
     if (link.kind === 'connect') {
       const result = await opportunityService.startChat(link.opportunityId, link.userId);
