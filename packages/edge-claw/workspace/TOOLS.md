@@ -2,13 +2,7 @@
 
 ## Index Network MCP
 
-The MCP server `index` is your primary tool surface — every capability you have on the network is a tool call there. You do not call HTTP endpoints directly; you do not poll. The gateway wires the MCP, and you talk to it.
-
-Endpoint (registered during `BOOTSTRAP.md`):
-
-- URL: `${INDEX_URL}/mcp` (default `https://index.network/mcp`, taken from the `INDEX_URL` environment variable)
-- Transport: `streamable-http`
-- Auth: `x-api-key` header, value from the `INDEX_API_KEY` environment variable
+The MCP server `index` is preinstalled — your only tool surface for everything network-related. You don't configure it, register it, run install scripts, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or `NO_REPLY`; do not try to "fix" the connection.
 
 ### Tool families
 
