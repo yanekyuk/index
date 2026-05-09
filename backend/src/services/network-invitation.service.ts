@@ -41,6 +41,14 @@ export interface ResendInviteResult {
   email: string;
 }
 
+export interface EnsureMembershipResult {
+  user: { id: string; email: string };
+  /** Raw API key. Null when rotateKey=false and the user already had a scoped agent. */
+  apiKey: string | null;
+  created: boolean;
+  alreadyMember: boolean;
+}
+
 export const SCOPED_INVITED_AGENT_ACTIONS = [
   'manage:profile',
   'manage:intents',
@@ -50,6 +58,48 @@ export const SCOPED_INVITED_AGENT_ACTIONS = [
 ] as const;
 
 class NetworkInvitationService {
+  /**
+   * Idempotent membership-and-agent provisioning without any email side-effects.
+   * Used by the headless signup path. invite() wraps this and adds email delivery.
+   *
+   * @param params.rotateKey - When true and a scoped agent already exists, revokes
+   *   its tokens and mints a fresh one (returns new key). When false, returns
+   *   apiKey=null for users who already have a scoped agent.
+   */
+  async ensureMembership(params: {
+    networkId: string;
+    email: string;
+    name?: string;
+    rotateKey?: boolean;
+  }): Promise<EnsureMembershipResult> {
+    const email = params.email.toLowerCase().trim();
+    const rotateKey = params.rotateKey ?? false;
+
+    const { user, created } = await this.findOrCreateUser(email, params.name);
+    await ensurePersonalNetwork(user.id);
+    const { alreadyMember } = await this.joinNetwork(user.id, params.networkId);
+
+    const agentId = await this.findScopedAgentId(user.id, params.networkId);
+    if (agentId) {
+      if (rotateKey) {
+        await agentTokenAdapter.revokeAllForAgent(agentId);
+        const token = await agentTokenAdapter.create(user.id, {
+          name: 'Personal Agent API Key',
+          agentId,
+        });
+        return { user, apiKey: token.key, created, alreadyMember };
+      }
+      logger.info('[NetworkInvitation] Skipping provisioning; scoped agent already exists', {
+        userId: user.id,
+        networkId: params.networkId,
+      });
+      return { user, apiKey: null, created, alreadyMember };
+    }
+
+    const { apiKey } = await this.provisionScopedAgent(user.id, params.networkId);
+    return { user, apiKey, created, alreadyMember };
+  }
+
   /**
    * Idempotent invite. Ensures user, personal network, and network membership
    * always exist; provisions a network-scoped personal agent and API key
@@ -62,37 +112,36 @@ class NetworkInvitationService {
    */
   async invite(params: InviteParams): Promise<InviteResult> {
     const email = params.email.toLowerCase().trim();
-    const { user, created } = await this.findOrCreateUser(email, params.name);
 
-    await ensurePersonalNetwork(user.id);
-    const { alreadyMember } = await this.joinNetwork(user.id, params.networkId);
+    const result = await this.ensureMembership({
+      networkId: params.networkId,
+      email,
+      name: params.name,
+      rotateKey: false,
+    });
 
-    const hasAgent = await this.hasScopedAgent(user.id, params.networkId);
-    if (hasAgent) {
-      logger.info('[NetworkInvitation] Skipping provisioning; scoped agent already exists', {
-        userId: user.id,
+    if (result.apiKey) {
+      const networkName = await this.lookupNetworkName(params.networkId);
+      const connectCommand = buildConnectCommand(result.apiKey);
+      await this.dispatchInvitationEmail({
+        to: email,
+        networkName,
+        apiKey: result.apiKey,
+        connectCommand,
+      });
+      logger.info('[NetworkInvitation] Provisioned scoped agent + invited', {
+        userId: result.user.id,
         networkId: params.networkId,
       });
-      return { user, apiKey: null, created, alreadyMember, agentProvisioned: false };
     }
 
-    const apiKey = await this.provisionScopedAgent(user.id, params.networkId);
-    const networkName = await this.lookupNetworkName(params.networkId);
-    const connectCommand = buildConnectCommand(apiKey);
-
-    await this.dispatchInvitationEmail({
-      to: email,
-      networkName,
-      apiKey,
-      connectCommand,
-    });
-
-    logger.info('[NetworkInvitation] Provisioned scoped agent + invited', {
-      userId: user.id,
-      networkId: params.networkId,
-    });
-
-    return { user, apiKey, created, alreadyMember, agentProvisioned: true };
+    return {
+      user: result.user,
+      apiKey: result.apiKey,
+      created: result.created,
+      alreadyMember: result.alreadyMember,
+      agentProvisioned: result.apiKey !== null,
+    };
   }
 
   private async findScopedAgentId(userId: string, networkId: string): Promise<string | null> {
@@ -108,26 +157,6 @@ class NetworkInvitationService {
       ))
       .limit(1);
     return row?.agentId ?? null;
-  }
-
-  private async hasScopedAgent(userId: string, networkId: string): Promise<boolean> {
-    // Inner-join on agents and require deletedAt IS NULL: agentDatabaseAdapter
-    // .deleteAgent() soft-deletes the agent and hard-deletes its api keys but
-    // leaves the agent_permissions row intact. Without the join, a user whose
-    // agent has been deleted would short-circuit re-provisioning and end up
-    // with no working key.
-    const [row] = await db
-      .select({ id: schema.agentPermissions.id })
-      .from(schema.agentPermissions)
-      .innerJoin(schema.agents, eq(schema.agents.id, schema.agentPermissions.agentId))
-      .where(and(
-        eq(schema.agentPermissions.userId, userId),
-        eq(schema.agentPermissions.scope, 'network'),
-        eq(schema.agentPermissions.scopeId, networkId),
-        isNull(schema.agents.deletedAt),
-      ))
-      .limit(1);
-    return Boolean(row);
   }
 
   private async lookupNetworkName(networkId: string): Promise<string> {
@@ -275,7 +304,8 @@ class NetworkInvitationService {
       apiKey = token.key;
       rotated = true;
     } else {
-      apiKey = await this.provisionScopedAgent(memberId, networkId);
+      const provision = await this.provisionScopedAgent(memberId, networkId);
+      apiKey = provision.apiKey;
       rotated = false;
     }
 
@@ -304,7 +334,7 @@ class NetworkInvitationService {
    * invites and (via experimentService) for existing users re-signing through
    * the master-key headless endpoint.
    */
-  async provisionScopedAgent(userId: string, networkId: string): Promise<string> {
+  async provisionScopedAgent(userId: string, networkId: string): Promise<{ apiKey: string; agentId: string }> {
     const agent = await agentDatabaseAdapter.createAgent({
       ownerId: userId,
       name: 'Personal Agent',
@@ -321,7 +351,7 @@ class NetworkInvitationService {
       name: 'Personal Agent API Key',
       agentId: agent.id,
     });
-    return token.key;
+    return { apiKey: token.key, agentId: agent.id };
   }
 }
 
