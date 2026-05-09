@@ -1495,6 +1495,21 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  async getUserPersonalNetworkIds(userId: string): Promise<string[]> {
+    const result = await db
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+      .where(
+        and(
+          eq(schema.networkMembers.userId, userId),
+          eq(schema.networks.isPersonal, true),
+          isNull(schema.networks.deletedAt)
+        )
+      );
+    return result.map((r) => r.networkId);
+  }
+
   async getIntent(intentId: string) {
     const rows = await db
       .select({

@@ -144,11 +144,11 @@
         "@indexnetwork/cli-linux-x64": "0.10.2",
       },
     },
-    "packages/edge-claw": {
-      "name": "@indexnetwork/edge-claw",
-      "version": "0.2.11",
+    "packages/edgeclaw": {
+      "name": "@edge-city/edgeclaw",
+      "version": "0.1.0",
       "bin": {
-        "edge-claw": "./install.ts",
+        "edgeclaw": "./install/install.ts",
       },
     },
     "packages/openclaw-plugin": {
@@ -372,6 +372,8 @@
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
+    "@edge-city/edgeclaw": ["@edge-city/edgeclaw@workspace:packages/edgeclaw"],
+
     "@emnapi/core": ["@emnapi/core@1.10.0", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw=="],
 
     "@emnapi/runtime": ["@emnapi/runtime@1.10.0", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA=="],
@@ -491,8 +493,6 @@
     "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.10.2", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-HdeBHgQ3P4qyUdINxwtARjTWmALDiQ0HRMSeqsNRf5PuFXgnds/PuVkvRsq2lXR6uauzDNnnYCtNSIg80DjNNw=="],
 
     "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.10.2", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-pkg48o34b5OJtrRPqGgs0PzfZl43VYXSM4AtWqsJ01fuE+dt0H0K7uA+j1OGeCZd46aaSD1pvxtqRsrbfb8LEw=="],
-
-    "@indexnetwork/edge-claw": ["@indexnetwork/edge-claw@workspace:packages/edge-claw"],
 
     "@indexnetwork/openclaw-plugin": ["@indexnetwork/openclaw-plugin@workspace:packages/openclaw-plugin"],
 

@@ -15,6 +15,8 @@ export const QUEUE_NAME = 'intent-hyde-queue';
 export interface IntentJobData {
   intentId: string;
   userId: string;
+  /** When set, intent indexing is restricted to this network plus the user's personal networks. */
+  networkScopeId?: string;
 }
 
 /** Payload for jobs that delete HyDE documents for an intent. */
@@ -28,7 +30,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkMemberContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getUserIndexIds' | 'getUserPersonalNetworkIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkMemberContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -178,7 +180,7 @@ export class IntentQueue implements IntentGraphQueue {
     data: IntentJobData,
     overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string }) => Promise<unknown> }
   ): Promise<void> {
-    const { intentId, userId } = data;
+    const { intentId, userId, networkScopeId } = data;
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
     if (!intent) {
@@ -189,7 +191,13 @@ export class IntentQueue implements IntentGraphQueue {
     this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
     let assignedIndexCount = 0;
     try {
-      const userIndexIds = await db.getUserIndexIds(userId);
+      let userIndexIds = await db.getUserIndexIds(userId);
+      if (networkScopeId) {
+        const personalNetworkIds = await db.getUserPersonalNetworkIds(userId);
+        const allowed = new Set([networkScopeId, ...personalNetworkIds]);
+        userIndexIds = userIndexIds.filter((id) => allowed.has(id));
+        this.logger.info('[IntentHyde] Scope filter applied', { intentId, networkScopeId, kept: userIndexIds.length });
+      }
       this.logger.info('[IntentHyde] User indexes found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
 
       // Fetch prompts for each index to determine which need scoring
