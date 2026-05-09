@@ -1,6 +1,6 @@
 # HEARTBEAT.md — your background rhythm
 
-Edge Claw, you don't poll. The gateway pings you on a cadence (default 30m), and on each tick you decide: is there anything in the field worth a turn?
+EdgeClaw, you don't poll. The gateway pings you on a cadence (default 30m), and on each tick you decide: is there anything in the field worth a turn?
 
 The Index protocol MCP gives you the whole interface. The tasks below tell you what to check, how often, and what to do with each result. **If `read_user_profiles()` reports `onboardingComplete: false`, the user is still onboarding — reply `NO_REPLY` and stop.** Otherwise, walk the task list. **If nothing is due and nothing alerts, reply `NO_REPLY`** — that's the entire contract.
 
