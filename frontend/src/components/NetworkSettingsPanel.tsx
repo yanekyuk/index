@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera, Upload, Download, X } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera, Upload, Download, X, RotateCw } from 'lucide-react';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useNetworks } from '@/contexts/APIContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
 import { Member } from '@/services/networks';
@@ -40,6 +41,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const { indexes, updateIndex, removeIndex } = useNetworksState();
   const { success, error, info } = useNotifications();
   const api = useAuthenticatedAPI();
+  const { user: currentUser } = useAuthContext();
 
   const currentIndex = indexes?.find(idx => idx.id === index.id) || index;
 
@@ -57,6 +59,8 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const [isDeletingIndex, setIsDeletingIndex] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [resendTarget, setResendTarget] = useState<Member | null>(null);
+  const [isResendInFlight, setIsResendInFlight] = useState(false);
   const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
 
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(currentIndex.permissions?.joinPolicy === 'anyone');
@@ -313,6 +317,21 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
       console.error('Error removing member:', err);
+    }
+  };
+
+  const handleConfirmResend = async () => {
+    if (!resendTarget) return;
+    setIsResendInFlight(true);
+    try {
+      const result = await indexesService.resendInvite(index.id, resendTarget.id);
+      success(`Invitation resent to ${result.email}${result.rotated ? ' (key rotated)' : ''}`);
+      setResendTarget(null);
+    } catch (err) {
+      console.error('Resend invite failed', err);
+      error('Failed to resend invitation');
+    } finally {
+      setIsResendInFlight(false);
     }
   };
 
@@ -790,14 +809,23 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     </span>
                   )}
                   {!member.permissions.includes('owner') && (
-                    <>
-                      <span className="group-hover:hidden text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 bg-gray-200 text-gray-700">
-                        {member.permissions.includes('member') ? 'Member' : 'Contact'}
-                      </span>
-                      <button onClick={() => handleRemoveMember(member.id)} className="hidden group-hover:block p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </>
+                    <span className="group-hover:hidden text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 bg-gray-200 text-gray-700">
+                      {member.permissions.includes('member') ? 'Member' : 'Contact'}
+                    </span>
+                  )}
+                  {currentIndex.isExperiment && (
+                    <button
+                      onClick={() => setResendTarget(member)}
+                      title="Resend invitation"
+                      className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {!member.permissions.includes('owner') && (
+                    <button onClick={() => handleRemoveMember(member.id)} className="hidden group-hover:block p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   )}
                 </div>
               ))}
@@ -913,6 +941,28 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
               <AlertDialog.Cancel asChild><Button variant="outline">Cancel</Button></AlertDialog.Cancel>
               <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
                 {isDeletingIndex ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+
+      <AlertDialog.Root open={resendTarget !== null} onOpenChange={(open) => { if (!open) setResendTarget(null); }}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
+              Resend invitation to {resendTarget?.id === currentUser?.id ? 'yourself' : (resendTarget?.name || 'this member')}?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+              This rotates {resendTarget?.id === currentUser?.id ? 'your' : 'their'} access key. The previous key will stop working immediately.
+            </AlertDialog.Description>
+            <div className="flex justify-end gap-2">
+              <AlertDialog.Cancel asChild>
+                <Button variant="outline" disabled={isResendInFlight}>Cancel</Button>
+              </AlertDialog.Cancel>
+              <Button onClick={handleConfirmResend} disabled={isResendInFlight}>
+                {isResendInFlight ? 'Sending...' : 'Resend'}
               </Button>
             </div>
           </AlertDialog.Content>
