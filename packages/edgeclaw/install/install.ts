@@ -290,10 +290,8 @@ function main(): void {
   const session = findTelegramSession();
   if (session) {
     bindCronsToTelegram(session, env);
-    console.log("→ skipping gateway restart (Telegram session already active)");
-  } else {
-    restartGateway();
   }
+  restartGateway();
 
   console.log("");
   console.log("✓ installed");
