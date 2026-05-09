@@ -332,6 +332,38 @@ export class NetworkController {
   }
 
   /**
+   * Rotate a member's network-scoped api key and email it to them. Owner-only,
+   * experiment networks only. Self-target is allowed (an owner can rotate their
+   * own key).
+   */
+  @Post('/:id/members/:memberId/resend-invite')
+  @UseGuards(AuthOrApiKeyGuard)
+  async resendInviteToMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    try {
+      const result = await networkInvitationService.resendInvite({
+        networkId: params.id,
+        memberId: params.memberId,
+      });
+      return Response.json(result, { status: 200 });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg === 'Member not found') {
+        return Response.json({ error: 'Member not found' }, { status: 404 });
+      }
+      logger.error('Resend invite failed', { networkId: params.id, memberId: params.memberId, error: msg });
+      return Response.json({ error: 'Resend failed' }, { status: 500 });
+    }
+  }
+
+  /**
    * Import members from parsed CSV data. Owner-only, experiment networks only.
    */
   @Post('/:id/members/import')
