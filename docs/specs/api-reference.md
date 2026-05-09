@@ -1744,34 +1744,49 @@ Leave an index. Members (non-owners) can leave.
 
 ### POST /api/networks/:id/signup
 
-Headless experiment-network signup. Provisions or retrieves a user account and returns an API key bound to a network-scoped personal agent.
+Headless experiment-network signup. Provisions or re-provisions a user account and returns an API key bound to a network-scoped personal agent. Never sends email.
 
-**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key (shared out of band).
+**Auth**: `ExperimentMasterKeyGuard` — `x-api-key` header containing the network's master key (issued once at network creation, stored by the caller).
 
 **Path params**:
-- `id` — Network ID (must be an experiment network).
+- `id` — Network ID (must be an experiment network with a master key set).
 
-**Request body**:
-```json
-{ "email": "attendee@example.com" }
-```
-
-**Response 201** (new account created):
+**Request body** (`email` required; all other fields optional):
 ```json
 {
-  "user": { "id": "user-uuid", "email": "attendee@example.com" },
-  "apiKey": "sk_live_...",
-  "connectCommand": "openclaw index connect --api-key sk_live_..."
+  "email": "attendee@example.com",
+  "name": "Alice Example",
+  "bio": "Independent researcher.",
+  "location": "Healdsburg, CA",
+  "socials": [
+    { "label": "telegram", "value": "@alice" }
+  ]
 }
 ```
 
-**Response 200** (existing account): Same shape; a fresh API key is issued on every call — store the latest one.
+Validation caps: `name` 200 chars, `bio` 2000 chars, `location` 200 chars, `socials` ≤ 32 entries, each `label` 64 chars, each `value` 256 chars. `socials` labels are open vocabulary.
 
-**Idempotent**: Repeated calls for the same email return the same user. A fresh API key is issued each time, so store the latest returned `apiKey` and re-resolve the `agentId` from it via `GET /api/agents/me`.
+**Response 201** (new user created):
+```json
+{
+  "user":   { "id": "uuid", "email": "attendee@example.com" },
+  "apiKey": "ix_...",
+  "mcpServer": {
+    "name": "index",
+    "url": "https://protocol.index.network/mcp",
+    "headers": { "x-api-key": "ix_..." }
+  }
+}
+```
+
+**Response 200** (existing user): Same shape. A fresh API key is always returned; the previous key for this user+network is revoked on each call.
+
+**Idempotency**: Same email = same user. Key is rotated on every call — store the latest returned `apiKey`. No orphan agent records: repeated calls reuse the same scoped agent and rotate its token.
 
 **Errors**:
-- `400` — Missing or malformed email.
-- `401` — Invalid or missing master key.
+- `400` — Missing/invalid email; oversized field; malformed `socials` array.
+- `401` — Missing `x-api-key` header.
+- `403` — Master key invalid; network not experiment type; network deleted.
 
 ---
 
