@@ -2,8 +2,8 @@ import { and, eq } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
+import { buildMcpServerConfig } from '../lib/mcp/mcp-config';
 import * as schema from '../schemas/database.schema';
-import { buildConnectCommand } from '../lib/openclaw/connect-command';
 
 /**
  * Experiment is a thin facade over the network-invitation flow: signup uses
@@ -27,27 +27,48 @@ export interface ImportRow {
   socials: { label: string; value: string }[];
 }
 
+export interface SignupPayload {
+  email: string;
+  name?: string;
+  bio?: string;
+  location?: string;
+  socials?: { label: string; value: string }[];
+}
+
 export interface ExperimentSignupResult {
   user: { id: string; email: string };
   apiKey: string;
-  /** Ready-to-run command to configure a self-hosted OpenClaw plugin. */
-  connectCommand: string;
+  mcpServer: {
+    name: string;
+    url: string;
+    headers: Record<string, string>;
+  };
   created: boolean;
 }
 
 class ExperimentService {
-  async signup(networkId: string, email: string): Promise<ExperimentSignupResult> {
-    const normalizedEmail = email.toLowerCase().trim();
+  async signup(networkId: string, payload: SignupPayload): Promise<ExperimentSignupResult> {
+    const normalizedEmail = payload.email.toLowerCase().trim();
     logger.verbose('[ExperimentService] Signup attempt', { networkId, email: normalizedEmail });
 
-    const result = await networkInvitationService.invite({ networkId, email: normalizedEmail });
+    const result = await networkInvitationService.ensureMembership({
+      networkId,
+      email: normalizedEmail,
+      name: payload.name,
+      rotateKey: true,
+    });
 
-    let apiKey: string;
-    if (result.apiKey) {
-      apiKey = result.apiKey;
-    } else {
-      // Existing user re-signing up via master key — issue a fresh scoped key.
-      apiKey = await networkInvitationService.provisionScopedAgent(result.user.id, networkId);
+    // rotateKey=true guarantees apiKey is non-null
+    const apiKey = result.apiKey!;
+
+    if (payload.name || payload.bio || payload.location || (payload.socials && payload.socials.length > 0)) {
+      await this.applyProfilePatch(result.user.id, {
+        email: normalizedEmail,
+        name: payload.name,
+        bio: payload.bio,
+        location: payload.location,
+        socials: payload.socials ?? [],
+      });
     }
 
     logger.info('[ExperimentService] Signup complete', {
@@ -57,9 +78,9 @@ class ExperimentService {
     });
 
     return {
-      user: { id: result.user.id, email: result.user.email },
+      user: result.user,
       apiKey,
-      connectCommand: buildConnectCommand(apiKey),
+      mcpServer: buildMcpServerConfig(apiKey),
       created: result.created,
     };
   }
