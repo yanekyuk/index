@@ -34,6 +34,10 @@ jobs:
             repo: indexnetwork/cli
           - prefix: packages/claude-plugin
             repo: indexnetwork/claude-plugin
+          - prefix: packages/edgeclaw
+            repo: Edge-City/edgeclaw
+            source_branch: main
+            target_branch: main
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,6 +51,12 @@ jobs:
         id: gate
         run: |
           set -euo pipefail
+          SOURCE_BRANCH="${{ matrix.source_branch || '' }}"
+          if [ -n "$SOURCE_BRANCH" ] && [ "$GITHUB_REF_NAME" != "$SOURCE_BRANCH" ]; then
+            echo "${{ matrix.prefix }} syncs only from $SOURCE_BRANCH — skipping $GITHUB_REF_NAME."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           BEFORE="${{ github.event.before }}"
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "First push on this branch — running."
@@ -78,6 +88,10 @@ jobs:
             exit 1
           fi
           BRANCH="${GITHUB_REF_NAME}"
+          TARGET_BRANCH="${{ matrix.target_branch || '' }}"
+          if [ -z "$TARGET_BRANCH" ]; then
+            TARGET_BRANCH="$BRANCH"
+          fi
           echo "Splitting ${{ matrix.prefix }} on $BRANCH..."
           SPLIT_SHA=$(git subtree split --prefix="${{ matrix.prefix }}" "$BRANCH")
           echo "Split SHA: $SPLIT_SHA"
@@ -89,5 +103,5 @@ jobs:
           # history diverges (always the case after squash/rebase merges).
           git push --force \
             "https://x-access-token:${GH_PAT}@github.com/${{ matrix.repo }}.git" \
-            "${SPLIT_SHA}:refs/heads/${BRANCH}"
-          echo "✓ pushed to ${{ matrix.repo }} ($BRANCH)"
+            "${SPLIT_SHA}:refs/heads/${TARGET_BRANCH}"
+          echo "✓ pushed to ${{ matrix.repo }} ($TARGET_BRANCH)"
