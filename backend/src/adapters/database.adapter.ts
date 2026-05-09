@@ -1495,20 +1495,30 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  /**
+   * Returns the user's own personal network ID(s). Sourced from `personal_networks`
+   * (PK on userId) rather than joining `network_members` × `isPersonal=true`, so
+   * contact memberships on other users' personal indexes are excluded by
+   * construction. Fail-soft (returns []) to match {@link getUserIndexIds} since
+   * this runs in the HyDE worker path.
+   */
   async getUserPersonalNetworkIds(userId: string): Promise<string[]> {
-    const result = await db
-      .select({ networkId: schema.networkMembers.networkId })
-      .from(schema.networkMembers)
-      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
-      .where(
-        and(
-          eq(schema.networkMembers.userId, userId),
-          eq(schema.networks.isPersonal, true),
-          isNull(schema.networkMembers.deletedAt),
-          isNull(schema.networks.deletedAt)
-        )
-      );
-    return result.map((r) => r.networkId);
+    try {
+      const result = await db
+        .select({ networkId: schema.personalNetworks.networkId })
+        .from(schema.personalNetworks)
+        .innerJoin(schema.networks, eq(schema.personalNetworks.networkId, schema.networks.id))
+        .where(
+          and(
+            eq(schema.personalNetworks.userId, userId),
+            isNull(schema.networks.deletedAt)
+          )
+        );
+      return result.map((r) => r.networkId);
+    } catch (error: unknown) {
+      logger.error('ChatDatabaseAdapter.getUserPersonalNetworkIds error', { error: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
   }
 
   async getIntent(intentId: string) {
