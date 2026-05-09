@@ -4,6 +4,18 @@ The Agent Village experience for **Edge Esmeralda 2026** (May 30 – Jun 27, Hea
 
 EdgeClaw is the public skills package and onboarding scripts that any agent (OpenClaw via InstaClaw, Hermes, Claude Code, custom) loads to participate in the Edge Esmeralda Agent Village. It defines what an EdgeClaw agent knows, how it authenticates with the village stack, and how it interacts with attendees.
 
+## What you get
+
+Once installed, EdgeClaw:
+
+- **Runs onboarding** the first time you message it (greet → profile lookup → community discovery → first signal → `complete_onboarding` → silent capture of your platform handle).
+- **Sends a morning digest at 08:00 host-local time** with the connections worth your attention and the asks where you can help.
+- **Surfaces ambient discoveries twice daily at 14:00 and 20:00 host-local** — selective per pass: max 3 direct (you're a party) + 3 introducer (you'd make the intro), quality-bar gated. Anything skipped lands in tomorrow's digest.
+- **Notifies you when someone accepts** a connection on your behalf.
+- **Curates memory** every few days — distills daily notes into long-term `MEMORY.md`.
+
+EdgeClaw never names the plumbing in chat. You see EdgeClaw and (when relevant) your community.
+
 ## Architecture
 
 EdgeClaw plugs into the EdgeOS portal (the identity + spine), with InstaClaw as the recommended runtime for non-technical attendees. Backends the agent calls: Geo (knowledge graph), Index (negotiation + ambient discovery), and EdgeOS APIs (calendar, directory).
@@ -76,6 +88,12 @@ Pass `--wipe-user` to also remove `USER.md` and the `memory/` directory:
 bun packages/edgeclaw/install/reset.ts --wipe-user
 ```
 
+## How it runs
+
+Time-sensitive work (the daily digest) runs as an **OpenClaw cron job**, not a heartbeat task — cron has its own scheduler and runs in isolated sessions with `--light-context` so each tick is cheap. The cron jobs are installed by `install/install.ts` and restart with the gateway.
+
+The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick because 30-minute latency is acceptable for those flows.
+
 ## Workspace layout
 
 | File | Purpose |
@@ -104,3 +122,7 @@ Maintained by the Edge City and YoursTruly teams. Direct push access is limited 
 
 - Edge Esmeralda 2026: https://edgeesmeralda.com
 - Substack post: https://edgeesmeralda2026.substack.com/p/the-agent-village-experiment-at-edge
+
+## License
+
+MIT. See [LICENSE](../../LICENSE) at the repo root.
