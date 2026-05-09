@@ -347,6 +347,14 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   inviteMember: async (networkId: string, email: string, name?: string): Promise<{ user: { id: string; email: string }; created: boolean; alreadyMember: boolean; agentProvisioned: boolean }> => {
     return api.post(`/networks/${networkId}/members/invite`, { email, name });
   },
+
+  // Resend invitation to an existing member
+  resendInvite: async (
+    networkId: string,
+    memberId: string,
+  ): Promise<{ rotated: boolean; email: string }> => {
+    return api.post(`/networks/${networkId}/members/${memberId}/resend-invite`, {});
+  },
 });
 
 // Non-authenticated service for public endpoints
@@ -377,6 +385,7 @@ export const indexesService = {
   deleteNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
   addMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
   removeMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  resendInvite: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
 };
 
 // Hook for using networks service with proper error handling
