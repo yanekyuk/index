@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -76,6 +76,8 @@ export interface AgentTokenStore {
   create(userId: string, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult>;
   list(userId: string): Promise<AgentTokenRecord[]>;
   revoke(userId: string, tokenId: string): Promise<void>;
+  /** Hard-deletes every api key whose metadata.agentId matches. Returns row count. */
+  revokeAllForAgent(agentId: string): Promise<number>;
 }
 
 /**
@@ -149,6 +151,22 @@ export class AgentTokenAdapter implements AgentTokenStore {
     if (result.length === 0) {
       throw new Error('Token not found');
     }
+  }
+
+  /**
+   * Hard-deletes every api key whose `metadata.agentId` matches the given
+   * agent id. The `metadata` column stores a JSON-encoded string, so the
+   * predicate must cast to `jsonb` before extracting the field.
+   *
+   * @param agentId - the agent whose tokens should be revoked
+   * @returns the number of rows deleted
+   */
+  async revokeAllForAgent(agentId: string): Promise<number> {
+    const result = await db
+      .delete(schema.apikeys)
+      .where(sql`(${schema.apikeys.metadata})::jsonb->>'agentId' = ${agentId}`)
+      .returning({ id: schema.apikeys.id });
+    return result.length;
   }
 }
 
