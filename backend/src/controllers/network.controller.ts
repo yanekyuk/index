@@ -93,6 +93,8 @@ export class NetworkController {
 
   /**
    * Headless signup for experiment networks. Authenticated via master key (x-api-key header).
+   * Accepts an optional rich profile payload; returns the user, API key, and MCP server config.
+   * Never sends email — the integrator (InstaClaw / EdgeOS) is the delivery channel.
    */
   @Post('/:id/signup')
   async signup(req: Request, _user: unknown, params: Record<string, string>) {
@@ -104,14 +106,20 @@ export class NetworkController {
       throw err;
     }
 
-    const body = await req.json().catch(() => ({})) as { email?: string };
+    const body = await req.json().catch(() => ({})) as {
+      email?: string;
+      name?: string;
+      bio?: string;
+      location?: string;
+      socials?: unknown;
+    };
+
     if (!body.email || typeof body.email !== 'string') {
       return new Response(JSON.stringify({ error: 'email is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
     if (!EMAIL_REGEX.test(body.email)) {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), {
         status: 400,
@@ -119,10 +127,58 @@ export class NetworkController {
       });
     }
 
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) || undefined : undefined;
+    const bio = typeof body.bio === 'string' ? body.bio.trim().slice(0, 2000) || undefined : undefined;
+    const location = typeof body.location === 'string' ? body.location.trim().slice(0, 200) || undefined : undefined;
+
+    let socials: { label: string; value: string }[] | undefined;
+    if (body.socials !== undefined) {
+      if (!Array.isArray(body.socials)) {
+        return new Response(JSON.stringify({ error: 'socials must be an array' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if ((body.socials as unknown[]).length > 32) {
+        return new Response(JSON.stringify({ error: 'socials exceeds maximum of 32 entries' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const parsed: { label: string; value: string }[] = [];
+      for (const entry of body.socials as unknown[]) {
+        if (
+          typeof entry !== 'object' ||
+          entry === null ||
+          typeof (entry as Record<string, unknown>).label !== 'string' ||
+          typeof (entry as Record<string, unknown>).value !== 'string'
+        ) {
+          return new Response(JSON.stringify({ error: 'Each social entry must have label (string) and value (string)' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const { label, value } = entry as { label: string; value: string };
+        parsed.push({
+          label: label.trim().slice(0, 64),
+          value: value.trim().slice(0, 256),
+        });
+      }
+      socials = parsed;
+    }
+
     try {
-      const result = await experimentService.signup(network.id, body.email);
-      const status = result.created ? 201 : 200;
-      return Response.json({ user: result.user, apiKey: result.apiKey, connectCommand: result.connectCommand }, { status });
+      const result = await experimentService.signup(network.id, {
+        email: body.email,
+        name,
+        bio,
+        location,
+        socials,
+      });
+      return Response.json(
+        { user: result.user, apiKey: result.apiKey, mcpServer: result.mcpServer },
+        { status: result.created ? 201 : 200 },
+      );
     } catch (err: unknown) {
       logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
       return new Response(JSON.stringify({ error: 'Signup failed' }), {
