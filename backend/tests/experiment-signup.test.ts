@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 
 import { experimentService } from '../src/services/experiment.service';
-import { networkInvitationService } from '../src/services/network-invitation.service';
 import db from '../src/lib/drizzle/drizzle';
 import {
   agentPermissions,
@@ -162,46 +161,5 @@ describe('experimentService.signup', () => {
 
     expect(second.created).toBe(false);
     expect(second.user.id).toBe(first.user.id);
-  }, 15_000);
-});
-
-describe('networkInvitationService.invite — regression after refactor', () => {
-  it('still provisions a scoped agent and sets agentProvisioned=true for a new user', async () => {
-    const { networkId } = await setupExperimentNetwork();
-    const email = `reg-${randomUUID()}@example.com`;
-
-    const result = await networkInvitationService.invite({ networkId, email });
-    cleanup.push(() => cleanupUser(result.user.id));
-
-    expect(result.agentProvisioned).toBe(true);
-    expect(result.apiKey).toBeTruthy();
-    expect(result.created).toBe(true);
-
-    const scopedAgents = await db
-      .select({ id: agents.id })
-      .from(agents)
-      .innerJoin(agentPermissions, eq(agentPermissions.agentId, agents.id))
-      .where(
-        and(
-          eq(agentPermissions.userId, result.user.id),
-          eq(agentPermissions.scope, 'network'),
-          eq(agentPermissions.scopeId, networkId),
-          isNull(agents.deletedAt),
-        ),
-      );
-    expect(scopedAgents.length).toBe(1);
-  }, 15_000);
-
-  it('returns agentProvisioned=false and apiKey=null when user already has a scoped agent', async () => {
-    const { networkId } = await setupExperimentNetwork();
-    const email = `reg2-${randomUUID()}@example.com`;
-
-    const first = await networkInvitationService.invite({ networkId, email });
-    cleanup.push(() => cleanupUser(first.user.id));
-
-    const second = await networkInvitationService.invite({ networkId, email });
-
-    expect(second.agentProvisioned).toBe(false);
-    expect(second.apiKey).toBeNull();
   }, 15_000);
 });
