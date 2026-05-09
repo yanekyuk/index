@@ -815,7 +815,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     </span>
                   )}
                   {currentIndex.isExperiment && (
-                    <Tooltip content="Resend invitation">
+                    <Tooltip content="Resend invitation · expires old key">
                       <button
                         onClick={() => setResendTarget(member)}
                         className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
