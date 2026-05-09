@@ -127,9 +127,39 @@ export class NetworkController {
       });
     }
 
-    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) || undefined : undefined;
-    const bio = typeof body.bio === 'string' ? body.bio.trim().slice(0, 2000) || undefined : undefined;
-    const location = typeof body.location === 'string' ? body.location.trim().slice(0, 200) || undefined : undefined;
+    const trimmedField = (
+      raw: unknown,
+      field: string,
+      cap: number,
+    ): { value: string | undefined } | Response => {
+      if (raw === undefined) return { value: undefined };
+      if (typeof raw !== 'string') {
+        return new Response(JSON.stringify({ error: `${field} must be a string` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) return { value: undefined };
+      if (trimmed.length > cap) {
+        return new Response(JSON.stringify({ error: `${field} exceeds maximum length of ${cap}` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return { value: trimmed };
+    };
+
+    const nameResult = trimmedField(body.name, 'name', 200);
+    if (nameResult instanceof Response) return nameResult;
+    const bioResult = trimmedField(body.bio, 'bio', 2000);
+    if (bioResult instanceof Response) return bioResult;
+    const locationResult = trimmedField(body.location, 'location', 200);
+    if (locationResult instanceof Response) return locationResult;
+
+    const name = nameResult.value;
+    const bio = bioResult.value;
+    const location = locationResult.value;
 
     let socials: { label: string; value: string }[] | undefined;
     if (body.socials !== undefined) {
@@ -158,11 +188,28 @@ export class NetworkController {
             headers: { 'Content-Type': 'application/json' },
           });
         }
-        const { label, value } = entry as { label: string; value: string };
-        parsed.push({
-          label: label.trim().slice(0, 64),
-          value: value.trim().slice(0, 256),
-        });
+        const { label: rawLabel, value: rawValue } = entry as { label: string; value: string };
+        const label = rawLabel.trim();
+        const value = rawValue.trim();
+        if (label.length === 0 || value.length === 0) {
+          return new Response(JSON.stringify({ error: 'social entries must have non-empty label and value' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (label.length > 64) {
+          return new Response(JSON.stringify({ error: 'social label exceeds maximum length of 64' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (value.length > 256) {
+          return new Response(JSON.stringify({ error: 'social value exceeds maximum length of 256' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        parsed.push({ label, value });
       }
       socials = parsed;
     }
