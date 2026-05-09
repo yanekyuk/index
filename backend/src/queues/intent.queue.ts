@@ -67,10 +67,12 @@ export class IntentQueue implements IntentGraphQueue {
 
   /**
    * Enqueue a job to generate HyDE documents for an intent (implements {@link IntentGraphQueue}).
-   * @param data - intentId and userId
+   * @param data - intentId, userId, and optional networkScopeId. When networkScopeId
+   *   is set, the worker restricts indexing to that network plus the user's personal
+   *   networks (see {@link IntentJobData}).
    * @returns The BullMQ job
    */
-  addGenerateHydeJob(data: { intentId: string; userId: string }): Promise<Job<IntentJobPayload>> {
+  addGenerateHydeJob(data: { intentId: string; userId: string; networkScopeId?: string }): Promise<Job<IntentJobPayload>> {
     return this.addJob('generate_hyde', data);
   }
 

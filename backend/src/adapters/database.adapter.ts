@@ -1504,6 +1504,7 @@ export class ChatDatabaseAdapter {
         and(
           eq(schema.networkMembers.userId, userId),
           eq(schema.networks.isPersonal, true),
+          isNull(schema.networkMembers.deletedAt),
           isNull(schema.networks.deletedAt)
         )
       );
