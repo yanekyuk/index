@@ -7,7 +7,7 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 Send a morning brief to the user via the `message` tool.
 
 1. Call `list_opportunities(status="pending", limit=10)`.
-2. **If empty:** send via `message` tool: "Quiet night — I'll keep listening." Then reply `NO_REPLY` and stop.
+2. **If empty:** send via `message` tool: "Quiet night — I'll keep listening." Then end your turn.
 3. **Otherwise** compose the brief in this exact structure (mimic the exemplar):
 
    ```
@@ -41,11 +41,11 @@ Send a morning brief to the user via the `message` tool.
 
 8. If `totalPending` exceeds the candidates you surfaced, end with: `There are N more conversations waiting — let me know if you want to see them.`
 
-9. Send the brief via the `message` tool. After delivery, reply `NO_REPLY` and stop.
+9. Send the brief via the `message` tool. After delivery, end your turn.
 
 # Hard rules
 - Never invent candidates. If `list_opportunities` returns nothing, the brief is the "Quiet night" line; don't pad.
 - Never expose internal IDs, raw JSON, or internal vocabulary in the brief.
 - Honor the strip-the-URLs test. If your draft fails it, rewrite.
-- If `list_opportunities` errors out, reply `NO_REPLY` — do not surface the error to the user from this run; the next day's cron will retry.
-- **`NO_REPLY` discipline.** When you reply `NO_REPLY`, those three tokens must be the **entire** final assistant message — no preamble, no extra `message`/`text` tool call, no acknowledgement. The "send the brief, then reply NO_REPLY" pattern means: emit the `message` tool call for the brief in one step, then in the next step the assistant message is exactly `NO_REPLY` and nothing else.
+- If `list_opportunities` errors out, end your turn — do not surface the error to the user from this run; the next day's cron will retry.
+- **Delivery is via the `message` tool only.** This cron is configured with `--no-deliver`, so the runner will never auto-deliver your final assistant text. Anything the user sees must come from a `message` tool call. Final assistant text is internal — you do not need to emit `NO_REPLY` or any other silent token to suppress it.

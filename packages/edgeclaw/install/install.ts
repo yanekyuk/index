@@ -187,13 +187,20 @@ function installCronJobs(): void {
 
   console.log("→ installing cron jobs");
 
+  // `--no-deliver` disables the runner's announce fallback. The agent must use
+  // the `message` tool to deliver visible content; anything the agent says as
+  // its final assistant text stays internal. This eliminates the entire class
+  // of NO_REPLY-token-leak bugs (textNO_REPLY, JSON envelopes, partial tokens)
+  // because there is no fallback channel for malformed silent tokens to bypass.
+  // The `--channel`/`--to` binding still resolves the `message` tool's target
+  // and is patched in by `bindCronsToTelegram` once a Telegram session exists.
   execSync(
     `openclaw cron add \
       --name "EdgeClaw — daily digest" \
       --cron "0 8 * * *" \
       --session isolated \
       --light-context \
-      --announce \
+      --no-deliver \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/digest.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
@@ -205,7 +212,7 @@ function installCronJobs(): void {
       --cron "0 14 * * *" \
       --session isolated \
       --light-context \
-      --announce \
+      --no-deliver \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
@@ -217,7 +224,7 @@ function installCronJobs(): void {
       --cron "0 20 * * *" \
       --session isolated \
       --light-context \
-      --announce \
+      --no-deliver \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
