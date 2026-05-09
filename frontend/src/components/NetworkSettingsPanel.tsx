@@ -6,6 +6,7 @@ import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useNetworks } from '@/contexts/APIContext';
 import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -804,7 +805,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     </span>
                   </button>
                   {member.permissions.includes('owner') && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-sm font-medium bg-gray-900 text-white flex-shrink-0">
+                    <span className="group-hover:hidden text-xs px-1.5 py-0.5 rounded-sm font-medium bg-gray-900 text-white flex-shrink-0">
                       Owner
                     </span>
                   )}
@@ -814,18 +815,24 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     </span>
                   )}
                   {currentIndex.isExperiment && (
-                    <button
-                      onClick={() => setResendTarget(member)}
-                      title="Resend invitation"
-                      className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
-                    >
-                      <RotateCw className="h-3.5 w-3.5" />
-                    </button>
+                    <Tooltip content="Resend invitation">
+                      <button
+                        onClick={() => setResendTarget(member)}
+                        className="hidden group-hover:block p-1 text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
+                      >
+                        <RotateCw className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
                   )}
                   {!member.permissions.includes('owner') && (
-                    <button onClick={() => handleRemoveMember(member.id)} className="hidden group-hover:block p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <Tooltip content="Remove member">
+                      <button
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="hidden group-hover:block p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               ))}
