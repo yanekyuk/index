@@ -1883,6 +1883,46 @@ The raw API key is delivered only via the invitation email and is never returned
 
 ---
 
+### POST /api/networks/:id/members/:memberId/resend-invite
+
+Resend the invitation email to an existing network member, optionally rotating their API key. Owner-only, experiment networks only. Used when a member did not receive their initial invitation email or requests a refreshed API key.
+
+**Auth**: `AuthOrApiKeyGuard`; caller must own the network.
+
+**Path params**:
+- `id` — Network ID (must be an experiment network).
+- `memberId` — User ID of the network member to resend the invite to.
+
+**Request body**:
+```json
+{}
+```
+
+**Response 200**: Invitation email resent with the current or newly minted API key.
+```json
+{
+  "rotated": false,
+  "email": "attendee@example.com"
+}
+```
+
+**Response 200 with key rotation**: An existing API key for the member's network-scoped agent was revoked and a new one was minted before sending the email.
+```json
+{
+  "rotated": true,
+  "email": "attendee@example.com"
+}
+```
+
+When `rotated: true`, the member's previous API key is no longer valid and the new key is delivered only via the resent invitation email. When `rotated: false`, the member's existing API key remains valid and the email contains the same key that was previously issued.
+
+**Errors**:
+- `403` — Not the network owner, not an experiment network, or scope violation.
+- `404` — Member not found or not a member of this network.
+- `500` — Provisioning or email delivery failed.
+
+---
+
 ## Integration
 
 **Controller prefix**: `/integrations`
