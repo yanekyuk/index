@@ -26,10 +26,9 @@ export function Tooltip({
           side={side}
           align={align}
           sideOffset={sideOffset}
-          className="z-[200] px-2 py-1 text-xs bg-gray-900 text-white rounded-sm shadow-md select-none whitespace-nowrap"
+          className="z-[200] px-2 py-1 text-[11px] font-ibm-plex-mono bg-white text-gray-900 border border-gray-200 rounded-sm shadow-sm select-none whitespace-nowrap"
         >
           {content}
-          <TooltipPrimitive.Arrow className="fill-gray-900" width={8} height={4} />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>
