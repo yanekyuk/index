@@ -15,7 +15,8 @@
  * Production safety (all three checks must pass):
  *   1. NODE_ENV !== 'production'
  *   2. DATABASE_URL contains no known production Neon markers
- *   3. The target network is experiment-flagged (experimentMasterKeyHash set)
+ *   3. The target network is fully configured for experiment mode
+ *      (`isExperiment=true` AND `experimentMasterKeyHash IS NOT NULL`)
  *
  * Usage:
  *   bun run maintenance:seed-experiment-network -- --confirm
@@ -90,6 +91,7 @@ async function assertExperimentNetwork(networkId: string): Promise<void> {
       id: networks.id,
       title: networks.title,
       isExperiment: networks.isExperiment,
+      experimentMasterKeyHash: networks.experimentMasterKeyHash,
       deletedAt: networks.deletedAt,
     })
     .from(networks)
@@ -104,8 +106,11 @@ async function assertExperimentNetwork(networkId: string): Promise<void> {
     console.error(`error: network ${networkId} is soft-deleted`);
     process.exit(1);
   }
-  if (!row.isExperiment) {
-    console.error(`error: network ${networkId} ("${row.title}") is not in experiment mode`);
+  if (!row.isExperiment || !row.experimentMasterKeyHash) {
+    console.error(
+      `error: network ${networkId} ("${row.title}") is not a fully configured experiment network ` +
+        `(requires isExperiment=true AND experimentMasterKeyHash set)`,
+    );
     process.exit(1);
   }
   console.log(`target network: ${row.title} (${networkId})`);
