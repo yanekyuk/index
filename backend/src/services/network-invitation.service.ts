@@ -31,6 +31,16 @@ export interface InviteResult {
   agentProvisioned: boolean;
 }
 
+export interface ResendInviteParams {
+  networkId: string;
+  memberId: string;
+}
+
+export interface ResendInviteResult {
+  rotated: boolean;
+  email: string;
+}
+
 export const SCOPED_INVITED_AGENT_ACTIONS = [
   'manage:profile',
   'manage:intents',
@@ -85,6 +95,21 @@ class NetworkInvitationService {
     return { user, apiKey, created, alreadyMember, agentProvisioned: true };
   }
 
+  private async findScopedAgentId(userId: string, networkId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ agentId: schema.agentPermissions.agentId })
+      .from(schema.agentPermissions)
+      .innerJoin(schema.agents, eq(schema.agents.id, schema.agentPermissions.agentId))
+      .where(and(
+        eq(schema.agentPermissions.userId, userId),
+        eq(schema.agentPermissions.scope, 'network'),
+        eq(schema.agentPermissions.scopeId, networkId),
+        isNull(schema.agents.deletedAt),
+      ))
+      .limit(1);
+    return row?.agentId ?? null;
+  }
+
   private async hasScopedAgent(userId: string, networkId: string): Promise<boolean> {
     // Inner-join on agents and require deletedAt IS NULL: agentDatabaseAdapter
     // .deleteAgent() soft-deletes the agent and hard-deletes its api keys but
@@ -119,11 +144,13 @@ class NetworkInvitationService {
     networkName: string;
     apiKey: string;
     connectCommand: string;
+    isResend?: boolean;
   }): Promise<void> {
     const rendered = networkInvitationTemplate({
       networkName: params.networkName,
       apiKey: params.apiKey,
       connectCommand: params.connectCommand,
+      isResend: params.isResend,
     });
 
     try {
@@ -201,6 +228,75 @@ class NetworkInvitationService {
       .onConflictDoNothing()
       .returning({ userId: schema.networkMembers.userId });
     return { alreadyMember: inserted.length === 0 };
+  }
+
+  /**
+   * Resend the invitation email for an existing member of a network. Rotates
+   * the member's network-scoped api key — the previous key is hard-deleted
+   * and a fresh one is minted, then emailed.
+   *
+   * If the member has no scoped agent yet (e.g., they joined via another path),
+   * a fresh agent + key is provisioned instead and `rotated` is `false`.
+   *
+   * @param params - networkId and memberId
+   * @returns rotated flag and the recipient email
+   * @throws Error('Member not found') when the user is not a member of this
+   *         network or the user record is missing/soft-deleted.
+   */
+  async resendInvite(params: ResendInviteParams): Promise<ResendInviteResult> {
+    const { networkId, memberId } = params;
+
+    const [member] = await db
+      .select({ id: schema.users.id, email: schema.users.email })
+      .from(schema.users)
+      .where(and(eq(schema.users.id, memberId), isNull(schema.users.deletedAt)))
+      .limit(1);
+    if (!member) throw new Error('Member not found');
+
+    const [membership] = await db
+      .select({ userId: schema.networkMembers.userId })
+      .from(schema.networkMembers)
+      .where(and(
+        eq(schema.networkMembers.networkId, networkId),
+        eq(schema.networkMembers.userId, memberId),
+      ))
+      .limit(1);
+    if (!membership) throw new Error('Member not found');
+
+    const agentId = await this.findScopedAgentId(memberId, networkId);
+    let apiKey: string;
+    let rotated: boolean;
+    if (agentId) {
+      await agentTokenAdapter.revokeAllForAgent(agentId);
+      const token = await agentTokenAdapter.create(memberId, {
+        name: 'Personal Agent API Key',
+        agentId,
+      });
+      apiKey = token.key;
+      rotated = true;
+    } else {
+      apiKey = await this.provisionScopedAgent(memberId, networkId);
+      rotated = false;
+    }
+
+    const networkName = await this.lookupNetworkName(networkId);
+    const connectCommand = buildConnectCommand(apiKey);
+
+    await this.dispatchInvitationEmail({
+      to: member.email,
+      networkName,
+      apiKey,
+      connectCommand,
+      isResend: true,
+    });
+
+    logger.info('[NetworkInvitation] Resent invite', {
+      userId: memberId,
+      networkId,
+      rotated,
+    });
+
+    return { rotated, email: member.email };
   }
 
   /**
