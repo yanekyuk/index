@@ -1,5 +1,11 @@
 import '../src/startup.env';
 
+import { mock } from 'bun:test';
+
+mock.module('../src/lib/email/transport.helper', () => ({
+  executeSendEmail: mock(() => Promise.resolve({ skipped: true, reason: 'mocked in test' })),
+}));
+
 import { afterAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
