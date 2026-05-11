@@ -93,6 +93,8 @@ export class NetworkController {
 
   /**
    * Headless signup for experiment networks. Authenticated via master key (x-api-key header).
+   * Accepts an optional rich profile payload; returns the user, API key, and MCP server config.
+   * Never sends email — the integrator (InstaClaw / EdgeOS) is the delivery channel.
    */
   @Post('/:id/signup')
   async signup(req: Request, _user: unknown, params: Record<string, string>) {
@@ -104,14 +106,20 @@ export class NetworkController {
       throw err;
     }
 
-    const body = await req.json().catch(() => ({})) as { email?: string };
+    const body = await req.json().catch(() => ({})) as {
+      email?: string;
+      name?: string;
+      bio?: string;
+      location?: string;
+      socials?: unknown;
+    };
+
     if (!body.email || typeof body.email !== 'string') {
       return new Response(JSON.stringify({ error: 'email is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
     if (!EMAIL_REGEX.test(body.email)) {
       return new Response(JSON.stringify({ error: 'Invalid email format' }), {
         status: 400,
@@ -119,10 +127,105 @@ export class NetworkController {
       });
     }
 
+    const trimmedField = (
+      raw: unknown,
+      field: string,
+      cap: number,
+    ): { value: string | undefined } | Response => {
+      if (raw === undefined) return { value: undefined };
+      if (typeof raw !== 'string') {
+        return new Response(JSON.stringify({ error: `${field} must be a string` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) return { value: undefined };
+      if (trimmed.length > cap) {
+        return new Response(JSON.stringify({ error: `${field} exceeds maximum length of ${cap}` }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return { value: trimmed };
+    };
+
+    const nameResult = trimmedField(body.name, 'name', 200);
+    if (nameResult instanceof Response) return nameResult;
+    const bioResult = trimmedField(body.bio, 'bio', 2000);
+    if (bioResult instanceof Response) return bioResult;
+    const locationResult = trimmedField(body.location, 'location', 200);
+    if (locationResult instanceof Response) return locationResult;
+
+    const name = nameResult.value;
+    const bio = bioResult.value;
+    const location = locationResult.value;
+
+    let socials: { label: string; value: string }[] | undefined;
+    if (body.socials !== undefined) {
+      if (!Array.isArray(body.socials)) {
+        return new Response(JSON.stringify({ error: 'socials must be an array' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if ((body.socials as unknown[]).length > 32) {
+        return new Response(JSON.stringify({ error: 'socials exceeds maximum of 32 entries' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const parsed: { label: string; value: string }[] = [];
+      for (const entry of body.socials as unknown[]) {
+        if (
+          typeof entry !== 'object' ||
+          entry === null ||
+          typeof (entry as Record<string, unknown>).label !== 'string' ||
+          typeof (entry as Record<string, unknown>).value !== 'string'
+        ) {
+          return new Response(JSON.stringify({ error: 'Each social entry must have label (string) and value (string)' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const { label: rawLabel, value: rawValue } = entry as { label: string; value: string };
+        const label = rawLabel.trim();
+        const value = rawValue.trim();
+        if (label.length === 0 || value.length === 0) {
+          return new Response(JSON.stringify({ error: 'social entries must have non-empty label and value' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (label.length > 64) {
+          return new Response(JSON.stringify({ error: 'social label exceeds maximum length of 64' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (value.length > 256) {
+          return new Response(JSON.stringify({ error: 'social value exceeds maximum length of 256' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        parsed.push({ label, value });
+      }
+      socials = parsed;
+    }
+
     try {
-      const result = await experimentService.signup(network.id, body.email);
-      const status = result.created ? 201 : 200;
-      return Response.json({ user: result.user, apiKey: result.apiKey, connectCommand: result.connectCommand }, { status });
+      const result = await experimentService.signup(network.id, {
+        email: body.email,
+        name,
+        bio,
+        location,
+        socials,
+      });
+      return Response.json(
+        { user: result.user, apiKey: result.apiKey, mcpServer: result.mcpServer },
+        { status: result.created ? 201 : 200 },
+      );
     } catch (err: unknown) {
       logger.error('Experiment signup failed', { networkId: network.id, error: errorMessage(err) });
       return new Response(JSON.stringify({ error: 'Signup failed' }), {
@@ -328,6 +431,38 @@ export class NetworkController {
       }
       logger.error('Invite by email failed', { networkId: params.id, error: msg });
       return Response.json({ error: 'Invite failed' }, { status: 500 });
+    }
+  }
+
+  /**
+   * Rotate a member's network-scoped api key and email it to them. Owner-only,
+   * experiment networks only. Self-target is allowed (an owner can rotate their
+   * own key).
+   */
+  @Post('/:id/members/:memberId/resend-invite')
+  @UseGuards(AuthOrApiKeyGuard)
+  async resendInviteToMember(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    try {
+      const result = await networkInvitationService.resendInvite({
+        networkId: params.id,
+        memberId: params.memberId,
+      });
+      return Response.json(result, { status: 200 });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg === 'Member not found') {
+        return Response.json({ error: 'Member not found' }, { status: 404 });
+      }
+      logger.error('Resend invite failed', { networkId: params.id, memberId: params.memberId, error: msg });
+      return Response.json({ error: 'Resend failed' }, { status: 500 });
     }
   }
 

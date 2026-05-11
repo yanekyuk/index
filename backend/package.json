@@ -26,6 +26,7 @@
     "maintenance:migrate-chat": "bun ./src/cli/migrate-chat-to-conversations.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
     "maintenance:audit-experiment-emails": "bun ./src/cli/audit-experiment-email-collisions.ts",
+    "maintenance:seed-experiment-network": "bun ./src/cli/seed-experiment-network.ts",
     "maintenance:expire-opportunities": "bun ./src/cli/expire-opportunities.ts",
     "maintenance:rediscover-opportunities": "bun ./src/cli/rediscover-user-opportunities.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",

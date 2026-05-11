@@ -1,6 +1,6 @@
 # TOOLS.md — Local Notes
 
-## Index Network MCP
+## Index protocol MCP
 
 The MCP server `index` is preinstalled — your only tool surface for everything network-related. You don't configure it, register it, run install scripts, curl HTTP endpoints, or poll APIs. Every capability is a tool call on `index`. If a tool errors, retry it or `NO_REPLY`; do not try to "fix" the connection.
 

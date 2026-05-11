@@ -4,8 +4,7 @@
 import { config } from 'dotenv';
 config({ path: '.env.test' });
 
-import { describe, expect, it, beforeEach } from 'bun:test';
-import { mock } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'generate_hyde', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -24,7 +23,6 @@ mock.module('../opportunity.queue', () => ({
 import {
   IntentQueue,
   QUEUE_NAME,
-  type IntentJobData,
   type IntentJobPayload,
   type IntentQueueDatabase,
 } from '../intent.queue';
@@ -181,6 +179,51 @@ describe('IntentQueue', () => {
       const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
       await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
       expect(invokeHyde).toHaveBeenCalled();
+    });
+
+    it('generate_hyde: networkScopeId restricts assignment to scope ∪ personal networks', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      const assignIntentToNetwork = mock(async () => {});
+      const getUserPersonalNetworkIds = mock(async () => ['personal-net']);
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        getUserIndexIds: async () => ['scope-net', 'personal-net', 'other-net'],
+        getUserPersonalNetworkIds,
+        getNetworkMemberContext: async () => ({ indexPrompt: null, memberPrompt: null }),
+        assignIntentToNetwork,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1', networkScopeId: 'scope-net' });
+
+      expect(getUserPersonalNetworkIds).toHaveBeenCalledWith('u1');
+      const assignedNetworkIds = assignIntentToNetwork.mock.calls.map((c) => c[1]);
+      expect(assignedNetworkIds.sort()).toEqual(['personal-net', 'scope-net']);
+      expect(assignedNetworkIds).not.toContain('other-net');
+      expect(invokeHyde).toHaveBeenCalled();
+      expect(addOpportunityJob).toHaveBeenCalledWith({ intentId: 'i1', userId: 'u1' });
+    });
+
+    it('generate_hyde: no networkScopeId leaves all user index IDs eligible', async () => {
+      const invokeHyde = mock(async () => {});
+      const addOpportunityJob = mock(async () => ({}));
+      const assignIntentToNetwork = mock(async () => {});
+      const getUserPersonalNetworkIds = mock(async () => ['personal-net']);
+      const db = {
+        getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
+        getUserIndexIds: async () => ['scope-net', 'personal-net', 'other-net'],
+        getUserPersonalNetworkIds,
+        getNetworkMemberContext: async () => ({ indexPrompt: null, memberPrompt: null }),
+        assignIntentToNetwork,
+        deleteHydeDocumentsForSource: async () => 0,
+      };
+      const queue = new IntentQueue({ database: asIntentDb(db), invokeHyde, addOpportunityJob });
+      await queue.processJob('generate_hyde', { intentId: 'i1', userId: 'u1' });
+
+      expect(getUserPersonalNetworkIds).not.toHaveBeenCalled();
+      const assignedNetworkIds = assignIntentToNetwork.mock.calls.map((c) => c[1]);
+      expect(assignedNetworkIds.sort()).toEqual(['other-net', 'personal-net', 'scope-net']);
     });
 
     it('delete_hyde: calls deleteHydeDocumentsForSource', async () => {

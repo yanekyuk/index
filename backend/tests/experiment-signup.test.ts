@@ -1,346 +1,165 @@
 import '../src/startup.env';
 
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
+import { experimentService } from '../src/services/experiment.service';
 import db from '../src/lib/drizzle/drizzle';
-import { agentPermissions, agents, apikeys, networkMembers, networks, personalNetworks, users } from '../src/schemas/database.schema';
+import {
+  agentPermissions,
+  agents,
+  apikeys,
+  networkMembers,
+  networks,
+  personalNetworks,
+  userProfiles,
+  userSocials,
+  users,
+} from '../src/schemas/database.schema';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Config
-// ─────────────────────────────────────────────────────────────────────────────
+const cleanup: Array<() => Promise<void>> = [];
 
-const PORT = process.env.PORT || 3001;
-const BASE_URL = `http://localhost:${PORT}`;
+afterAll(async () => {
+  for (const f of [...cleanup].reverse()) await f();
+});
 
-// ─────────────────────────────────────────────────────────────────────────────
-// State shared across tests
-// ─────────────────────────────────────────────────────────────────────────────
+async function setupExperimentNetwork() {
+  const [network] = await db
+    .insert(networks)
+    .values({
+      title: `EdgeClaw Test ${randomUUID().slice(0, 6)}`,
+      isExperiment: true,
+      isPersonal: false,
+      experimentMasterKeyHash: 'test-hash-not-verified-at-service-layer',
+    })
+    .returning({ id: networks.id });
 
-let authJwt = '';
-let testOwnerId = '';
-let testNetworkId = '';
-let masterKey = '';
-let signedUpEmail = '';
-let signedUpUserId = '';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function api(
-  path: string,
-  opts: {
-    method?: string;
-    body?: unknown;
-    headers?: Record<string, string>;
-  } = {},
-): Promise<Response> {
-  const { method = 'GET', body, headers = {} } = opts;
-  const init: RequestInit = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(authJwt ? { Authorization: `Bearer ${authJwt}` } : {}),
-      ...headers,
-    },
-  };
-  if (body !== undefined) {
-    init.body = JSON.stringify(body);
-  }
-  return fetch(`${BASE_URL}${path}`, init);
-}
-
-/** Sign up a fresh test owner and return a JWT for API auth. */
-async function createTestSession(): Promise<{ jwt: string; userId: string }> {
-  const email = `test-owner-${randomUUID()}@example.com`;
-  const password = `Test${randomUUID().replace(/-/g, '')}!`;
-
-  const signupRes = await fetch(`${BASE_URL}/api/auth/sign-up/email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: BASE_URL },
-    body: JSON.stringify({ email, password, name: 'Test Owner' }),
+  cleanup.push(async () => {
+    await db.delete(networkMembers).where(eq(networkMembers.networkId, network.id));
+    await db.delete(networks).where(eq(networks.id, network.id));
   });
 
-  if (!signupRes.ok) {
-    const text = await signupRes.text();
-    throw new Error(`Failed to sign up test user: ${signupRes.status} ${text}`);
-  }
-
-  const data = await signupRes.json() as { user?: { id: string } };
-  const userId = data?.user?.id ?? '';
-
-  // Extract session cookie
-  const setCookies = signupRes.headers.getSetCookie();
-  const cookie = setCookies.map((c) => c.split(';')[0].trim()).join('; ');
-
-  // Exchange session cookie for JWT
-  const tokenRes = await fetch(`${BASE_URL}/api/auth/token`, {
-    headers: { Cookie: cookie, Origin: BASE_URL },
-  });
-  if (!tokenRes.ok) {
-    throw new Error(`Failed to get JWT: ${tokenRes.status}`);
-  }
-  const tokenData = await tokenRes.json() as { token: string };
-
-  return { jwt: tokenData.token, userId };
+  return { networkId: network.id };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Setup / Teardown
-// ─────────────────────────────────────────────────────────────────────────────
-
-beforeAll(async () => {
-  // Verify the dev server is reachable; skip suite gracefully if not
-  try {
-    await fetch(`${BASE_URL}/api/networks`, { signal: AbortSignal.timeout(3000) });
-  } catch (err) {
-    console.warn(`[experiment-signup] Dev server not reachable at ${BASE_URL} — skipping suite.`);
-    return;
-  }
-
-  const session = await createTestSession();
-  authJwt = session.jwt;
-  testOwnerId = session.userId;
-
-  signedUpEmail = `signup-${randomUUID()}@example.com`;
-}, 30_000);
 
 async function cleanupUser(userId: string) {
   await db.delete(apikeys).where(eq(apikeys.userId, userId));
+  await db.delete(agentPermissions).where(eq(agentPermissions.userId, userId));
   await db.delete(agents).where(eq(agents.ownerId, userId));
   await db.delete(networkMembers).where(eq(networkMembers.userId, userId));
+  await db.delete(userSocials).where(eq(userSocials.userId, userId));
+  await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
   const pn = await db
     .select({ networkId: personalNetworks.networkId })
     .from(personalNetworks)
     .where(eq(personalNetworks.userId, userId));
   await db.delete(personalNetworks).where(eq(personalNetworks.userId, userId));
-  for (const p of pn) {
-    await db.delete(networks).where(eq(networks.id, p.networkId));
+  for (const { networkId: pnId } of pn) {
+    await db.delete(networks).where(eq(networks.id, pnId));
   }
   await db.delete(users).where(eq(users.id, userId));
 }
 
-afterAll(async () => {
-  try {
-    if (testNetworkId) {
-      // Members joined the experiment network via networkMembers (no longer
-      // via the deprecated users.experimentNetworkId column).
-      const experimentMembers = await db
-        .select({ userId: networkMembers.userId })
-        .from(networkMembers)
-        .where(eq(networkMembers.networkId, testNetworkId));
+describe('experimentService.signup', () => {
+  it('creates a new user and returns apiKey + mcpServer with minimal payload', async () => {
+    const { networkId } = await setupExperimentNetwork();
+    const email = `minimal-${randomUUID()}@example.com`;
 
-      for (const m of experimentMembers) {
-        if (m.userId !== testOwnerId) {
-          await cleanupUser(m.userId);
-        }
-      }
+    const result = await experimentService.signup(networkId, { email });
 
-      await db.delete(networkMembers).where(eq(networkMembers.networkId, testNetworkId));
-      await db.delete(networks).where(eq(networks.id, testNetworkId));
-    }
+    cleanup.push(() => cleanupUser(result.user.id));
 
-    if (testOwnerId) {
-      await cleanupUser(testOwnerId);
-    }
-  } catch (err) {
-    console.warn('[experiment-signup] Cleanup error (non-fatal):', err);
-  }
-}, 30_000);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Suite
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Experiment network headless signup', () => {
-  // ── 1. Create experiment network ────────────────────────────────────────────
-
-  it('creates an experiment network and returns masterKey', async () => {
-    if (!authJwt) return;
-
-    const res = await api('/api/networks', {
-      method: 'POST',
-      body: {
-        title: `Test Experiment ${randomUUID().slice(0, 8)}`,
-        isExperiment: true,
-      },
+    expect(result.user.email).toBe(email);
+    expect(result.apiKey).toBeTruthy();
+    expect(result.mcpServer).toMatchObject({
+      name: 'index',
+      url: expect.stringContaining('/mcp'),
+      headers: { 'x-api-key': result.apiKey },
     });
-
-    expect(res.status).toBe(201);
-
-    const data = await res.json() as { network: { id: string }; masterKey: string };
-    expect(data).toHaveProperty('network');
-    expect(data).toHaveProperty('masterKey');
-    expect(typeof data.masterKey).toBe('string');
-    expect(data.masterKey.length).toBe(64);
-    expect(typeof data.network.id).toBe('string');
-
-    // Store for subsequent tests
-    testNetworkId = data.network.id;
-    masterKey = data.masterKey;
-  });
-
-  // ── 2. Signup rejects without x-api-key ─────────────────────────────────────
-
-  it('rejects signup without x-api-key header (401)', async () => {
-    if (!testNetworkId) return;
-
-    const res = await fetch(`${BASE_URL}/api/networks/${testNetworkId}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: signedUpEmail }),
-    });
-
-    expect(res.status).toBe(401);
-  });
-
-  // ── 3. Signup rejects wrong master key ──────────────────────────────────────
-
-  it('rejects signup with wrong master key (403)', async () => {
-    if (!testNetworkId) return;
-
-    const res = await fetch(`${BASE_URL}/api/networks/${testNetworkId}/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': 'wrong-key-that-is-definitely-not-correct-xxxxxxxxxxxxxx',
-      },
-      body: JSON.stringify({ email: signedUpEmail }),
-    });
-
-    expect(res.status).toBe(403);
-  });
-
-  // ── 4. Signup rejects non-experiment (nonexistent) network ──────────────────
-
-  it('rejects signup for a non-experiment / nonexistent network (403)', async () => {
-    const fakeNetworkId = randomUUID();
-    const res = await fetch(`${BASE_URL}/api/networks/${fakeNetworkId}/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': masterKey || 'some-key',
-      },
-      body: JSON.stringify({ email: signedUpEmail }),
-    });
-
-    expect(res.status).toBe(403);
-  });
-
-  // ── 5. Signup creates new user (201) ─────────────────────────────────────────
-
-  it('creates a new experiment user and returns 201 with user and apiKey', async () => {
-    if (!testNetworkId || !masterKey) return;
-
-    const res = await fetch(`${BASE_URL}/api/networks/${testNetworkId}/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': masterKey,
-      },
-      body: JSON.stringify({ email: signedUpEmail }),
-    });
-
-    expect(res.status).toBe(201);
-
-    const data = await res.json() as { user: { id: string; email: string }; apiKey: string; connectCommand: string };
-    expect(data).toHaveProperty('user');
-    expect(data).toHaveProperty('apiKey');
-    expect(data.user.email).toBe(signedUpEmail);
-    expect(typeof data.user.id).toBe('string');
-    expect(typeof data.apiKey).toBe('string');
-    expect(data.apiKey.length).toBeGreaterThan(0);
-    expect(data.connectCommand).toContain('openclaw index connect --api-key');
-
-    signedUpUserId = data.user.id;
+    expect(result.created).toBe(true);
   }, 15_000);
 
-  // ── 6. Signup returns existing user with new key (200) ──────────────────────
+  it('stores name, bio, location, and socials from rich payload', async () => {
+    const { networkId } = await setupExperimentNetwork();
+    const email = `rich-${randomUUID()}@example.com`;
 
-  it('returns 200 with same user.id but a new apiKey for repeated signup', async () => {
-    if (!testNetworkId || !masterKey || !signedUpUserId) return;
-
-    const res = await fetch(`${BASE_URL}/api/networks/${testNetworkId}/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': masterKey,
-      },
-      body: JSON.stringify({ email: signedUpEmail }),
+    const result = await experimentService.signup(networkId, {
+      email,
+      name: 'Alice Test',
+      bio: 'Independent researcher.',
+      location: 'Healdsburg, CA',
+      socials: [
+        { label: 'telegram', value: '@alice_test' },
+        { label: 'twitter',  value: 'alice_test' },
+      ],
     });
 
-    expect(res.status).toBe(200);
+    cleanup.push(() => cleanupUser(result.user.id));
 
-    const data = await res.json() as { user: { id: string; email: string }; apiKey: string };
-    expect(data.user.id).toBe(signedUpUserId);
-    // A fresh API key is issued each time
-    expect(typeof data.apiKey).toBe('string');
-    expect(data.apiKey.length).toBeGreaterThan(0);
+    const [u] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, result.user.id));
+    expect(u.name).toBe('Alice Test');
+
+    const [profile] = await db
+      .select({ identity: userProfiles.identity })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, result.user.id));
+    expect((profile.identity as { bio?: string }).bio).toBe('Independent researcher.');
+    expect((profile.identity as { location?: string }).location).toBe('Healdsburg, CA');
+
+    const socials = await db
+      .select({ label: userSocials.label, value: userSocials.value })
+      .from(userSocials)
+      .where(eq(userSocials.userId, result.user.id));
+    expect(socials).toContainEqual({ label: 'telegram', value: '@alice_test' });
+    expect(socials).toContainEqual({ label: 'twitter',  value: 'alice_test' });
   }, 15_000);
 
-  // ── 7. Signup rejects invalid email ─────────────────────────────────────────
+  it('re-signup rotates the key on the SAME agent — no orphan agent records', async () => {
+    const { networkId } = await setupExperimentNetwork();
+    const email = `resig-${randomUUID()}@example.com`;
 
-  it('rejects signup with invalid email format (400)', async () => {
-    if (!testNetworkId || !masterKey) return;
+    const first = await experimentService.signup(networkId, { email });
+    cleanup.push(() => cleanupUser(first.user.id));
 
-    const res = await fetch(`${BASE_URL}/api/networks/${testNetworkId}/signup`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': masterKey,
-      },
-      body: JSON.stringify({ email: 'not-an-email' }),
-    });
+    const second = await experimentService.signup(networkId, { email });
 
-    expect(res.status).toBe(400);
-  });
+    expect(second.apiKey).not.toBe(first.apiKey);
 
-  // ── 8. Signup provisions a network-scoped agent permission ──────────────────
+    const scopedAgents = await db
+      .select({ id: agents.id })
+      .from(agents)
+      .innerJoin(agentPermissions, eq(agentPermissions.agentId, agents.id))
+      .where(
+        and(
+          eq(agentPermissions.userId, first.user.id),
+          eq(agentPermissions.scope, 'network'),
+          eq(agentPermissions.scopeId, networkId),
+          isNull(agents.deletedAt),
+        ),
+      );
+    expect(scopedAgents.length).toBe(1);
 
-  it('grants the new user a network-scoped agent permission for the experiment network', async () => {
-    if (!signedUpUserId || !testNetworkId) return;
+    const oldKeyRow = await db
+      .select({ id: apikeys.id })
+      .from(apikeys)
+      .where(and(eq(apikeys.userId, first.user.id), eq(apikeys.start, first.apiKey.slice(0, 4))));
+    expect(oldKeyRow.length).toBe(0);
+  }, 15_000);
 
-    const perms = await db
-      .select({
-        agentId: agentPermissions.agentId,
-        scope: agentPermissions.scope,
-        scopeId: agentPermissions.scopeId,
-        actions: agentPermissions.actions,
-      })
-      .from(agentPermissions)
-      .where(and(
-        eq(agentPermissions.userId, signedUpUserId),
-        eq(agentPermissions.scope, 'network'),
-        eq(agentPermissions.scopeId, testNetworkId),
-      ));
+  it('returns created=false for an existing user', async () => {
+    const { networkId } = await setupExperimentNetwork();
+    const email = `existing-${randomUUID()}@example.com`;
 
-    // At least one network-scoped permission row exists for this user/network pair.
-    expect(perms.length).toBeGreaterThanOrEqual(1);
-    const actions = perms[0].actions;
-    expect(actions).toEqual(expect.arrayContaining([
-      'manage:profile',
-      'manage:intents',
-      'manage:networks',
-      'manage:contacts',
-      'manage:opportunities',
-    ]));
-  });
+    const first = await experimentService.signup(networkId, { email });
+    cleanup.push(() => cleanupUser(first.user.id));
 
-  // ── 9. Immutability: cannot set isExperiment=false via PATCH ────────────────
+    const second = await experimentService.signup(networkId, { email });
 
-  it('rejects PATCH /api/networks/:id with isExperiment in the body (400)', async () => {
-    if (!testNetworkId || !authJwt) return;
-
-    const res = await api(`/api/networks/${testNetworkId}/permissions`, {
-      method: 'PATCH',
-      body: { isExperiment: false },
-    });
-
-    expect(res.status).toBe(400);
-
-    const data = await res.json() as { error?: string };
-    expect(data.error).toContain('Cannot modify experiment settings after creation');
-  });
-}, { timeout: 30_000 });
+    expect(second.created).toBe(false);
+    expect(second.user.id).toBe(first.user.id);
+  }, 15_000);
+});

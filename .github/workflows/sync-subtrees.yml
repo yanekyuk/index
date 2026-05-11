@@ -35,7 +35,7 @@ jobs:
           - prefix: packages/claude-plugin
             repo: indexnetwork/claude-plugin
           - prefix: packages/edgeclaw
-            repo: Edge-City/edgeclaw
+            repo: indexnetwork/edgeclaw
             source_branch: main
             target_branch: main
     steps:

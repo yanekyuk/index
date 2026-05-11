@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Edge Claw installer.
+ * EdgeClaw installer.
  *
- * Pre-stages OpenClaw config and the Edge Claw workspace so the agent comes
+ * Pre-stages OpenClaw config and the EdgeClaw workspace so the agent comes
  * online with a single chat turn. The installer owns everything that does not
  * belong in a runtime prompt:
  *
@@ -11,8 +11,6 @@
  *   - Disables Telegram progress-draft "tidepooling" so the streaming-off
  *     setting is loaded on the very first gateway start (not deferred until
  *     the first bootstrap turn drains).
- *   - Cleans up legacy `mcp.servers.index-network` entries from earlier
- *     installs.
  *   - Copies the workspace markdown bundle (BOOTSTRAP, AGENTS, SOUL, USER,
  *     IDENTITY, TOOLS, HEARTBEAT, COMMUNITY, prompts/*) into
  *     `~/.openclaw/workspace/`.
@@ -32,8 +30,8 @@
  * pass picks them up.
  *
  * Usage:
- *   bun install.ts <INDEX_API_KEY>
- *   INDEX_API_KEY=... bun install.ts
+ *   bun install.ts <API_KEY>
+ *   API_KEY=... bun install.ts
  */
 
 import {
@@ -49,19 +47,26 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
-const PROTOCOL_MCP_URL = "https://protocol.index.network/mcp";
+const PROD_MCP_URL = "https://protocol.index.network/mcp";
+const DEV_MCP_URL = "https://protocol.dev.index.network/mcp";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const SOURCE_WORKSPACE = join(SCRIPT_DIR, "workspace");
+const SOURCE_WORKSPACE = join(SCRIPT_DIR, "../workspace");
 const TARGET_WORKSPACE = join(homedir(), ".openclaw", "workspace");
 
+const FLAGS = process.argv.slice(2).filter((a) => a.startsWith("--"));
+const POSITIONALS = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const IS_DEV = FLAGS.includes("--dev");
+const PROTOCOL_MCP_URL =
+  process.env.INDEX_MCP_URL?.trim() || (IS_DEV ? DEV_MCP_URL : PROD_MCP_URL);
+
 function readApiKey(): string {
-  const fromArg = process.argv[2]?.trim();
-  const fromEnv = process.env.INDEX_API_KEY?.trim();
+  const fromArg = POSITIONALS[0]?.trim();
+  const fromEnv = process.env.API_KEY?.trim() ?? process.env.INDEX_API_KEY?.trim();
   const key = fromArg || fromEnv;
   if (!key) {
-    console.error("error: INDEX_API_KEY required");
-    console.error("usage: bun install.ts <INDEX_API_KEY>");
-    console.error("       INDEX_API_KEY=<key> bun install.ts");
+    console.error("error: API_KEY required");
+    console.error("usage: bun install.ts <API_KEY> [--dev]");
+    console.error("       API_KEY=<key> bun install.ts [--dev]");
     process.exit(1);
   }
   return key;
@@ -93,21 +98,12 @@ function patchOpenclawConfig(apiKey: string): void {
   execSync("openclaw config set channels.telegram.streaming.mode off", {
     stdio: ["ignore", "ignore", "inherit"],
   });
-
-  // One-shot cleanup so users who installed earlier versions don't end up
-  // with two MCP entries pointing at the same server.
-  try {
-    execSync("openclaw config unset mcp.servers.index-network", { stdio: "ignore" });
-    console.log("→ migrated legacy mcp.servers.index-network");
-  } catch {
-    // Entry didn't exist — fine.
-  }
 }
 
 /**
  * Reads `~/.openclaw/agents/main/sessions/sessions.json` and returns the
  * most-recently-updated Telegram-bound session, or `null` if the user has
- * not yet messaged Edge Claw on Telegram. Used to bind cron deliveries to
+ * not yet messaged the agent on Telegram. Used to bind cron deliveries to
  * the user's actual chat instead of `--channel last`, which fails for cron
  * jobs because they run in fresh isolated sessions with no `lastTo`.
  */
@@ -169,7 +165,7 @@ function bindCronsToTelegram(
   }
   const parsed = JSON.parse(raw) as { jobs?: Array<{ id: string; name: string }> };
   for (const job of parsed.jobs ?? []) {
-    if (!job.name.startsWith("Edge Claw")) continue;
+    if (!job.name.startsWith("EdgeClaw")) continue;
     execSync(
       `openclaw cron edit ${job.id} --session-key ${session.sessionKey} --channel telegram --to ${session.to}`,
       { stdio: ["ignore", "ignore", "inherit"], env },
@@ -183,12 +179,12 @@ function installCronJobs(): void {
   const env = { ...process.env, PATH: `${npmBin}:${localBin}:${process.env.PATH}` };
   const workspaceDir = join(homedir(), ".openclaw", "workspace");
 
-  // Remove existing Edge Claw cron jobs before re-adding to stay idempotent.
+  // Remove existing EdgeClaw cron jobs before re-adding to stay idempotent.
   try {
     const raw = execSync("openclaw cron list --json", { encoding: "utf8", env });
     const parsed = JSON.parse(raw) as { jobs?: Array<{ id: string; name: string }> };
     for (const job of parsed.jobs ?? []) {
-      if (job.name.startsWith("Edge Claw")) {
+      if (job.name.startsWith("EdgeClaw")) {
         execSync(`openclaw cron remove ${job.id}`, { stdio: "ignore", env });
       }
     }
@@ -198,13 +194,20 @@ function installCronJobs(): void {
 
   console.log("→ installing cron jobs");
 
+  // `--no-deliver` disables the runner's announce fallback. The agent must use
+  // the `message` tool to deliver visible content; anything the agent says as
+  // its final assistant text stays internal. This eliminates the entire class
+  // of NO_REPLY-token-leak bugs (textNO_REPLY, JSON envelopes, partial tokens)
+  // because there is no fallback channel for malformed silent tokens to bypass.
+  // The `--channel`/`--to` binding still resolves the `message` tool's target
+  // and is patched in by `bindCronsToTelegram` once a Telegram session exists.
   execSync(
     `openclaw cron add \
-      --name "Edge Claw — daily digest" \
+      --name "EdgeClaw — daily digest" \
       --cron "0 8 * * *" \
       --session isolated \
       --light-context \
-      --announce \
+      --no-deliver \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/digest.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
@@ -212,11 +215,11 @@ function installCronJobs(): void {
 
   execSync(
     `openclaw cron add \
-      --name "Edge Claw — ambient discovery (afternoon)" \
+      --name "EdgeClaw — ambient discovery (afternoon)" \
       --cron "0 14 * * *" \
       --session isolated \
       --light-context \
-      --announce \
+      --no-deliver \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
@@ -224,11 +227,11 @@ function installCronJobs(): void {
 
   execSync(
     `openclaw cron add \
-      --name "Edge Claw — ambient discovery (evening)" \
+      --name "EdgeClaw — ambient discovery (evening)" \
       --cron "0 20 * * *" \
       --session isolated \
       --light-context \
-      --announce \
+      --no-deliver \
       --channel last \
       --message "$(cat ${workspaceDir}/prompts/ambient.md)"`,
     { stdio: ["ignore", "ignore", "inherit"], env, shell: "/bin/sh" },
@@ -280,8 +283,9 @@ function main(): void {
   const apiKey = readApiKey();
   ensureOpenclawAvailable();
 
-  console.log("Edge Claw installer");
-  console.log("===================");
+  console.log("EdgeClaw installer");
+  console.log("==================");
+  console.log(`target: ${IS_DEV ? "dev" : "production"} (${PROTOCOL_MCP_URL})`);
   console.log("");
 
   patchOpenclawConfig(apiKey);
@@ -294,10 +298,8 @@ function main(): void {
   const session = findTelegramSession();
   if (session) {
     bindCronsToTelegram(session, env);
-    console.log("→ skipping gateway restart (Telegram session already active)");
-  } else {
-    restartGateway();
   }
+  restartGateway();
 
   console.log("");
   console.log("✓ installed");
@@ -306,7 +308,7 @@ function main(): void {
     console.log("crons are bound to your Telegram chat — digest, ambient passes will deliver.");
   } else {
     console.log("next:");
-    console.log("  1. send any message to Edge Claw on Telegram");
+    console.log("  1. send any message to your agent on Telegram");
     console.log("  2. re-run `bun install.ts <key>` to bind cron deliveries to that chat");
   }
 }

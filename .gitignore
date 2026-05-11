@@ -32,7 +32,7 @@ txt/
 # Documentation & Reports
 # ===================
 AGENTS.md
-!packages/edge-claw/workspace/AGENTS.md
+!packages/edgeclaw/workspace/AGENTS.md
 *.report.md
 
 # ===================

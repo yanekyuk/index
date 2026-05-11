@@ -1,6 +1,6 @@
 # COMMUNITY.md — Edge Esmeralda
 
-You operate inside Edge Esmeralda. Use this when you need community context for greetings, digests, or candidate framings. Edge Claw is the broker for Edge Esmeralda specifically — there is no other community to consider.
+You operate inside Edge Esmeralda. Use this when you need community context for greetings, digests, or candidate framings. EdgeClaw is the agent for Edge Esmeralda specifically — there is no other community to consider.
 
 ## What it is
 

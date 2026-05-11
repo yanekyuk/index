@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Edge Claw reset script.
+ * EdgeClaw reset script.
  *
- * Tears down everything Edge Claw installed, leaving the underlying OpenClaw
+ * Tears down everything EdgeClaw installed, leaving the underlying OpenClaw
  * setup (Telegram bot token, OpenRouter key, gateway config) untouched.
- * After this runs, re-install with `bun install.ts <INDEX_API_KEY>`.
+ * After this runs, re-install with `bun install.ts <API_KEY>`.
  *
  * What gets removed:
- *   - All cron jobs whose name starts with "Edge Claw"
+ *   - All cron jobs whose name starts with "EdgeClaw"
  *   - `mcp.servers.index` config entry
  *   - `channels.telegram.streaming.mode` override (restores gateway default)
  *   - All workspace files staged by the installer (AGENTS.md, SOUL.md, etc.)
@@ -31,7 +31,7 @@ import { execSync } from "node:child_process";
 
 const TARGET_WORKSPACE = join(homedir(), ".openclaw", "workspace");
 
-const CRON_NAME_PREFIX = "Edge Claw";
+const CRON_NAME_PREFIX = "EdgeClaw";
 
 const WORKSPACE_FILES = [
   "AGENTS.md",
@@ -66,7 +66,7 @@ function removeCronJobs(): void {
 
   const edgeClawJobs = jobs.filter((j) => j.name.startsWith(CRON_NAME_PREFIX));
   if (edgeClawJobs.length === 0) {
-    console.log("→ no Edge Claw cron jobs found");
+    console.log("→ no EdgeClaw cron jobs found");
     return;
   }
 
@@ -141,8 +141,8 @@ function restartGateway(): void {
 function main(): void {
   const wipeUser = process.argv.includes("--wipe-user");
 
-  console.log("Edge Claw reset");
-  console.log("===============");
+  console.log("EdgeClaw reset");
+  console.log("==============");
   console.log("");
 
   ensureOpenclawAvailable();
@@ -155,7 +155,7 @@ function main(): void {
   console.log("✓ reset complete");
   console.log("");
   console.log("next:");
-  console.log("  re-install: bun install.ts <INDEX_API_KEY>");
+  console.log("  re-install: bun install.ts <API_KEY>");
 }
 
 main();
