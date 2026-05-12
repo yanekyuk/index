@@ -2821,6 +2821,14 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityActorApproval(id, introducerUserId, approved);
   }
+  async stampOpportunityActorAction(
+    id: string,
+    actorUserId: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
+  ): Promise<OpportunityRow | null> {
+    return this.opportunityAdapter.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
+  }
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
@@ -4217,6 +4225,47 @@ export class OpportunityDatabaseAdapter {
       const [row] = await tx
         .update(opportunities)
         .set({ actors: updatedActors, updatedAt: new Date() })
+        .where(eq(opportunities.id, id))
+        .returning();
+      return row ? toOpportunityRow(row) : null;
+    });
+  }
+
+  async stampOpportunityActorAction(
+    id: string,
+    actorUserId: string,
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
+    acceptedBy?: string,
+  ): Promise<OpportunityRow | null> {
+    if (status === 'accepted' && !acceptedBy) {
+      throw new Error('acceptedBy is required when status is accepted');
+    }
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ actors: opportunities.actors })
+        .from(opportunities)
+        .where(eq(opportunities.id, id))
+        .for('update');
+      if (!locked) return null;
+      const nowIso = new Date().toISOString();
+      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
+        actor.userId === actorUserId
+          ? { ...actor, actedAt: actor.actedAt ?? nowIso }
+          : actor,
+      );
+      const updates: Record<string, unknown> = {
+        actors: updatedActors,
+        status,
+        updatedAt: new Date(),
+      };
+      if (status === 'accepted') {
+        updates.acceptedBy = acceptedBy;
+      } else {
+        updates.acceptedBy = null;
+      }
+      const [row] = await tx
+        .update(opportunities)
+        .set(updates)
         .where(eq(opportunities.id, id))
         .returning();
       return row ? toOpportunityRow(row) : null;
@@ -5805,6 +5854,12 @@ export function createSystemDatabase(
       verifyScope(opportunityIndexId);
       return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
     },
+    stampOpportunityActorAction: (
+      id: string,
+      actorUserId: string,
+      status: Parameters<ChatDatabaseAdapter['stampOpportunityActorAction']>[2],
+      acceptedBy?: string,
+    ) => db.stampOpportunityActorAction(id, actorUserId, status, acceptedBy),
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);
       return db.opportunityExistsBetweenActors(actorIds, networkId);
