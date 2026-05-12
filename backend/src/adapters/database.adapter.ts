@@ -4144,12 +4144,14 @@ export class OpportunityDatabaseAdapter {
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.networkId) {
-      conditions.push(sql`(
-        ${opportunities.context}->>'networkId' = ${options.networkId}
-        OR EXISTS (
-          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
-          WHERE actor->>'networkId' = ${options.networkId}
-        )
+      // Strict per-actor scope: the requesting user's own actor entry must be
+      // anchored on the bound network. The looser pre-fix check (any actor or
+      // context.networkId matching) leaked cross-network opps to scoped readers
+      // when a counterpart was on the bound network but the viewer wasn't.
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+        WHERE actor->>'userId' = ${userId}
+          AND actor->>'networkId' = ${options.networkId}
       )`);
     }
     if (options?.statuses?.length) {
@@ -4170,7 +4172,14 @@ export class OpportunityDatabaseAdapter {
     networkId: string,
     options?: { status?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
-    const conditions = [sql`${opportunities.context}->>'networkId' = ${networkId}`];
+    // Actor-anchored scope: an opportunity belongs to the network when at
+    // least one actor was matched there. Replaces an earlier `context.networkId`
+    // tag check — that field is a denormalization, not the source of truth, and
+    // can drift from `actors[].networkId` in mixed-network introducer flows.
+    const conditions = [sql`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+      WHERE actor->>'networkId' = ${networkId}
+    )`];
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     let q = db
       .select()

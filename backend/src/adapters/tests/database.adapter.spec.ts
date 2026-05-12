@@ -660,6 +660,92 @@ describe('OpportunityDatabaseAdapter', () => {
     });
   });
 
+  describe('network-scope filter (getOpportunitiesForUser)', () => {
+    it('does not leak when a counterpart actor lives on the scoped network but the viewer\'s own actor is elsewhere', async () => {
+      // The viewer (userA) is anchored on otherNetworkId in this opportunity.
+      // A counterpart (userB) is anchored on fixture.networkId. The old filter
+      // (visibility @> [{userId}]  AND  EXISTS actor.networkId = X) treats those
+      // two facts independently and lets the opp through when querying with
+      // networkId = fixture.networkId. The strict per-actor filter must exclude it.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Other Network',
+        prompt: 'Other network prompt',
+      });
+      await db.insert(networkMembers).values({
+        networkId: otherNetworkId,
+        userId: fixture.userAId,
+        permissions: ['member'],
+        autoAssign: false,
+      });
+
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: otherNetworkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Cross-network scope leak', confidence: 0.8 },
+        context: { networkId: otherNetworkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const scopedToFixture = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+        expect(scopedToFixture.some((o) => o.id === created.id)).toBe(false);
+
+        // Sanity: with the correct scope the opp is visible to userA.
+        const scopedToActual = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: otherNetworkId });
+        expect(scopedToActual.some((o) => o.id === created.id)).toBe(true);
+      } finally {
+        // Opp's context.networkId is otherNetworkId, so the afterAll cleanup
+        // (which filters by fixture.networkId) won't touch it — clean explicitly.
+        await db.delete(opportunities).where(eq(opportunities.id, created.id));
+        await db.delete(networkMembers).where(eq(networkMembers.networkId, otherNetworkId));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+
+    it('getOpportunitiesForNetwork keys on actor.networkId, not context.networkId', async () => {
+      // Opp's `context.networkId` points at fixture.networkId, but no actor is
+      // anchored there — both actors live on otherNetworkId. The old context-
+      // tagged check returned the opp; the actor-anchored check excludes it
+      // and instead returns the opp on the actors' actual network.
+      const otherNetworkId = uuidv4();
+      await db.insert(networks).values({
+        id: otherNetworkId,
+        title: TEST_PREFIX + 'Other Network 2',
+        prompt: 'Other network prompt',
+      });
+
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { networkId: otherNetworkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: otherNetworkId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Context-vs-actor mismatch', confidence: 0.8 },
+        // Stale / drifted context tag — actors are the source of truth.
+        context: { networkId: fixture.networkId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+
+      try {
+        const forFixture = await adapter.getOpportunitiesForNetwork(fixture.networkId);
+        expect(forFixture.some((o) => o.id === created.id)).toBe(false);
+
+        const forOther = await adapter.getOpportunitiesForNetwork(otherNetworkId);
+        expect(forOther.some((o) => o.id === created.id)).toBe(true);
+      } finally {
+        await db.delete(opportunities).where(eq(opportunities.id, created.id));
+        await db.delete(networks).where(eq(networks.id, otherNetworkId));
+      }
+    });
+  });
+
   describe('draft visibility (getOpportunitiesForUser)', () => {
     it('without conversationId excludes draft opportunities', async () => {
       const created = await adapter.createOpportunity({
