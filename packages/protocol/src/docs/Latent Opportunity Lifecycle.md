@@ -202,19 +202,19 @@ graph LR
 |-------|------------------|
 | **OpportunityEvaluator** | Assigns valency (Agent / Patient / Peer). System prompt explains that this choice controls who sees the opportunity and when — Agent last, Patient early, Peer both. |
 | **OpportunityPresenter** | Receives `viewerRole`. Suggests role-appropriate actions (e.g. patient: "Send a message to start the conversation"; agent: "Someone is interested — check their message"; introducer: "Share this with [name]"). |
-| **Chat agent** | Prompt explains role-based visibility in natural language (no jargon). Tool descriptions state that send_opportunity notifies "the next person in the connection" based on roles, and that list_opportunities only returns opportunities the user is allowed to see. |
+| **Chat agent** | Prompt explains role-based visibility in natural language (no jargon). Tool descriptions state that `update_opportunity` with `status: "pending"` notifies "the next person in the connection" based on roles, and that `list_opportunities` only returns opportunities the user is allowed to see. |
 
 ## Chat Tools
 
 | Tool | Behavior |
 |------|----------|
-| `create_opportunities` | Invokes opportunity graph; creates draft (latent) opportunities. Discovered opportunities may not all be visible to the user depending on their role in each match. |
+| `discover_opportunities` | Invokes opportunity graph; creates draft (latent) opportunities. Discovered opportunities may not all be visible to the user depending on their role in each match. |
 | `list_opportunities` | Returns opportunities the user is allowed to see (role + status). Filtered by visibility guard in `getOpportunitiesForUser`. |
-| `send_opportunity` | Promotes latent → pending. System notifies the appropriate next person by role (patient if sent by introducer, agent if sent by patient, other peer if sent by peer). |
+| `update_opportunity` (with `status: "pending"`) | Promotes latent → pending. System notifies the appropriate next person by role (patient if sent by introducer, agent if sent by patient, other peer if sent by peer). |
 
 ## Data Flow (Discovery and Send)
 
-Discovery flow is unchanged: user or agent calls `create_opportunities` → graph runs Prep through Persist → opportunities created as latent. List and send use the same graph in read/send mode; `getOpportunitiesForUser` applies the role-based visibility guard so only allowed opportunities are returned. On send, only the next-tier role is notified.
+Discovery flow is unchanged: user or agent calls `discover_opportunities` → graph runs Prep through Persist → opportunities created as latent. List and send use the same graph in read/send mode; `getOpportunitiesForUser` applies the role-based visibility guard so only allowed opportunities are returned. On send, only the next-tier role is notified.
 
 ## Hyde Documents and Semantic Search
 

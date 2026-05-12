@@ -13,8 +13,138 @@ import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type { Opportunity, OpportunityStatus } from "../shared/interfaces/database.interface.js";
 import type { ConnectLinkKind } from "../shared/interfaces/connect-link.interface.js";
 import { selectByComposition } from "./opportunity.utils.js";
+import { normalizeTelegramHandle } from "../shared/utils/telegram-handle.js";
 
 const logger = protocolLogger("ChatTools:Opportunity");
+
+/**
+ * Pure status × role → ConnectLinkKind matrix.
+ *
+ * Returns the kind of short-link the viewer can act on directly, or `null` if
+ * no direct link makes sense for this combination. Non-null kinds map to:
+ *
+ * - `connect` — pending opp where viewer is a non-introducer party. Clicking
+ *   flips the opp to accepted and opens the chat with the counterpart.
+ * - `approve_introduction` — draft or latent opp where viewer is an unapproved
+ *   introducer. Clicking flips approved=true and triggers negotiation. The
+ *   `draft` case comes from `discover_opportunities` intro mode; the `latent`
+ *   case comes from background-discovered connector-flow cards surfaced in
+ *   `list_opportunities`. In both, status remains pre-send and the `/c/<code>`
+ *   link is the only MCP path to approve.
+ * - `outreach` — accepted opp where viewer is a non-introducer party.
+ *   Clicking opens the existing chat (no state change).
+ *
+ * Callers that pass `viewerApproved: undefined` for a fresh draft (e.g.
+ * `discover_opportunities` paths that just inserted the row with approved=false)
+ * get `approve_introduction` — the default matches the just-created state.
+ */
+export function resolveActionableLinkKind(input: {
+  status: string;
+  viewerRole: string;
+  viewerApproved?: boolean;
+}): ConnectLinkKind | null {
+  const { status, viewerRole, viewerApproved } = input;
+  const isIntroducer = viewerRole === "introducer";
+  if (status === "accepted") {
+    return isIntroducer ? null : "outreach";
+  }
+  if (status === "pending") {
+    return isIntroducer ? null : "connect";
+  }
+  if (status === "draft" || status === "latent") {
+    if (!isIntroducer) return null;
+    return viewerApproved === true ? null : "approve_introduction";
+  }
+  return null;
+}
+
+/**
+ * Build the agent-facing profile link for a counterpart. Telegram DM if a
+ * public handle is on file, otherwise the web profile URL. Returns `undefined`
+ * only if no fallback is possible (no Telegram AND no frontendUrl configured).
+ *
+ * Telegram handles are validated via `normalizeTelegramHandle` — values that
+ * look like URLs (e.g. `"t.me/alice?evil=1"`), contain special characters, or
+ * are shorter than 5 chars are treated as invalid and fall through to the web
+ * profile URL rather than producing a malformed `t.me` link.
+ *
+ * Trailing slashes on frontendUrl are stripped before concatenation.
+ */
+export function buildProfileUrl(
+  counterpartUser:
+    | { socials?: Array<{ label?: string | null; value?: string | null }> | null }
+    | null
+    | undefined,
+  counterpartUserId: string,
+  frontendUrl: string | undefined,
+): string | undefined {
+  const telegramSocial = counterpartUser?.socials?.find(
+    (s) => s.label?.toLowerCase() === "telegram",
+  );
+  const telegramHandle = normalizeTelegramHandle(telegramSocial?.value);
+  if (telegramHandle) return `https://t.me/${telegramHandle}`;
+  if (frontendUrl) {
+    const base = frontendUrl.replace(/\/+$/, "");
+    return `${base}/u/${counterpartUserId}?link_preview=false`;
+  }
+  return undefined;
+}
+
+/**
+ * Mint a short-link for `card` if the (status, viewerRole, viewerApproved)
+ * combination is actionable; mutate the card in place with `acceptUrl`,
+ * `profileUrl`, and `feedCategory`. No-op (and no DB call) if not actionable.
+ *
+ * Swallows mint errors after logging — the card is still returned without an
+ * `acceptUrl`, matching the prior `list_opportunities` resilience behavior.
+ */
+export async function attachActionableLinks(
+  card: Record<string, unknown> & {
+    opportunityId: string;
+    viewerRole: string;
+    status: string;
+  },
+  opts: {
+    viewerId: string;
+    viewerApproved?: boolean;
+    counterpartUser:
+      | { socials?: Array<{ label?: string | null; value?: string | null }> | null }
+      | null
+      | undefined;
+    counterpartUserId: string;
+    mintConnectLink: NonNullable<ToolDeps["mintConnectLink"]>;
+    frontendUrl: string | undefined;
+  },
+): Promise<void> {
+  const kind = resolveActionableLinkKind({
+    status: card.status,
+    viewerRole: card.viewerRole,
+    viewerApproved: opts.viewerApproved,
+  });
+  if (kind === null) return;
+
+  try {
+    const { url } = await opts.mintConnectLink({
+      userId: opts.viewerId,
+      opportunityId: card.opportunityId,
+      kind,
+      greeting: null,
+    });
+    card.acceptUrl = url;
+    card.feedCategory = card.viewerRole === "introducer" ? "connector-flow" : "connection";
+    const profileUrl = buildProfileUrl(opts.counterpartUser, opts.counterpartUserId, opts.frontendUrl);
+    if (profileUrl) card.profileUrl = profileUrl;
+  } catch (err) {
+    logger.warn(
+      "Failed to mint MCP opportunity link — surfacing card without acceptUrl/profileUrl",
+      {
+        opportunityId: card.opportunityId,
+        kind,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+  }
+}
 
 /**
  * Statuses for which `update_opportunity` must refuse mutations.
@@ -178,12 +308,16 @@ type OpportunityCardLike = Record<string, unknown> & {
  * "include EXACTLY as-is" directive so the frontend card renderer can parse
  * and render interactive cards.
  *
- * MCP (`isMcp=true`): emits prose (name, reason, status, opportunityId per
- * card) with an explicit reminder to synthesize in natural language and not
- * dump raw fields or IDs. MCP clients have no card renderer, so code fences
- * would surface as raw JSON to end users.
+ * MCP (`isMcp=true`): emits prose (name, reason, status, profileUrl when
+ * present, acceptUrl when present, feedCategory when present) and includes
+ * `opportunityId` ONLY for cards without an `acceptUrl` — exposing the UUID
+ * alongside an actionable link gave LLMs a foothold to hallucinate bare
+ * `/api/opportunities/<id>/connect` URLs (see IND-271). The trailing
+ * instruction reminds the agent to synthesize in natural language and never
+ * fabricate URLs for cards that don't have them. MCP clients have no card
+ * renderer, so code fences would surface as raw JSON to end users.
  */
-function buildOpportunityPresentation(
+export function buildOpportunityPresentation(
   cards: OpportunityCardLike[],
   opts: { isMcp: boolean; leadIn: string; label?: "opportunity" | "opportunities" },
 ): string {
@@ -198,20 +332,29 @@ function buildOpportunityPresentation(
         if (card.profileUrl) lines.push(`   profileUrl: ${card.profileUrl}`);
         if (card.acceptUrl) lines.push(`   acceptUrl: ${card.acceptUrl}`);
         if (card.feedCategory) lines.push(`   feedCategory: ${card.feedCategory}`);
-        lines.push(`   opportunityId: ${card.opportunityId}`);
+        // Only surface opportunityId when there's no acceptUrl. Exposing the
+        // UUID alongside an actionable link gives the LLM a foothold to
+        // hallucinate bare `/api/opportunities/<id>/connect` URLs.
+        if (!card.acceptUrl) {
+          lines.push(`   opportunityId: ${card.opportunityId}`);
+        }
         return lines.join("\n");
       })
       .join("\n\n");
     const hasLinks = cards.some((c) => c.acceptUrl);
+    const hasOpportunityIds = cards.some((c) => !c.acceptUrl);
     const linkInstructions = hasLinks
-      ? `Link each person's name to their profileUrl and embed acceptUrl on a short verb phrase (e.g. "message [Name]" for connection, "make intro" for connector-flow). The acceptUrl is opaque and self-contained — embed it verbatim. Do NOT append, encode, or modify any part of any URL. Never render link strips or tables — weave URLs into prose. `
+      ? `For each card that has an acceptUrl, embed it on a short verb phrase (e.g. "message [Name]" for connection, "make intro" for connector-flow). For each card that has a profileUrl, link the person's name to it. Some cards may have neither — render those as plain text and never fabricate URLs for them. The acceptUrl is opaque and self-contained — embed it verbatim. Do NOT append, encode, or modify any part of any URL. Never render link strips or tables — weave URLs into prose. `
+      : "";
+    const idInstructions = hasOpportunityIds
+      ? `Use opportunityId values only when calling update_opportunity (send/accept/reject).`
       : "";
     return (
       `${opts.leadIn}\n\n${prose}\n\n` +
       `Summarize these for the user in natural prose — mention first names and a brief match reason per connection. ` +
       `${linkInstructions}` +
       `Do NOT print raw JSON, field labels, opportunityIds, or confidence scores. ` +
-      `Use opportunityId values only when calling update_opportunity (send/accept/reject).`
+      `${idInstructions}`
     );
   }
 
@@ -230,11 +373,11 @@ function buildOpportunityPresentation(
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, userDb, systemDb, graphs, embedder, cache } = deps;
 
-  const createOpportunities = defineTool({
-    name: "create_opportunities",
+  const discoverOpportunities = defineTool({
+    name: "discover_opportunities",
     description:
-      "Creates opportunities — discovered connections between users based on complementary intents. Opportunities are the core output " +
-      "of the discovery engine, representing potential valuable connections between people.\n\n" +
+      "Discovers opportunities — connections between users based on complementary intents — and persists them as drafts. " +
+      "Opportunities are the core output of the discovery engine, representing potential valuable connections between people.\n\n" +
       "**NOT for person lookup** — use read_user_profiles(query=name) to find people by name.\n\n" +
       "**Four modes:**\n" +
       "1. **Discovery** (most common): pass `searchQuery` and/or `networkId`. The system finds other users in shared indexes " +
@@ -270,7 +413,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       continueFrom: z
         .string()
         .optional()
-        .describe("Pagination token: pass the discoveryId from a previous create_opportunities result to evaluate the next batch of candidates. Do not combine with other mode parameters."),
+        .describe("Pagination token: pass the discoveryId from a previous discover_opportunities result to evaluate the next batch of candidates. Do not combine with other mode parameters."),
       searchQuery: z
         .string()
         .optional()
@@ -332,7 +475,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .describe(
           "Introduction mode: pre-gathered profile and intent data for each party being introduced. " +
           "Each entry needs userId, networkId (the shared index), and optionally profile (name, bio, skills, interests) and intents (intentId, payload). " +
-          "Gather this data by calling read_user_profiles and read_intents for each party BEFORE calling create_opportunities. " +
+          "Gather this data by calling read_user_profiles and read_intents for each party BEFORE calling discover_opportunities. " +
           "All entities must share the same networkId (the shared index where both parties are members).",
         ),
       hint: z
@@ -421,7 +564,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const isIntroducerContinuation = !!query.introTargetUserId?.trim();
         const totalRemaining = (result.pagination?.remaining ?? 0) + extraFromCap;
         if (totalRemaining > 0 && result.pagination?.discoveryId) {
-          message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call create_opportunities with continueFrom="${result.pagination.discoveryId}".`;
+          message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call discover_opportunities with continueFrom="${result.pagination.discoveryId}".`;
         } else if (isIntroducerContinuation) {
           message += `\n\nThese are all the introduction candidates I found for this person.`;
         } else {
@@ -603,6 +746,22 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               }
             : {}),
         };
+
+        if (context.isMcp && deps.mintConnectLink) {
+          await attachActionableLinks(cardData as Record<string, unknown> & {
+            opportunityId: string;
+            viewerRole: string;
+            status: string;
+          }, {
+            viewerId: context.userId,
+            viewerApproved: false,
+            counterpartUser,
+            counterpartUserId: firstPartyId,
+            mintConnectLink: deps.mintConnectLink,
+            frontendUrl: deps.frontendUrl,
+          });
+        }
+
         return success({
           found: true,
           count: 1,
@@ -743,7 +902,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           createIntentSuggested: true,
           suggestedIntentDescription: result.suggestedIntentDescription,
           message:
-            "No matching opportunities found. Call create_intent with the suggested description, then create_opportunities again.",
+            "No matching opportunities found. Call create_intent with the suggested description, then discover_opportunities again.",
           summary: "No matches found",
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
@@ -806,6 +965,27 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const displayedCards = allCardData.slice(0, CHAT_DISPLAY_LIMIT);
       const extraFromCap = allCardData.length - displayedCards.length;
 
+      if (context.isMcp && deps.mintConnectLink) {
+        const mintConnectLink = deps.mintConnectLink;
+        await Promise.all(
+          displayedCards.map(async (card, idx) => {
+            const source = result.opportunities?.[idx];
+            await attachActionableLinks(card as Record<string, unknown> & {
+              opportunityId: string;
+              viewerRole: string;
+              status: string;
+            }, {
+              viewerId: context.userId,
+              viewerApproved: source?.viewerApproved,
+              counterpartUser: source?.candidateUser ?? null,
+              counterpartUserId: source?.userId ?? card.userId,
+              mintConnectLink,
+              frontendUrl: deps.frontendUrl,
+            });
+          }),
+        );
+      }
+
       let message = buildOpportunityPresentation(displayedCards, {
         isMcp: context.isMcp ?? false,
         leadIn: `Found ${displayedCards.length} potential connection(s).`,
@@ -828,7 +1008,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const totalRemaining = (result.pagination?.remaining ?? 0) + extraFromCap;
       if (totalRemaining > 0 && result.pagination?.discoveryId) {
-        message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call create_opportunities with continueFrom="${result.pagination.discoveryId}".`;
+        message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call discover_opportunities with continueFrom="${result.pagination.discoveryId}".`;
       } else if (isIntroducerFlow) {
         message += `\n\nThese are all the introduction candidates I found for this person.`;
       } else {
@@ -936,7 +1116,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           count: 0,
           summary: "No opportunities yet",
           message:
-            "You have no opportunities yet. Use create_opportunities to find connections.",
+            "You have no opportunities yet. Use discover_opportunities to find connections.",
         });
       }
 
@@ -1043,54 +1223,27 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
 
           // For MCP callers (e.g. Edge Claw), mint a connect token and attach
-          // acceptUrl + profileUrl so the agent can embed actionable links.
-          // Prefer the counterpart's Telegram handle for the profile link
-          // (one click → DM draft) and fall back to the web profile URL only
-          // when no public Telegram handle is on file.
+          // acceptUrl + profileUrl when the (status, viewerRole) is actionable
+          // for the viewer. Non-actionable combos (sender-on-draft,
+          // pending-on-introducer-waiting, rejected, etc.) deliberately get
+          // no link — the LLM would otherwise hallucinate `/api/.../connect`
+          // URLs from the exposed opportunityId.
           if (context.isMcp && deps.mintConnectLink) {
-            try {
-              const isIntroducer = cardData.viewerRole === "introducer";
-              const isAccepted = opp.status === "accepted";
-              const feedCategory = isIntroducer ? "connector-flow" : "connection";
-              const kind: ConnectLinkKind = isAccepted
-                ? "outreach"
-                : isIntroducer
-                  ? "approve_introduction"
-                  : "connect";
-
-              // The list path uses minimal card data (no LLM presenter), so no
-              // greeting is available to snapshot here. The mint endpoint stores
-              // null and the redirect path falls back to the live presenter.
-              const greeting = null;
-
-              const { url } = await deps.mintConnectLink({
-                userId: context.userId,
-                opportunityId: opp.id,
-                kind,
-                greeting,
-              });
-
-              const telegramSocial = counterpartUser?.socials?.find(
-                (s) => s.label?.toLowerCase() === "telegram",
-              );
-              const telegramHandle = telegramSocial?.value?.trim().replace(/^@/, "");
-              const profileUrl = telegramHandle
-                ? `https://t.me/${telegramHandle}`
-                : deps.frontendUrl
-                  ? `${deps.frontendUrl}/u/${counterpartUserId}?link_preview=false`
-                  : undefined;
-
-              (cardData as Record<string, unknown>).acceptUrl = url;
-              if (profileUrl) {
-                (cardData as Record<string, unknown>).profileUrl = profileUrl;
-              }
-              (cardData as Record<string, unknown>).feedCategory = feedCategory;
-            } catch (err) {
-              logger.warn("Failed to mint MCP opportunity links — surfacing card without acceptUrl/profileUrl", {
-                opportunityId: opp.id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
+            const viewerActor = opp.actors.find((a) => a.userId === context.userId);
+            const viewerApproved =
+              viewerActor?.role === "introducer" ? viewerActor.approved === true : undefined;
+            await attachActionableLinks(cardData as Record<string, unknown> & {
+              opportunityId: string;
+              viewerRole: string;
+              status: string;
+            }, {
+              viewerId: context.userId,
+              viewerApproved,
+              counterpartUser,
+              counterpartUserId,
+              mintConnectLink: deps.mintConnectLink,
+              frontendUrl: deps.frontendUrl,
+            });
           }
 
           cardDataList.push(cardData);
@@ -1133,7 +1286,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           count: 0,
           summary: "No opportunities yet",
           message:
-            "You have no opportunities yet. Use create_opportunities to find connections.",
+            "You have no opportunities yet. Use discover_opportunities to find connections.",
         });
       }
 
@@ -1156,17 +1309,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "Updates an opportunity's status, advancing it through the connection lifecycle.\n\n" +
       "**Status transitions:**\n" +
       "- `pending`: Sends a draft opportunity to the other party. They'll be notified and can accept or reject. " +
-      "This is the primary action after create_opportunities returns a draft.\n" +
+      "This is the primary action after discover_opportunities returns a draft.\n" +
       "- `accepted`: Accept a received opportunity — opens a direct conversation between both parties. Returns a conversationId to surface to the user.\n" +
       "- `rejected`: Decline a received opportunity.\n" +
       "- `expired`: Mark as expired (typically done by the system after timeout).\n\n" +
-      "**When to use:** After create_opportunities or list_opportunities returns opportunity cards. " +
+      "**When to use:** After discover_opportunities or list_opportunities returns opportunity cards. " +
       "The user clicks 'Send' (pending), 'Accept', or 'Reject' on the card, and the agent calls this tool.\n\n" +
       "**Returns:** Confirmation with the new status and notification details (who was notified).",
     querySchema: z.object({
       opportunityId: z
         .string()
-        .describe("The UUID of the opportunity to update. Get from create_opportunities or list_opportunities results."),
+        .describe("The UUID of the opportunity to update. Get from discover_opportunities or list_opportunities results."),
       status: z
         .enum(["pending", "accepted", "rejected", "expired"])
         .describe(
@@ -1287,5 +1440,5 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [createOpportunities, listOpportunities, updateOpportunity, confirmOpportunityDelivery] as const;
+  return [discoverOpportunities, listOpportunities, updateOpportunity, confirmOpportunityDelivery] as const;
 }

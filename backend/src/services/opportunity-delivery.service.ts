@@ -30,7 +30,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { chatDatabaseAdapter } from '../adapters/database.adapter';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
-import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
+import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 import { conversations } from '../schemas/conversation.schema';
 import { agents, opportunities, opportunityDeliveries, userSocials, users } from '../schemas/database.schema';
 

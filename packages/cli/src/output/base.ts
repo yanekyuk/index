@@ -119,8 +119,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   delete_index: "Deleting index...",
   create_index_membership: "Adding member to index...",
   read_index_memberships: "Fetching index memberships...",
-  create_opportunities: "Searching for relevant connections...",
-  list_my_opportunities: "Listing your opportunities...",
+  discover_opportunities: "Searching for relevant connections...",
+  list_opportunities: "Listing your opportunities...",
   update_opportunity: "Updating opportunity status...",
   scrape_url: "Reading content from URL...",
   read_docs: "Looking up documentation...",
@@ -129,7 +129,6 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   list_contacts: "Listing your contacts...",
   add_contact: "Adding contact...",
   remove_contact: "Removing contact...",
-  send_opportunity: "Sending opportunity...",
 };
 
 /** Get a human-friendly description for a raw tool name. */

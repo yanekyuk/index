@@ -257,7 +257,7 @@ describe("opportunity command behavior", () => {
           };
         }
 
-        if (toolName === "create_opportunities") {
+        if (toolName === "discover_opportunities") {
           return {
             success: true,
             data: {},
@@ -287,7 +287,7 @@ describe("opportunity command behavior", () => {
       console.log = log;
     }
 
-    expect(calls).not.toContain("create_opportunities");
+    expect(calls).not.toContain("discover_opportunities");
     expect(logs).toHaveLength(1);
     expect(logs[0]).toContain("\"success\":false");
     expect(logs[0]).toContain("profile lookup failed");

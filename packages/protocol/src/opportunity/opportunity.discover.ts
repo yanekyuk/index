@@ -6,10 +6,10 @@
  * old hardcoded strategy selection. Returns formatted candidates (enriched with
  * profile name/bio) for chat display.
  *
- * Used by the create_opportunities chat tool.
+ * Used by the discover_opportunities chat tool.
  */
 
-import type { Opportunity, ChatGraphCompositeDatabase } from "../shared/interfaces/database.interface.js";
+import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../shared/interfaces/database.interface.js";
 import type { Cache } from "../shared/interfaces/cache.interface.js";
 import type { OpportunityGraphOptions, CandidateMatch } from "./opportunity.state.js";
 import {
@@ -66,7 +66,7 @@ export interface DiscoverInput {
    * Which flow is invoking discovery. Drives the graph's trigger-aware branches
    * in persist (initial status) and negotiate (park window + streaming). When
    * omitted, the graph defaults to 'ambient'. Pass 'orchestrator' from the
-   * chat `create_opportunities` tool so users see drafts stream in and the
+   * chat `discover_opportunities` tool so users see drafts stream in and the
    * accepted-pair lookup surfaces existing connections.
    */
   trigger?: 'ambient' | 'orchestrator';
@@ -104,6 +104,10 @@ export interface FormattedDiscoveryCandidate {
   homeCardPresentation?: HomeCardPresentationResult;
   /** Viewer's role in this opportunity. */
   viewerRole?: string;
+  /** Whether the viewer (as introducer) has approved the introduction. */
+  viewerApproved?: boolean;
+  /** Full user record for the candidate (needed for socials / Telegram fallback). */
+  candidateUser?: UserRecord | null;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
   /** Narrator chip for home card display (name + remark, with optional avatar/userId for introducer). */
@@ -152,7 +156,7 @@ export interface DiscoverResult {
   /**
    * Orchestrator-only: accepted opportunities the persist step found between the
    * discoverer and a candidate counterparty (status='accepted'). Populated from
-   * OpportunityGraphState.dedupAlreadyAccepted. Used by the create_opportunities
+   * OpportunityGraphState.dedupAlreadyAccepted. Used by the discover_opportunities
    * tool to tell the LLM "this pair is already connected — open the existing
    * chat rather than creating a new draft". Empty for the ambient trigger.
    */
@@ -240,6 +244,8 @@ async function enrichOpportunities(
         opportunity: opp,
         candidateUserId,
         viewerRole: viewerActor?.role ?? "party",
+        viewerApproved: viewerActor?.approved === true,
+        candidateUser,
         profile,
         confidence,
       };
@@ -499,6 +505,8 @@ async function enrichOpportunities(
         score: item.confidence,
         status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
         viewerRole: item.viewerRole,
+        viewerApproved: item.viewerApproved,
+        candidateUser: item.candidateUser,
         isGhost,
         ...(presentations?.[idx] && { presentation: presentations[idx] }),
         ...(homeCard && {

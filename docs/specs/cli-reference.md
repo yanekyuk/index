@@ -255,7 +255,7 @@ The `index opportunity` command exposes subcommands for managing opportunities f
 ### `index opportunity discover <query>`
 
 1. Reads credentials. Exits with error if not logged in.
-2. Calls the `create_opportunities` MCP tool via the Tool HTTP API with `{ searchQuery }`.
+2. Calls the `discover_opportunities` MCP tool via the Tool HTTP API with `{ searchQuery }`.
 3. Renders a table of discovered opportunities.
 
 Supports optional flags:

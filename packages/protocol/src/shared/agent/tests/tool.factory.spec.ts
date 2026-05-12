@@ -1,5 +1,5 @@
 /**
- * Unit tests for chat tools (createChatTools, read_intents, read_indexes, read_users, create_opportunities, send_opportunity, etc.).
+ * Unit tests for chat tools (createChatTools, read_intents, read_indexes, read_users, discover_opportunities, update_opportunity, etc.).
  */
 /** Config */
 import { config } from "dotenv";
@@ -357,12 +357,12 @@ describe("createChatTools", () => {
     expect(tools.find((t: { name: string }) => t.name === "read_network_memberships")).toBeDefined();
   });
 
-  test("includes list_opportunities alongside create_opportunities and update_opportunity", async () => {
+  test("includes list_opportunities alongside discover_opportunities and update_opportunity", async () => {
     const mockDb = createMockDatabase(async () => []);
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     expect(tools.find((t: { name: string }) => t.name === "list_opportunities")).toBeDefined();
-    expect(tools.find((t: { name: string }) => t.name === "create_opportunities")).toBeDefined();
+    expect(tools.find((t: { name: string }) => t.name === "discover_opportunities")).toBeDefined();
     expect(tools.find((t: { name: string }) => t.name === "update_opportunity")).toBeDefined();
   });
 });
@@ -1011,12 +1011,12 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
   });
 });
 
-describe("create_opportunities tool", () => {
-  test("returns a tool named create_opportunities with schema containing searchQuery, optional networkId, and optional intentId", async () => {
+describe("discover_opportunities tool", () => {
+  test("returns a tool named discover_opportunities with schema containing searchQuery, optional networkId, and optional intentId", async () => {
     const mockDb = createMockDatabase(async () => []);
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities");
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities");
     expect(tool).toBeDefined();
     const schema = (tool as { schema?: { shape?: Record<string, unknown> } }).schema;
     const shape = schema?.shape ?? (tool as { schema?: { schema?: { shape?: Record<string, unknown> } } }).schema?.schema?.shape;
@@ -1031,7 +1031,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as { invoke: (args: { searchQuery: string; networkId?: string }) => Promise<string> };
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as { invoke: (args: { searchQuery: string; networkId?: string }) => Promise<string> };
     const result = await tool.invoke({ searchQuery: "Find a co-founder" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
@@ -1043,7 +1043,7 @@ describe("create_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], { isNetworkMember: async () => true });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { partyUserIds?: string[]; entities?: unknown[] }) => Promise<string>;
     };
     const result = await tool.invoke({
@@ -1059,7 +1059,7 @@ describe("create_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], { isNetworkMember: async () => true });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { partyUserIds?: string[]; entities?: Array<{ userId: string; networkId?: string }> }) => Promise<string>;
     };
     const errorMessageRe = /networkId|shared index|required/i;
@@ -1100,7 +1100,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: {
         partyUserIds?: string[];
         entities?: Array<{ userId: string; profile?: Record<string, unknown>; networkId: string }>;
@@ -1142,7 +1142,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: {
         partyUserIds?: string[];
         entities?: Array<{ userId: string; profile?: Record<string, unknown>; networkId: string }>;
@@ -1190,7 +1190,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: {
         partyUserIds?: string[];
         entities?: Array<{ userId: string; profile?: Record<string, unknown>; networkId: string }>;
@@ -1236,7 +1236,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: {
         entities?: Array<{ userId: string; profile?: Record<string, unknown>; networkId: string }>;
       }) => Promise<string>;
@@ -1290,7 +1290,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { searchQuery: string }) => Promise<string>;
     };
     const searchQuery = "looking for investors for my game project";
@@ -1330,7 +1330,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { searchQuery?: string }) => Promise<string>;
     };
     const result = await tool.invoke({ searchQuery: "" });
@@ -1368,7 +1368,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { searchQuery: string; introTargetUserId: string }) => Promise<string>;
     };
     const result = await tool.invoke({
@@ -1404,7 +1404,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { searchQuery: string; introTargetUserId: string }) => Promise<string>;
     };
     const result = await tool.invoke({
@@ -1444,7 +1444,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { searchQuery: string }) => Promise<string>;
     };
     const result = await tool.invoke({ searchQuery: "looking for co-founders" });
@@ -1488,7 +1488,7 @@ describe("create_opportunities tool", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { searchQuery: string }) => Promise<string>;
     };
     const result = await tool.invoke({ searchQuery: "looking for co-founders" });
@@ -1517,7 +1517,7 @@ describe("create_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {});
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { continueFrom: string }) => Promise<string>;
     };
     const result = await tool.invoke({ continueFrom: "disc-continue-123" });
@@ -1549,7 +1549,7 @@ describe("create_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {});
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+    const tool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as {
       invoke: (args: { continueFrom: string; introTargetUserId: string }) => Promise<string>;
     };
     const result = await tool.invoke({
@@ -2068,6 +2068,206 @@ describe("createChatTools — MCP connect-link wiring", () => {
     // No acceptUrl line in the MCP prose when no adapter is wired.
     expect(parsed.data.message).not.toContain("acceptUrl:");
   });
+
+  test("does NOT mint when opp is non-actionable (draft + party = sender, no link)", async () => {
+    const mintCalls: Array<unknown> = [];
+    const mintConnectLink = async () => {
+      mintCalls.push(1);
+      return { url: FAKE_URL };
+    };
+
+    const draftDb: ChatGraphCompositeDatabase = createMockDatabase(async () => [], {
+      getOpportunitiesForUser: async () => [
+        { ...buildOpp(), status: "draft" },
+      ],
+      getUser: async (uid: string) => {
+        if (uid === VIEWER_ID) return { id: uid, name: "Viewer" };
+        if (uid === COUNTERPART_ID) return { id: uid, name: "Counterpart" };
+        return null;
+      },
+      getProfile: async () => null,
+    } as unknown as MockOverrides);
+
+    const context: ToolContext = {
+      userId: VIEWER_ID,
+      database: draftDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      mintConnectLink,
+      apiBaseUrl: API_BASE_URL,
+      frontendUrl: FRONTEND_URL,
+    } as ToolContext;
+
+    const tools = await createChatTools(context, buildMcpResolvedContext());
+    const listTool = tools.find((t: { name: string }) => t.name === "list_opportunities") as { invoke: (args: unknown) => Promise<string> };
+    const raw = await listTool.invoke({});
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.success).toBe(true);
+    expect(mintCalls.length).toBe(0); // sender-on-draft must not mint
+    expect(parsed.data.message).not.toContain("acceptUrl:");
+  });
+
+  test("list_opportunities does NOT mint for pending + introducer", async () => {
+    const mintCalls: Array<unknown> = [];
+    const mintConnectLink = async () => {
+      mintCalls.push(1);
+      return { url: FAKE_URL };
+    };
+
+    const introducerDb: ChatGraphCompositeDatabase = createMockDatabase(async () => [], {
+      getOpportunitiesForUser: async () => [
+        {
+          ...buildOpp(),
+          status: "pending",
+          actors: [
+            { userId: VIEWER_ID, role: "introducer", approved: false },
+            { userId: COUNTERPART_ID, role: "party" },
+          ],
+        },
+      ],
+      getUser: async (uid: string) => {
+        if (uid === VIEWER_ID) return { id: uid, name: "Viewer" };
+        if (uid === COUNTERPART_ID) return { id: uid, name: "Counterpart" };
+        return null;
+      },
+      getProfile: async () => null,
+    } as unknown as MockOverrides);
+
+    const context: ToolContext = {
+      userId: VIEWER_ID,
+      database: introducerDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      mintConnectLink,
+      apiBaseUrl: API_BASE_URL,
+      frontendUrl: FRONTEND_URL,
+    } as ToolContext;
+
+    const tools = await createChatTools(context, buildMcpResolvedContext());
+    const listTool = tools.find((t: { name: string }) => t.name === "list_opportunities") as { invoke: (args: unknown) => Promise<string> };
+    const raw = await listTool.invoke({});
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.success).toBe(true);
+    expect(mintCalls.length).toBe(0);
+    expect(parsed.data.message).not.toContain("acceptUrl:");
+  });
+
+  test("list_opportunities mints approve_introduction for latent + introducer (unapproved)", async () => {
+    const mintCalls: Array<{ opportunityId: string; kind: string }> = [];
+    const mintConnectLink = async (args: { userId: string; opportunityId: string; kind: string; greeting?: string | null }) => {
+      mintCalls.push({ opportunityId: args.opportunityId, kind: args.kind });
+      return { url: FAKE_URL };
+    };
+
+    const latentDb: ChatGraphCompositeDatabase = createMockDatabase(async () => [], {
+      getOpportunitiesForUser: async () => [
+        {
+          ...buildOpp(),
+          id: "opp-latent-intro",
+          status: "latent",
+          actors: [
+            { userId: VIEWER_ID, role: "introducer", approved: false },
+            { userId: COUNTERPART_ID, role: "patient" },
+            { userId: "third-party", role: "agent" },
+          ],
+        },
+      ],
+      getUser: async (uid: string) => {
+        if (uid === VIEWER_ID) return { id: uid, name: "Viewer" };
+        if (uid === COUNTERPART_ID) return { id: uid, name: "Counterpart" };
+        if (uid === "third-party") return { id: uid, name: "Third" };
+        return null;
+      },
+      getProfile: async () => null,
+    } as unknown as MockOverrides);
+
+    const context: ToolContext = {
+      userId: VIEWER_ID,
+      database: latentDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      mintConnectLink,
+      apiBaseUrl: API_BASE_URL,
+      frontendUrl: FRONTEND_URL,
+    } as ToolContext;
+
+    const tools = await createChatTools(context, buildMcpResolvedContext());
+    const listTool = tools.find((t: { name: string }) => t.name === "list_opportunities") as { invoke: (args: unknown) => Promise<string> };
+    const raw = await listTool.invoke({});
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.success).toBe(true);
+    expect(mintCalls.length).toBe(1);
+    expect(mintCalls[0]).toMatchObject({ opportunityId: "opp-latent-intro", kind: "approve_introduction" });
+    expect(parsed.data.message).toContain(`acceptUrl: ${FAKE_URL}`);
+  });
+
+  test("discover_opportunities intro mode mints approve_introduction for the introducer", async () => {
+    const mintCalls: Array<{ opportunityId: string; kind: string }> = [];
+    const mintConnectLink = async (args: { userId: string; opportunityId: string; kind: string; greeting?: string | null }) => {
+      mintCalls.push({ opportunityId: args.opportunityId, kind: args.kind });
+      return { url: FAKE_URL };
+    };
+
+    const introDb: ChatGraphCompositeDatabase = createMockDatabase(async () => [], {
+      isNetworkMember: async () => true,
+      opportunityExistsBetweenActors: async () => false,
+      findOverlappingOpportunities: async () => [],
+      createOpportunity: async (data: { actors?: Array<{ userId: string; role: string; approved?: boolean }>; interpretation?: Record<string, unknown>; detection?: Record<string, unknown>; context?: Record<string, unknown>; confidence?: unknown; status?: string }) =>
+        ({
+          id: "opp-intro-1",
+          detection: data.detection,
+          actors: data.actors ?? [],
+          interpretation: data.interpretation ?? { reasoning: "Both build infra for decentralized discovery.", confidence: 0.8 },
+          context: data.context,
+          confidence: data.confidence,
+          status: "draft",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        }) as import("../../interfaces/database.interface").Opportunity,
+      getUser: async (uid: string) => {
+        if (uid === VIEWER_ID) return { id: uid, name: "Viewer" };
+        if (uid === "party-a") return { id: uid, name: "Party A" };
+        if (uid === "party-b") return { id: uid, name: "Party B" };
+        return null;
+      },
+      getProfile: async () => null,
+    } as unknown as MockOverrides);
+
+    const context: ToolContext = {
+      userId: VIEWER_ID,
+      database: introDb,
+      embedder: mockEmbedder,
+      scraper: mockScraper,
+      ...mockProtocolDeps,
+      mintConnectLink,
+      apiBaseUrl: API_BASE_URL,
+      frontendUrl: FRONTEND_URL,
+    } as ToolContext;
+
+    const tools = await createChatTools(context, buildMcpResolvedContext());
+    const createTool = tools.find((t: { name: string }) => t.name === "discover_opportunities") as { invoke: (args: unknown) => Promise<string> };
+
+    const raw = await createTool.invoke({
+      partyUserIds: ["party-a", "party-b"],
+      entities: [
+        { userId: "party-a", profile: { name: "Party A" }, intents: [], networkId: "idx-1" },
+        { userId: "party-b", profile: { name: "Party B" }, intents: [], networkId: "idx-1" },
+      ],
+    });
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.success).toBe(true);
+    expect(mintCalls.length).toBe(1);
+    expect(mintCalls[0]).toMatchObject({ opportunityId: "opp-intro-1", kind: "approve_introduction" });
+    expect(parsed.data.message).toContain(`acceptUrl: ${FAKE_URL}`);
+  }, 60000);
 });
 
 afterAll(() => mock.restore());
