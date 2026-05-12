@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * Index Network backend installer.
  *
@@ -10,14 +9,9 @@
  *     Each pass is selective — max 3 direct + 3 introducer opportunities per
  *     dispatch, gated on the same quality bar.
  *
- * Called by the orchestrator (`install.ts`) during the EdgeClaw setup. Can
- * also be run directly if you only want to refresh Index Network config
- * without re-running the EdgeClaw-wide setup steps:
- *
- *   bun install_index.ts <API_KEY>
- *   API_KEY=... bun install_index.ts
- *
- * Pass `--dev` (or set `INDEX_MCP_URL`) to target a non-production protocol.
+ * Invoked only by the orchestrator (`install.ts`) — not a standalone
+ * entrypoint. The orchestrator reads `<API_KEY>` and `--dev` from
+ * `process.argv` and this module reads the same args.
  */
 
 import { homedir } from "node:os";
@@ -40,7 +34,6 @@ function readApiKey(): string {
   if (!key) {
     console.error("error: API_KEY required");
     console.error("usage: bun install.ts <API_KEY> [--dev]");
-    console.error("       bun install_index.ts <API_KEY> [--dev]");
     console.error("       API_KEY=<key> bun install.ts [--dev]");
     process.exit(1);
   }
@@ -132,8 +125,4 @@ export function installIndex(): void {
   );
   writeMcpServerEntry(apiKey);
   installCronJobs();
-}
-
-if (import.meta.main) {
-  installIndex();
 }
