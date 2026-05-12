@@ -11,7 +11,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { opportunityQueue } from '../queues/opportunity.queue';
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
-import { normalizeTelegramHandle } from '../lib/utils/telegram-handle';
+import { normalizeTelegramHandle } from '@indexnetwork/protocol';
 
 const logger = log.service.from("OpportunityService");
 
