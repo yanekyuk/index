@@ -2785,6 +2785,9 @@ export class ChatDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
   }
+  async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.getOpportunitiesByIds(ids);
+  }
   /**
    * Resolve an opportunity ID from a full UUID or short prefix.
    * Delegates to OpportunityDatabaseAdapter.
@@ -4079,6 +4082,12 @@ export class OpportunityDatabaseAdapter {
     const rows = await db.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
     const row = rows[0];
     return row ? toOpportunityRow(row) : null;
+  }
+
+  async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await db.select().from(opportunities).where(inArray(opportunities.id, ids));
+    return rows.map(toOpportunityRow);
   }
 
   /**
