@@ -2905,7 +2905,7 @@ Invoke a tool by name with a JSON query body.
 **Auth**: `AuthGuard`
 
 **Path params**:
-- `toolName` — Name of the tool to invoke (e.g. `read_intents`, `create_opportunities`)
+- `toolName` — Name of the tool to invoke (e.g. `read_intents`, `discover_opportunities`)
 
 **Request body**:
 ```json
@@ -2949,7 +2949,7 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `delete_index` | Index | Delete an index |
 | `create_index_membership` | Index | Add a member to an index |
 | `delete_index_membership` | Index | Remove a member from an index |
-| `create_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
+| `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Accepting returns a `conversationId` (opens a DM between both parties) |
 | `list_contacts` | Contact | List user's contacts |

@@ -107,7 +107,7 @@ describe('MCP Server Factory', () => {
       'read_intents',
       'create_intent',
       'read_user_profiles',
-      'create_opportunities',
+      'discover_opportunities',
       'update_opportunity',
       'list_contacts',
       'scrape_url',

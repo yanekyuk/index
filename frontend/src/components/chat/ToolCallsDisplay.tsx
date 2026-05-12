@@ -98,7 +98,7 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Fetch memberships",
     running: "Fetching network memberships...",
   },
-  create_opportunities: {
+  discover_opportunities: {
     action: "Find opportunities",
     running: "Searching for relevant connections...",
   },

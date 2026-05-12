@@ -98,7 +98,7 @@ export async function handleOpportunity(
         await discoverIntroduction(client, userA, userB, hint, options.json);
       } else if (options.target) {
         if (!options.json) output.info("Discovering opportunities...");
-        const result = await client.callTool("create_opportunities", {
+        const result = await client.callTool("discover_opportunities", {
           targetUserId: options.target,
           searchQuery: query,
         });
@@ -109,7 +109,7 @@ export async function handleOpportunity(
         if (data?.message) output.dim(`  ${data.message}`);
       } else {
         if (!options.json) output.info("Discovering opportunities...");
-        const result = await client.callTool("create_opportunities", { searchQuery: query });
+        const result = await client.callTool("discover_opportunities", { searchQuery: query });
         if (options.json) { console.log(JSON.stringify(result)); return; }
         if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
         output.success("Discovery complete.");
@@ -172,7 +172,7 @@ async function opportunityStatusUpdate(
 
 /**
  * Gather profiles and intents for two users, find a shared index,
- * then call create_opportunities in introduction mode.
+ * then call discover_opportunities in introduction mode.
  */
 async function discoverIntroduction(
   client: ApiClient,
@@ -256,8 +256,8 @@ async function discoverIntroduction(
 
   if (!json) output.dim("  Profiles and intents gathered. Creating introduction...");
 
-  // Step 3: Call create_opportunities with full entity data
-  const result = await client.callTool("create_opportunities", {
+  // Step 3: Call discover_opportunities with full entity data
+  const result = await client.callTool("discover_opportunities", {
     partyUserIds: [userA, userB],
     entities,
     ...(hint ? { hint } : {}),

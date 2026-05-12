@@ -277,8 +277,8 @@ describe("CLI tool call contracts", () => {
   // ── Opportunity ──────────────────────────────────────────────────
 
   describe("opportunity", () => {
-    it("discover (search) calls create_opportunities with searchQuery", async () => {
-      mock.setToolResponse("create_opportunities", { success: true, data: { message: "Found 3 matches" } });
+    it("discover (search) calls discover_opportunities with searchQuery", async () => {
+      mock.setToolResponse("discover_opportunities", { success: true, data: { message: "Found 3 matches" } });
 
       await handleOpportunity(client, "discover", {
         positionals: ["AI engineer with privacy expertise"],
@@ -286,14 +286,14 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("create_opportunities");
+      expect(mock.toolCalls[0].toolName).toBe("discover_opportunities");
       expect(mock.toolCalls[0].query).toEqual({
         searchQuery: "AI engineer with privacy expertise",
       });
     });
 
-    it("discover --target calls create_opportunities with targetUserId and searchQuery", async () => {
-      mock.setToolResponse("create_opportunities", { success: true, data: {} });
+    it("discover --target calls discover_opportunities with targetUserId and searchQuery", async () => {
+      mock.setToolResponse("discover_opportunities", { success: true, data: {} });
 
       await handleOpportunity(client, "discover", {
         target: "user-abc",
@@ -302,14 +302,14 @@ describe("CLI tool call contracts", () => {
       });
 
       expect(mock.toolCalls).toHaveLength(1);
-      expect(mock.toolCalls[0].toolName).toBe("create_opportunities");
+      expect(mock.toolCalls[0].toolName).toBe("discover_opportunities");
       expect(mock.toolCalls[0].query).toEqual({
         targetUserId: "user-abc",
         searchQuery: "collaborate on LLM tooling",
       });
     });
 
-    it("discover --introduce gathers entities then calls create_opportunities with partyUserIds + entities", async () => {
+    it("discover --introduce gathers entities then calls discover_opportunities with partyUserIds + entities", async () => {
       // Mock the prerequisite tool responses
       mock.setToolResponse("read_index_memberships", {
         success: true,
@@ -329,7 +329,7 @@ describe("CLI tool call contracts", () => {
           intents: [{ intentId: "i1", payload: "Looking for collaborators", summary: "Collab" }],
         },
       });
-      mock.setToolResponse("create_opportunities", { success: true, data: { message: "Draft created" } });
+      mock.setToolResponse("discover_opportunities", { success: true, data: { message: "Draft created" } });
 
       await handleOpportunity(client, "discover", {
         introduce: "user-a",
@@ -337,15 +337,15 @@ describe("CLI tool call contracts", () => {
         json: true,
       });
 
-      // Should have called: read_index_memberships x2, read_user_profiles x2, read_intents x2, create_opportunities x1
+      // Should have called: read_index_memberships x2, read_user_profiles x2, read_intents x2, discover_opportunities x1
       const toolNames = mock.toolCalls.map((c) => c.toolName);
       expect(toolNames.filter((n) => n === "read_index_memberships")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_user_profiles")).toHaveLength(2);
       expect(toolNames.filter((n) => n === "read_intents")).toHaveLength(2);
-      expect(toolNames.filter((n) => n === "create_opportunities")).toHaveLength(1);
+      expect(toolNames.filter((n) => n === "discover_opportunities")).toHaveLength(1);
 
-      // Verify the final create_opportunities call has correct shape
-      const createCall = mock.toolCalls.find((c) => c.toolName === "create_opportunities")!;
+      // Verify the final discover_opportunities call has correct shape
+      const createCall = mock.toolCalls.find((c) => c.toolName === "discover_opportunities")!;
       expect(createCall.query.partyUserIds).toEqual(["user-a", "user-b"]);
       expect(createCall.query.entities).toBeArray();
       expect(createCall.query.hint).toBe("both working on privacy ML");
@@ -367,7 +367,7 @@ describe("CLI tool call contracts", () => {
       });
       mock.setToolResponse("read_user_profiles", { success: true, data: { profile: { name: "X" } } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
-      mock.setToolResponse("create_opportunities", { success: true, data: {} });
+      mock.setToolResponse("discover_opportunities", { success: true, data: {} });
 
       await handleOpportunity(client, "discover", {
         introduce: "user-a",
@@ -375,7 +375,7 @@ describe("CLI tool call contracts", () => {
         json: true,
       });
 
-      const createCall = mock.toolCalls.find((c) => c.toolName === "create_opportunities")!;
+      const createCall = mock.toolCalls.find((c) => c.toolName === "discover_opportunities")!;
       expect(createCall.query.partyUserIds).toEqual(["user-a", "user-b"]);
       expect(createCall.query.hint).toBeUndefined();
     });
@@ -392,8 +392,8 @@ describe("CLI tool call contracts", () => {
         json: true,
       });
 
-      // Should NOT have called create_opportunities — stopped at membership check
-      expect(mock.toolCalls.filter((c) => c.toolName === "create_opportunities")).toHaveLength(0);
+      // Should NOT have called discover_opportunities — stopped at membership check
+      expect(mock.toolCalls.filter((c) => c.toolName === "discover_opportunities")).toHaveLength(0);
       // Should only have the 2 membership lookups
       expect(mock.toolCalls).toHaveLength(2);
       expect(mock.toolCalls.every((c) => c.toolName === "read_index_memberships")).toBe(true);
