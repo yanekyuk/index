@@ -24,8 +24,16 @@
  * profile, send the welcome message body) stays in BOOTSTRAP.md /
  * prompts/welcome.md — the installer does not impersonate the agent.
  *
+ * Re-running the installer is the supported way to bind cron deliveries to
+ * the user's Telegram chat once they've sent their first message. By
+ * default, `USER.md` is preserved on re-install — it holds the user's
+ * lived notes populated during `BOOTSTRAP.md`, and overwriting it with the
+ * blank template would silently erase those notes. Pass `--wipe-user` to
+ * overwrite it explicitly. (Mirrors `reset.ts --wipe-user`.)
+ *
  * Usage:
  *   bun install.ts <API_KEY>
+ *   bun install.ts <API_KEY> --wipe-user
  *   API_KEY=... bun install.ts
  */
 
@@ -67,7 +75,7 @@ function disableTelegramTidepooling(): void {
   });
 }
 
-function copyWorkspaceFiles(): void {
+function copyWorkspaceFiles(wipeUser: boolean): void {
   if (!existsSync(SOURCE_WORKSPACE)) {
     console.error(`error: bundled workspace missing at ${SOURCE_WORKSPACE}`);
     process.exit(1);
@@ -78,6 +86,7 @@ function copyWorkspaceFiles(): void {
   }
 
   let copied = 0;
+  let preservedUserNotes = false;
   for (const entry of readdirSync(SOURCE_WORKSPACE)) {
     const sourcePath = join(SOURCE_WORKSPACE, entry);
     const targetPath = join(TARGET_WORKSPACE, entry);
@@ -91,12 +100,22 @@ function copyWorkspaceFiles(): void {
         copied++;
       }
     } else if (entry.endsWith(".md")) {
+      // USER.md holds the user's lived notes populated by BOOTSTRAP.md.
+      // Re-running the installer (to bind cron deliveries) must not erase
+      // those notes — preserve unless --wipe-user is set. Mirrors reset.ts.
+      if (entry === "USER.md" && !wipeUser && existsSync(targetPath)) {
+        preservedUserNotes = true;
+        continue;
+      }
       copyFileSync(sourcePath, targetPath);
       copied++;
     }
   }
 
   console.log(`→ staged ${copied} workspace files into ${TARGET_WORKSPACE}`);
+  if (preservedUserNotes) {
+    console.log("  (USER.md preserved — pass --wipe-user to overwrite it)");
+  }
 }
 
 /**
@@ -184,12 +203,14 @@ function restartGateway(): void {
 function main(): void {
   ensureOpenclawAvailable();
 
+  const wipeUser = process.argv.includes("--wipe-user");
+
   console.log("EdgeClaw installer");
   console.log("==================");
   console.log("");
 
   disableTelegramTidepooling();
-  copyWorkspaceFiles();
+  copyWorkspaceFiles(wipeUser);
 
   installIndex();
   installEdgeos();

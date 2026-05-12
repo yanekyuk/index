@@ -154,7 +154,7 @@ The installer:
 
 1. Writes `mcp.servers.index` in `~/.openclaw/openclaw.json`, pointed at `https://protocol.index.network/mcp` with your API key in `x-api-key`.
 2. Sets `channels.telegram.streaming.mode = off` so OpenClaw doesn't dump per-tool status drafts into your chat.
-3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`.
+3. Copies the workspace markdown bundle into `~/.openclaw/workspace/`. `USER.md` is preserved on re-install (it holds your lived notes from `BOOTSTRAP.md`); pass `--wipe-user` to overwrite it.
 4. Installs three cron jobs: daily digest (`0 8 * * *`), ambient discovery afternoon (`0 14 * * *`), ambient discovery evening (`0 20 * * *`).
 5. Restarts the gateway so all config changes take effect.
 
@@ -208,7 +208,13 @@ The remaining ambient/accepted/freshness/memory work stays on the heartbeat tick
 
 ## Auth
 
-Skills in this repo are public. Access to actual village data is gated by per-user EdgeOS API tokens (issued via OTP through the EdgeOS portal). The skill files describe HOW to call the APIs; the token is what unlocks them.
+Skills in this repo are public. Each backend gates access with its own per-user credential, wired in by the matching per-backend installer:
+
+- **Index Network (today's wired backend)** — per-user API key returned by `POST /api/networks/:id/signup` (see [Integration API: Authentication](#authentication) above). `install/install_index.ts` writes it into `mcp.servers.index` as the `x-api-key` header.
+- **EdgeOS** — per-user token issued via OTP through the EdgeOS portal. Lands in `install/install_edgeos.ts` once that backend is wired.
+- **Geo** — per-user credential, mechanism TBD. Lands in `install/install_geo.ts` once that backend is wired.
+
+The skill files describe HOW to call each backend's APIs; the per-backend credential is what unlocks them.
 
 ## Contributing
 

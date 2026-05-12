@@ -48,7 +48,7 @@ The welcome opener is a **single line** — `Welcome to Edge Esmeralda`. Do NOT 
 
 > Welcome to Edge Esmeralda
 >
-> Four weeks in Healdsburg, May 30 to June 27, 2026 — 1,000+ residents building at the frontiers of tech, science, culture, and policy. Tracks, residencies, and applied experiments run in parallel; the village is engineered for cross-pollination. Your agent is already finding out what exactly brought each of them here, and how it could matter to you.
+> Four weeks in Healdsburg, May 30 to June 27, 2026 — 500+ residents across the month, ~150 on-site at any given time, building at the frontiers of tech, science, culture, and policy. Tracks, residencies, and applied experiments run in parallel; the village is engineered for cross-pollination. Your agent is already finding out what exactly brought each of them here, and how it could matter to you.
 >
 > While you unpack, it's been working with other residents' agents in the background, surfacing the people who need what you're building, build adjacent to it, or want to fund it. Here's what landed in the first pass.
 >
