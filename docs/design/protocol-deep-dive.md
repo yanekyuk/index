@@ -471,6 +471,8 @@ Tools that modify or delete data (update_intent, delete_intent, update_index, de
 
 When `create_intent` successfully creates an intent, it automatically triggers opportunity discovery by calling `discover_opportunities` with the new intent context. This ensures fresh intents immediately produce relevant matches.
 
+**MCP-only negotiate-phase budget.** When `discover_opportunities` is invoked from the MCP transport (external runtimes like OpenClaw, Claude Code, or a personal agent), the internal negotiate phase is wall-clock capped at 20 s (`OpportunityGraphOptions.negotiateTimeoutMs`). Candidates that finalize their assessment within the budget surface as draft opportunities; those still in negotiation remain in a `negotiating` state and the tool instructs the LLM to check `list_opportunities` in a moment. This is a temporary constraint removable when IND-274 (negotiation conversation continuation) ships and persistent bilateral state becomes feasible.
+
 ## 5a. MCP Server
 
 The protocol exposes every registered chat tool over the Model Context Protocol via `createMcpServer` in `packages/protocol/src/mcp/mcp.server.ts`. This is the surface that external runtimes — OpenClaw, Claude Code, Codex, Cursor — speak to when they act on behalf of a user.
