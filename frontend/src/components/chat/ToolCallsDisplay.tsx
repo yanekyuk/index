@@ -102,7 +102,7 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Find opportunities",
     running: "Searching for relevant connections...",
   },
-  list_my_opportunities: {
+  list_opportunities: {
     action: "List opportunities",
     running: "Listing your opportunities...",
   },
@@ -859,7 +859,7 @@ interface TraceDisplayProps {
 }
 
 function RunningTimer({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(Date.now() - startedAt);
+  const [elapsed, setElapsed] = useState(() => Date.now() - startedAt);
 
   useEffect(() => {
     const interval = setInterval(() => {
