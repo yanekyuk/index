@@ -2388,6 +2388,11 @@ Update opportunity status.
 
 **Response**: JSON with updated opportunity.
 
+**Error responses**:
+- `403` — Caller is not an actor on the opportunity
+- `404` — Opportunity not found
+- `409` — Self-accept blocked. Caller's actor already has `actedAt` set (they advanced the opportunity earlier) and is attempting to accept it. The other party must accept. See `docs/domain/opportunities.md#bilateral-acceptance`.
+
 ---
 
 ### POST /api/opportunities/:id/start-chat
@@ -2416,6 +2421,7 @@ Runs the same side effects as `PATCH .../status` with `status=accepted` (sibling
 - `400` — Opportunity is not in `pending` or `draft` status
 - `403` — Caller is not an actor on the opportunity
 - `404` — Opportunity not found
+- `409` — Self-accept blocked. Caller's actor already has `actedAt` set. See `docs/domain/opportunities.md#bilateral-acceptance`.
 - `500` — Status update or DM resolution failed
 
 ---
