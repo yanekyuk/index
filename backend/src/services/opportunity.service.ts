@@ -367,9 +367,15 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    const isActor = opp.actors.some((a) => a.userId === userId);
-    if (!isActor) {
+    const callerActor = opp.actors.find((a) => a.userId === userId);
+    if (!callerActor) {
       return { error: 'Not authorized to update this opportunity', status: 403 };
+    }
+
+    // Self-accept guard: if the caller has already committed (actedAt is set)
+    // and they are trying to accept, block them — the other party must accept.
+    if (status === 'accepted' && callerActor.actedAt) {
+      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
 
     const counterpart = status === 'accepted'
@@ -391,11 +397,15 @@ export class OpportunityService {
       }
     }
 
-    const updated = await this.db.updateOpportunityStatus(
-      opportunityId,
-      status,
-      status === 'accepted' ? userId : undefined,
-    );
+    let updated: Awaited<ReturnType<typeof this.db.updateOpportunityStatus>>;
+    if (status === 'accepted') {
+      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
+    } else if (status === 'pending') {
+      updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'pending');
+    } else {
+      // Terminal flips (rejected, expired) — no actor stamp needed
+      updated = await this.db.updateOpportunityStatus(opportunityId, status);
+    }
     if (!updated) {
       return { error: 'Opportunity not found', status: 404 };
     }
@@ -570,9 +580,15 @@ export class OpportunityService {
         status: 400,
       };
     }
-    const isActor = opp.actors.some((a) => a.userId === userId);
-    if (!isActor) {
+    const callerActor = opp.actors.find((a) => a.userId === userId);
+    if (!callerActor) {
       return { error: 'Not authorized to start chat for this opportunity', status: 403 };
+    }
+
+    // Self-accept guard: if the caller already committed (actedAt is set) they
+    // cannot accept again — the other party must be the one to accept.
+    if (callerActor.actedAt) {
+      return { error: 'You have already acted on this opportunity. The other party must accept.', status: 409 };
     }
 
     const counterpart =
@@ -609,7 +625,7 @@ export class OpportunityService {
     });
 
     // Only flip status once we know the chat destination exists.
-    const updated = await this.db.updateOpportunityStatus(opportunityId, 'accepted', userId);
+    const updated = await this.db.stampOpportunityActorAction(opportunityId, userId, 'accepted', userId);
     if (!updated) {
       return { error: 'Failed to accept opportunity', status: 500 };
     }
