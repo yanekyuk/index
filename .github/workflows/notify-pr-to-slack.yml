@@ -10,7 +10,7 @@ on:
 jobs:
   notify-pr:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
+    if: github.repository == 'indexnetwork/index' && github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
     steps:
       - name: Build payload
         id: payload
@@ -40,7 +40,7 @@ jobs:
 
   notify-push:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.repository == 'indexnetwork/index' && github.event_name == 'push'
     steps:
       - name: Build payload
         id: payload
