@@ -248,16 +248,16 @@ describe("ToolController Integration", () => {
 
     // ── Opportunity (CLI: discover modes) ────────────────────────
 
-    test("create_opportunities with searchQuery (CLI: opportunity discover)", async () => {
-      const { status, data } = await invokeTool("create_opportunities", {
+    test("discover_opportunities with searchQuery (CLI: opportunity discover)", async () => {
+      const { status, data } = await invokeTool("discover_opportunities", {
         searchQuery: "AI engineer with privacy expertise",
       });
       expect(status).toBe(200);
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 120_000);
 
-    test("create_opportunities with targetUserId + searchQuery (CLI: discover --target)", async () => {
-      const { status, data } = await invokeTool("create_opportunities", {
+    test("discover_opportunities with targetUserId + searchQuery (CLI: discover --target)", async () => {
+      const { status, data } = await invokeTool("discover_opportunities", {
         targetUserId: testUserBId,
         searchQuery: "collaborate on open-source tooling",
       });
@@ -265,8 +265,8 @@ describe("ToolController Integration", () => {
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 120_000);
 
-    test("create_opportunities with partyUserIds + entities (CLI: discover --introduce)", async () => {
-      const { data } = await invokeTool("create_opportunities", {
+    test("discover_opportunities with partyUserIds + entities (CLI: discover --introduce)", async () => {
+      const { data } = await invokeTool("discover_opportunities", {
         partyUserIds: [testUserId, testUserBId],
         entities: [
           {
