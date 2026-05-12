@@ -74,27 +74,31 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     action: "Remove from network",
     running: "Removing signal from network...",
   },
-  read_indexes: {
+  read_networks: {
     action: "Check networks",
     running: "Checking your networks...",
   },
-  create_index: {
+  create_network: {
     action: "Create network",
     running: "Creating a new network...",
   },
-  update_index: {
+  update_network: {
     action: "Update network",
     running: "Updating network...",
   },
-  delete_index: {
+  delete_network: {
     action: "Delete network",
     running: "Deleting network...",
   },
-  create_index_membership: {
+  create_network_membership: {
     action: "Add member",
     running: "Adding member to network...",
   },
-  read_index_memberships: {
+  delete_network_membership: {
+    action: "Remove member",
+    running: "Removing member from network...",
+  },
+  read_network_memberships: {
     action: "Fetch memberships",
     running: "Fetching network memberships...",
   },

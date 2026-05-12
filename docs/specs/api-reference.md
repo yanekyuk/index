@@ -2942,13 +2942,13 @@ Tools are organized by domain. Each tool has its own input schema (see `GET /api
 | `create_intent_index` | Intent | Link an intent to an index |
 | `read_intent_indexes` | Intent | List indexes linked to an intent |
 | `delete_intent_index` | Intent | Unlink an intent from an index |
-| `read_indexes` | Index | List user's indexes |
-| `read_index_memberships` | Index | List members of an index |
-| `update_index` | Index | Update index settings (title, prompt) |
-| `create_index` | Index | Create a new index |
-| `delete_index` | Index | Delete an index |
-| `create_index_membership` | Index | Add a member to an index |
-| `delete_index_membership` | Index | Remove a member from an index |
+| `read_networks` | Network | List user's networks |
+| `read_network_memberships` | Network | List members of a network |
+| `update_network` | Network | Update network settings (title, prompt) |
+| `create_network` | Network | Create a new network |
+| `delete_network` | Network | Delete a network |
+| `create_network_membership` | Network | Add a member to a network |
+| `delete_network_membership` | Network | Remove a member from a network |
 | `discover_opportunities` | Opportunity | Discover opportunities (search, target, introduce) |
 | `list_opportunities` | Opportunity | List user's opportunities with filters |
 | `update_opportunity` | Opportunity | Accept or reject an opportunity. Accepting returns a `conversationId` (opens a DM between both parties) |
