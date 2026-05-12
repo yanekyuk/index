@@ -266,6 +266,7 @@ Every tool and negotiation endpoint checks the caller's `agent_permissions` for 
 
 - **HTTP**: `backend/src/guards/agent-scope.guard.ts` exposes `resolveAgentNetworkScope(req)`, `assertAgentNetworkScope(req, networkId)`, and `withAgentScope(req, user)`. Network/intent/opportunity controllers assert on writes that take a path-param networkId, and filter list endpoints via `withAgentScope`. Mismatches throw `ScopeViolationError`, mapped to HTTP 403 in `main.ts`.
 - **MCP**: the auth resolver also returns `networkScopeId`. `computeAgentIndexScope` (in `packages/protocol/src/mcp/mcp.server.ts`) clamps `indexScope` to `[networkScopeId, personalIndex]` before constructing per-request scoped DBs, so every downstream tool call is bounded.
+- **DB (opportunity reads)**: `OpportunityDatabaseAdapter.getOpportunitiesForUser` requires the requesting user's *own* actor entry to be anchored on the bound network — `EXISTS actor WHERE userId=$1 AND networkId=$2`, not two independent `actors @>` checks. `update_opportunity` mirrors the rule. `actors[].networkId` is the source of truth for scope; the `opportunity.context.networkId` denormalization is no longer consulted by security-relevant filters.
 
 The primary use case is bulk experiment-network onboarding: `networkInvitationService.invite({ networkId, email })` provisions user + network-scoped agent + API key + invitation email. Possession of the email account *is* the user's verification — there is no separate `users.experimentNetworkId` column anymore.
 
