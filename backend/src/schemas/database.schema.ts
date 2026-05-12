@@ -298,6 +298,8 @@ export interface OpportunityActor {
   role: string;
   /** Only set on role === 'introducer'. false until the introducer explicitly approves; true after approval. */
   approved?: boolean;
+  /** ISO-8601 timestamp of this actor's first state-advancing mutation (send or accept). */
+  actedAt?: string;
 }
 
 export interface OpportunitySignal {
