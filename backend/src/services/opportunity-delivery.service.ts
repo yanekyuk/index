@@ -22,7 +22,6 @@ import {
   gatherPresenterContext,
   getOrCreateDeliveryCardBatch,
   isActionableForViewer,
-  type DeliveryLedger,
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
@@ -91,7 +90,7 @@ export interface AcceptedCandidate {
  * Core service for reserving and committing opportunity deliveries via the
  * `opportunity_deliveries` ledger. One instance is safe to share across requests.
  */
-export class OpportunityDeliveryService implements DeliveryLedger {
+export class OpportunityDeliveryService {
   private readonly presenterDb: PresenterDatabase;
   private readonly cache: Cache | null;
 

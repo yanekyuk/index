@@ -5,7 +5,6 @@
 
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm';
 
-import type { ChatGraphCompositeDatabase, NegotiationDatabase } from '@indexnetwork/protocol';
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
@@ -787,7 +786,7 @@ function _convDb(): ConversationDatabaseAdapter {
  * Database adapter for Chat Graph and its subgraphs.
  * Session/message methods delegate to ConversationDatabaseAdapter (unified adapter).
  */
-export class ChatDatabaseAdapter implements ChatGraphCompositeDatabase {
+export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
   private _opportunityAdapter: OpportunityDatabaseAdapter | null = null;
   private get opportunityAdapter(): OpportunityDatabaseAdapter {
@@ -6009,7 +6008,7 @@ export interface ConversationSummary {
  * Covers conversations, participants, messages, tasks, artifacts, and metadata.
  * Uses Drizzle ORM against the `conversations` family of tables.
  */
-export class ConversationDatabaseAdapter implements NegotiationDatabase {
+export class ConversationDatabaseAdapter {
   // ─────────────────────────────────────────────────────────────────────────
   // Conversations
   // ─────────────────────────────────────────────────────────────────────────

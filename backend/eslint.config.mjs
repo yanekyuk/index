@@ -204,4 +204,25 @@ export default tseslint.config(
       ],
     },
   },
+  // ── Prevent adapters from importing @indexnetwork/protocol ──────────
+  // Test files in src/adapters/tests/ are exempt — they import protocol types
+  // intentionally to verify structural alignment of adapter local types.
+  {
+    files: ["src/adapters/**/*.ts"],
+    ignores: ["src/adapters/tests/**", "src/adapters/**/*.spec.ts", "src/adapters/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@indexnetwork/protocol", "@indexnetwork/protocol/*"],
+              message:
+                "Adapters must not import from @indexnetwork/protocol. Define aligned types locally — structural compatibility is verified at the composition root (protocol-init.ts) via TypeScript duck typing.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

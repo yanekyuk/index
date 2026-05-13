@@ -1,6 +1,5 @@
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 
-import type { AgentDatabase } from '@indexnetwork/protocol';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -128,7 +127,7 @@ export const SYSTEM_AGENT_IDS: AgentSystemIds = {
  * Database adapter for agent registry CRUD, transport management, and
  * permission queries.
  */
-export class AgentDatabaseAdapter implements AgentRegistryStore, AgentDatabase {
+export class AgentDatabaseAdapter implements AgentRegistryStore {
   async createAgent(input: CreateAgentInput): Promise<AgentRow> {
     const [row] = await db
       .insert(schema.agents)

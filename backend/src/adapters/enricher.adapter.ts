@@ -1,12 +1,13 @@
-import type { ProfileEnricher, EnrichmentRequest, EnrichmentResult } from '@indexnetwork/protocol';
-import { enrichUserProfile as parallelEnrichUserProfile } from '../lib/parallel/parallel';
+import { enrichUserProfile as parallelEnrichUserProfile, type ParallelSearchRequestStruct, type ParallelEnrichmentResult } from '../lib/parallel/parallel';
 
 /**
- * Adapter that implements the ProfileEnricher interface using the Parallel Chat API.
- * Bridges EnrichmentRequest to ParallelSearchRequestStruct and returns typed EnrichmentResult.
+ * Adapter that wraps the Parallel Chat API enrichment function.
+ * Bridges ParallelSearchRequestStruct to ParallelEnrichmentResult.
+ * Structural compatibility with the protocol ProfileEnricher interface is
+ * verified at the composition root (protocol-init.ts) via TypeScript duck typing.
  */
-export const enricherAdapter: ProfileEnricher = {
-  async enrichUserProfile(request: EnrichmentRequest): Promise<EnrichmentResult | null> {
+export const enricherAdapter: { enrichUserProfile: (request: ParallelSearchRequestStruct) => Promise<ParallelEnrichmentResult | null> } = {
+  async enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {
     const result = await parallelEnrichUserProfile(request);
     return result;
   },
