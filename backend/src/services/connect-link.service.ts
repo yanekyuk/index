@@ -17,6 +17,18 @@ function generateCode(): string {
   return out;
 }
 
+/**
+ * Compose the short connect-link URL surfaced to chat clients.
+ *
+ * `?link_preview=false` is the rendering hint chat-gateway runtimes (e.g.
+ * OpenClaw's Telegram delivery) use to suppress the link-preview card.
+ * Pinning the suffix here lets the URL shape evolve in one place and lets
+ * tests assert the contract directly.
+ */
+export function buildConnectShortUrl(apiBaseUrl: string, code: string): string {
+  return `${apiBaseUrl}/c/${code}?link_preview=false`;
+}
+
 export interface MintArgs {
   userId: string;
   opportunityId: string;
