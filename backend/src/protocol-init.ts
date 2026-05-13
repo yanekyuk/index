@@ -86,7 +86,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
       createUserDatabase(db as unknown as ChatDatabaseAdapter, userId),
     createSystemDatabase: (db, userId, scope, emb) =>
       createSystemDatabase(db as unknown as ChatDatabaseAdapter, userId, scope, emb),
-    agentDatabase: agentDatabaseAdapter as unknown as ProtocolDeps['agentDatabase'],
+    agentDatabase: agentDatabaseAdapter,
     grantDefaultSystemPermissions: (userId: string) =>
       agentService.grantDefaultSystemPermissions(userId),
     agentDispatcher,
