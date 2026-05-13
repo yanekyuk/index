@@ -83,9 +83,9 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     negotiationDatabase: conversationDatabaseAdapter,
     integrationImporter: integrationService,
     createUserDatabase: (db, userId) =>
-      createUserDatabase(db as unknown as ChatDatabaseAdapter, userId),
+      createUserDatabase(db as ChatDatabaseAdapter, userId),
     createSystemDatabase: (db, userId, scope, emb) =>
-      createSystemDatabase(db as unknown as ChatDatabaseAdapter, userId, scope, emb),
+      createSystemDatabase(db as ChatDatabaseAdapter, userId, scope, emb),
     agentDatabase: agentDatabaseAdapter,
     grantDefaultSystemPermissions: (userId: string) =>
       agentService.grantDefaultSystemPermissions(userId),
