@@ -185,3 +185,13 @@ export class RedisCacheAdapter implements Cache {
     return keys.length;
   }
 }
+
+/**
+ * Singleton instance of RedisCacheAdapter for general protocol caching.
+ */
+export const cacheAdapter = new RedisCacheAdapter();
+
+/**
+ * Singleton instance of RedisCacheAdapter for HyDE document caching.
+ */
+export const hydeCacheAdapter = new RedisCacheAdapter();

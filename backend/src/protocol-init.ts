@@ -10,7 +10,7 @@
  *   new ChatGraphFactory(db, embedder, scraper, chatSession, deps);
  */
 
-import { RedisCacheAdapter } from "./adapters/cache.adapter";
+import { cacheAdapter, hydeCacheAdapter } from "./adapters/cache.adapter";
 import { agentDatabaseAdapter } from './adapters/agent.database.adapter';
 import { ComposioIntegrationAdapter } from "./adapters/integration.adapter";
 import {
@@ -20,8 +20,8 @@ import {
   createUserDatabase,
   createSystemDatabase,
 } from "./adapters/database.adapter";
-import { EmbedderAdapter } from "./adapters/embedder.adapter";
-import { ScraperAdapter } from "./adapters/scraper.adapter";
+import { embedderAdapter } from "./adapters/embedder.adapter";
+import { scraperAdapter } from "./adapters/scraper.adapter";
 import { intentQueue } from "./queues/intent.queue";
 import { opportunityQueue } from "./queues/opportunity.queue";
 import { chatSessionAdapter } from './adapters/chat-session.adapter';
@@ -45,8 +45,6 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   const integration = new ComposioIntegrationAdapter();
   const integrationService = new IntegrationService(integration, contactService);
   const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
-  const embedder = new EmbedderAdapter();
-  const scraper = new ScraperAdapter();
   // Public origin used to build short connect-links. Production must set one
   // of BASE_URL / API_BASE_URL / APP_URL; the localhost fallback is dev-only
   // and matches the documented default in backend/.env.example.
@@ -62,10 +60,10 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   };
   return {
     database: chatDatabaseAdapter,
-    embedder,
-    scraper,
-    cache: new RedisCacheAdapter(),
-    hydeCache: new RedisCacheAdapter(),
+    embedder: embedderAdapter,
+    scraper: scraperAdapter,
+    cache: cacheAdapter,
+    hydeCache: hydeCacheAdapter,
     integration,
     intentQueue,
     contactService,
