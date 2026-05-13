@@ -4376,63 +4376,6 @@ export class OpportunityDatabaseAdapter {
     });
   }
 
-  async getOpportunitiesByIds(ids: string[]): Promise<OpportunityRow[]> {
-    if (ids.length === 0) return [];
-    const rows = await db.select().from(opportunities).where(inArray(opportunities.id, ids));
-    return rows.map(toOpportunityRow);
-  }
-
-  /**
-   * Stamp `actedAt` on the actor matching `actorUserId` and update the opportunity's status atomically.
-   * Uses a row-lock + JSONB merge in one transaction.
-   *
-   * @param id - Opportunity ID
-   * @param actorUserId - The user whose actor entry should be stamped
-   * @param status - New opportunity status
-   * @param acceptedBy - Required when `status === 'accepted'`
-   * @returns The updated opportunity, or null if not found
-   */
-  async stampOpportunityActorAction(
-    id: string,
-    actorUserId: string,
-    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired',
-    acceptedBy?: string,
-  ): Promise<OpportunityRow | null> {
-    if (status === 'accepted' && !acceptedBy) {
-      throw new Error('acceptedBy is required when status is accepted');
-    }
-    return db.transaction(async (tx) => {
-      const [locked] = await tx
-        .select({ actors: opportunities.actors })
-        .from(opportunities)
-        .where(eq(opportunities.id, id))
-        .for('update');
-      if (!locked) return null;
-      const now = new Date().toISOString();
-      const updatedActors = (locked.actors as schema.OpportunityActor[]).map((actor) =>
-        actor.userId === actorUserId && !actor.actedAt
-          ? { ...actor, actedAt: now }
-          : actor,
-      );
-      const updates: Record<string, unknown> = {
-        actors: updatedActors,
-        status,
-        updatedAt: new Date(),
-      };
-      if (status === 'accepted') {
-        updates.acceptedBy = acceptedBy;
-      } else {
-        updates.acceptedBy = null;
-      }
-      const [row] = await tx
-        .update(opportunities)
-        .set(updates)
-        .where(eq(opportunities.id, id))
-        .returning();
-      return row ? toOpportunityRow(row) : null;
-    });
-  }
-
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     if (actorIds.length === 0) return false;
     const expired = 'expired';

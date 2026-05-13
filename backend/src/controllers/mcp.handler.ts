@@ -1,6 +1,6 @@
 /**
  * MCP HTTP Handler — wires the MCP server factory to the Streamable HTTP transport.
- * Uses createDefaultProtocolDeps() from the composition root for adapter wiring.
+ * This is the composition root: all adapter/service wiring lives here.
  */
 
 import { jwtVerify, createRemoteJWKSet } from 'jose';
@@ -9,20 +9,89 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 
-import { createDefaultProtocolDeps } from '../protocol-init';
+import { cacheAdapter, hydeCacheAdapter } from '../adapters/cache.adapter';
+import { agentDatabaseAdapter } from '../adapters/agent.database.adapter';
+import { ComposioIntegrationAdapter } from '../adapters/integration.adapter';
+import {
+  chatDatabaseAdapter,
+  conversationDatabaseAdapter,
+  ChatDatabaseAdapter,
+  createUserDatabase,
+  createSystemDatabase,
+} from '../adapters/database.adapter';
+import { embedderAdapter } from '../adapters/embedder.adapter';
+import { scraperAdapter } from '../adapters/scraper.adapter';
+import { intentQueue } from '../queues/intent.queue';
+import { opportunityQueue } from '../queues/opportunity.queue';
+import { chatSessionAdapter } from '../adapters/chat-session.adapter';
+import { enricherAdapter } from '../adapters/enricher.adapter';
+import { agentService } from '../services/agent.service';
+import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
+import { contactService } from '../services/contact.service';
+import { IntegrationService } from '../services/integration.service';
+import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
+import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
+import { signConnectToken } from '../services/connect-token.service';
+import { apiBaseUrl, mintConnectLink } from '../adapters/connect-link.adapter';
+import { chatSessionService } from '../services/chat.service';
 
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer } from '@indexnetwork/protocol';
-import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory } from '@indexnetwork/protocol';
+import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 
- 
- 
- 
- 
 import { BASE_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
 const logger = log.server.from('mcp');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPOSITION ROOT (was protocol-init.ts)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const integration = new ComposioIntegrationAdapter();
+const integrationImporter = new IntegrationService(integration, contactService);
+const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
+
+const protocolDeps = {
+  database: chatDatabaseAdapter,
+  embedder: embedderAdapter,
+  scraper: scraperAdapter,
+  cache: cacheAdapter,
+  hydeCache: hydeCacheAdapter,
+  integration,
+  intentQueue,
+  contactService,
+  chatSession: chatSessionAdapter,
+  enricher: enricherAdapter,
+  negotiationDatabase: conversationDatabaseAdapter,
+  integrationImporter,
+  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) =>
+    createUserDatabase(db as ChatDatabaseAdapter, userId),
+  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, scope: string[], emb?: Embedder) =>
+    createSystemDatabase(db as ChatDatabaseAdapter, userId, scope, emb),
+  agentDatabase: agentDatabaseAdapter,
+  grantDefaultSystemPermissions: (userId: string) =>
+    agentService.grantDefaultSystemPermissions(userId),
+  agentDispatcher,
+  deliveryLedger: opportunityDeliveryService,
+  negotiationTimeoutQueue,
+  queueNegotiateExisting: (opportunityId: string, userId: string) =>
+    opportunityQueue.addNegotiateJob({ opportunityId, userId }),
+  mintConnectToken: signConnectToken,
+  mintConnectLink,
+  frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
+  apiBaseUrl,
+};
+
+// Inject ChatGraphFactory into chatSessionService (controller orchestrates services)
+const chatSessionReader = {
+  getSessionMessages: (sessionId: string, limit?: number) => chatSessionService.getSessionMessages(sessionId, limit),
+  listSessions: (userId: string, limit?: number) => conversationDatabaseAdapter.listChatSessionSummaries(userId, limit),
+  getSession: (userId: string, sessionId: string, messageLimit?: number) =>
+    conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
+};
+const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps);
+chatSessionService.setFactory(chatFactory);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)
@@ -31,31 +100,31 @@ const logger = log.server.from('mcp');
 let compiledGraphs: ToolDeps['graphs'] | null = null;
 
 /** Compile all protocol graphs once. Same pattern as tool.service.ts. */
-function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>): ToolDeps['graphs'] {
+function getOrCompileGraphs(): ToolDeps['graphs'] {
   if (compiledGraphs) return compiledGraphs;
 
   logger.info('Compiling MCP graphs (first call, will be cached)');
 
-  const { database, embedder, scraper } = deps;
-  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, deps.enricher).createGraph();
+  const { database, embedder, scraper } = protocolDeps;
+  const intentGraph = new IntentGraphFactory(database, embedder, protocolDeps.intentQueue).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, protocolDeps.enricher).createGraph();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
-    deps.hydeCache,
+    protocolDeps.hydeCache,
     new LensInferrer(),
     new HydeGenerator(),
   ).createGraph();
   const negotiationGraph = new NegotiationGraphFactory(
-    deps.negotiationDatabase,
-    deps.agentDispatcher!,
-    deps.negotiationTimeoutQueue,
+    protocolDeps.negotiationDatabase,
+    protocolDeps.agentDispatcher!,
+    protocolDeps.negotiationTimeoutQueue,
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
     undefined, undefined, negotiationGraph,
-    deps.agentDispatcher,
-    deps.queueNegotiateExisting,
+    protocolDeps.agentDispatcher,
+    protocolDeps.queueNegotiateExisting,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -231,42 +300,41 @@ let mcpServer: McpServer | null = null;
 function getOrCreateMcpServer(): McpServer {
   if (mcpServer) return mcpServer;
 
-  const deps = createDefaultProtocolDeps();
-  const graphs = getOrCompileGraphs(deps);
+  const graphs = getOrCompileGraphs();
 
-  const userDb = deps.createUserDatabase(deps.database, 'system');
-  const systemDb = deps.createSystemDatabase(deps.database, 'system', []);
+  const userDb = protocolDeps.createUserDatabase(protocolDeps.database, 'system');
+  const systemDb = protocolDeps.createSystemDatabase(protocolDeps.database, 'system', []);
 
   const toolDeps: ToolDeps = {
-    database: deps.database,
+    database: protocolDeps.database,
     userDb,
     systemDb,
-    scraper: deps.scraper,
-    embedder: deps.embedder,
-    cache: deps.cache,
-    integration: deps.integration,
-    contactService: deps.contactService,
-    integrationImporter: deps.integrationImporter,
-    enricher: deps.enricher,
-    negotiationDatabase: deps.negotiationDatabase,
-    agentDispatcher: deps.agentDispatcher,
-    negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
-    agentDatabase: deps.agentDatabase,
-    grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
-    chatSession: deps.chatSession,
-    deliveryLedger: deps.deliveryLedger,
-    mintConnectToken: deps.mintConnectToken,
-    mintConnectLink: deps.mintConnectLink,
-    frontendUrl: deps.frontendUrl,
-    apiBaseUrl: deps.apiBaseUrl,
+    scraper: protocolDeps.scraper,
+    embedder: protocolDeps.embedder,
+    cache: protocolDeps.cache,
+    integration: protocolDeps.integration,
+    contactService: protocolDeps.contactService,
+    integrationImporter: protocolDeps.integrationImporter,
+    enricher: protocolDeps.enricher,
+    negotiationDatabase: protocolDeps.negotiationDatabase,
+    agentDispatcher: protocolDeps.agentDispatcher,
+    negotiationTimeoutQueue: protocolDeps.negotiationTimeoutQueue,
+    agentDatabase: protocolDeps.agentDatabase,
+    grantDefaultSystemPermissions: protocolDeps.grantDefaultSystemPermissions,
+    chatSession: protocolDeps.chatSession,
+    deliveryLedger: protocolDeps.deliveryLedger,
+    mintConnectToken: protocolDeps.mintConnectToken,
+    mintConnectLink: protocolDeps.mintConnectLink,
+    frontendUrl: protocolDeps.frontendUrl,
+    apiBaseUrl: protocolDeps.apiBaseUrl,
     graphs,
   };
 
   const scopedDepsFactory: ScopedDepsFactory = {
     create(userId: string, indexScope: string[]) {
       return {
-        userDb: deps.createUserDatabase(deps.database, userId),
-        systemDb: deps.createSystemDatabase(deps.database, userId, indexScope, deps.embedder),
+        userDb: protocolDeps.createUserDatabase(protocolDeps.database, userId),
+        systemDb: protocolDeps.createSystemDatabase(protocolDeps.database, userId, indexScope, protocolDeps.embedder),
       };
     },
   };

@@ -38,7 +38,6 @@ export default tseslint.config(
         { type: "types", pattern: "src/types/*", mode: "file" },
         { type: "main", pattern: "src/main.ts", mode: "file" },
         { type: "cli", pattern: "src/cli/**/*", mode: "file" },
-        { type: "init", pattern: "src/protocol-init.ts", mode: "file" },
       ],
       "boundaries/ignore": [
         "src/**/*.spec.ts",
@@ -138,7 +137,7 @@ export default tseslint.config(
               from: { type: "types" },
               allow: { to: { type: ["types"] } },
             },
-            // protocol-init.ts and mcp.handler.ts (composition root / init layer) → everything
+            // mcp.handler.ts (composition root / init layer) → everything
             {
               from: { type: "init" },
               allow: {
@@ -218,7 +217,7 @@ export default tseslint.config(
             {
               group: ["@indexnetwork/protocol", "@indexnetwork/protocol/*"],
               message:
-                "Adapters must not import from @indexnetwork/protocol. Define aligned types locally — structural compatibility is verified at the composition root (protocol-init.ts) via TypeScript duck typing.",
+                "Adapters must not import from @indexnetwork/protocol. Define aligned types locally — structural compatibility is verified at the composition root (mcp.handler.ts) via TypeScript duck typing.",
             },
           ],
         },
