@@ -33,7 +33,7 @@ import { opportunityDeliveryService } from "./services/opportunity-delivery.serv
 import { enrichUserProfile } from "./lib/parallel/parallel";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
 import { signConnectToken } from "./services/connect-token.service";
-import { mintConnectLink as mintConnectLinkSvc } from "./services/connect-link.service";
+import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from "./services/connect-link.service";
 import type { MintConnectLink, ProtocolDeps } from '@indexnetwork/protocol';
 
 /**
@@ -58,7 +58,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   ).replace(/\/+$/, '');
   const mintConnectLink: MintConnectLink = async ({ userId, opportunityId, kind, greeting }) => {
     const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
-    return { url: `${apiBaseUrl}/c/${code}?link_preview=false` };
+    return { url: buildConnectShortUrl(apiBaseUrl, code) };
   };
   return {
     database: chatDatabaseAdapter,
