@@ -5,6 +5,8 @@
 
 import { eq, and, or, isNull, isNotNull, sql, count, desc, gt, lt, lte, ne, inArray, ilike, notInArray, asc, not } from 'drizzle-orm';
 
+import type { NegotiationDatabase } from '@indexnetwork/protocol';
+
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User, NotificationPreferences, OnboardingState, TelegramPrefs } from '../schemas/database.schema';
@@ -5956,7 +5958,7 @@ export interface ConversationSummary {
  * Covers conversations, participants, messages, tasks, artifacts, and metadata.
  * Uses Drizzle ORM against the `conversations` family of tables.
  */
-export class ConversationDatabaseAdapter {
+export class ConversationDatabaseAdapter implements NegotiationDatabase {
   // ─────────────────────────────────────────────────────────────────────────
   // Conversations
   // ─────────────────────────────────────────────────────────────────────────
@@ -6661,14 +6663,15 @@ export class ConversationDatabaseAdapter {
    * @param taskId - Task ID
    * @returns The task, or null if not found
    */
-  async getTask(taskId: string): Promise<Task | null> {
+  async getTask(taskId: string): Promise<(Omit<Task, 'metadata'> & { metadata: Record<string, unknown> | null }) | null> {
     const [task] = await db
       .select()
       .from(schema.tasks)
       .where(eq(schema.tasks.id, taskId))
       .limit(1);
 
-    return task ?? null;
+    if (!task) return null;
+    return { ...task, metadata: (task.metadata as Record<string, unknown> | null) ?? null };
   }
 
   /**

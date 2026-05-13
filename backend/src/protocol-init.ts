@@ -80,7 +80,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
         conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
     },
     enricher: { enrichUserProfile },
-    negotiationDatabase: conversationDatabaseAdapter as unknown as ProtocolDeps['negotiationDatabase'],
+    negotiationDatabase: conversationDatabaseAdapter,
     integrationImporter: integrationService,
     createUserDatabase: (db, userId) =>
       createUserDatabase(db as unknown as ChatDatabaseAdapter, userId),
