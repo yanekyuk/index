@@ -22,6 +22,7 @@ import {
   gatherPresenterContext,
   getOrCreateDeliveryCardBatch,
   isActionableForViewer,
+  type DeliveryLedger,
   type PresenterDatabase,
 } from '@indexnetwork/protocol';
 
@@ -90,7 +91,7 @@ export interface AcceptedCandidate {
  * Core service for reserving and committing opportunity deliveries via the
  * `opportunity_deliveries` ledger. One instance is safe to share across requests.
  */
-export class OpportunityDeliveryService {
+export class OpportunityDeliveryService implements DeliveryLedger {
   private readonly presenterDb: PresenterDatabase;
   private readonly cache: Cache | null;
 
@@ -255,12 +256,17 @@ export class OpportunityDeliveryService {
    * @throws Error `'opportunity_not_found'` when the opportunity does not exist.
    * @throws Error `'not_authorized'` when userId is not an actor on the opportunity.
    */
-  async commitDelivery(
-    opportunityId: string,
-    userId: string,
-    agentId: string | null,
-    trigger: 'ambient' | 'digest' | 'accepted',
-  ): Promise<'confirmed' | 'already_delivered'> {
+  async confirmOpportunityDelivery({
+    opportunityId,
+    userId,
+    agentId,
+    trigger,
+  }: {
+    opportunityId: string;
+    userId: string;
+    agentId: string | null;
+    trigger: 'ambient' | 'digest' | 'accepted';
+  }): Promise<'confirmed' | 'already_delivered'> {
     const [opp] = await db
       .select({ id: opportunities.id, status: opportunities.status, actors: opportunities.actors })
       .from(opportunities)
