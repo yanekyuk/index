@@ -25,12 +25,12 @@ import { ScraperAdapter } from "./adapters/scraper.adapter";
 import { intentQueue } from "./queues/intent.queue";
 import { opportunityQueue } from "./queues/opportunity.queue";
 import { chatSessionAdapter } from './adapters/chat-session.adapter';
+import { enricherAdapter } from './adapters/enricher.adapter';
 import { agentService } from "./services/agent.service";
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { contactService } from "./services/contact.service";
 import { IntegrationService } from "./services/integration.service";
 import { opportunityDeliveryService } from "./services/opportunity-delivery.service";
-import { enrichUserProfile } from "./lib/parallel/parallel";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
 import { signConnectToken } from "./services/connect-token.service";
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from "./services/connect-link.service";
@@ -70,7 +70,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     intentQueue,
     contactService,
     chatSession: chatSessionAdapter,
-    enricher: { enrichUserProfile },
+    enricher: enricherAdapter,
     negotiationDatabase: conversationDatabaseAdapter,
     integrationImporter: integrationService,
     createUserDatabase: (db, userId) =>
