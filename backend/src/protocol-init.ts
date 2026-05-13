@@ -24,7 +24,7 @@ import { EmbedderAdapter } from "./adapters/embedder.adapter";
 import { ScraperAdapter } from "./adapters/scraper.adapter";
 import { intentQueue } from "./queues/intent.queue";
 import { opportunityQueue } from "./queues/opportunity.queue";
-import { chatSessionService } from "./services/chat.service";
+import { chatSessionAdapter } from './adapters/chat-session.adapter';
 import { agentService } from "./services/agent.service";
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { contactService } from "./services/contact.service";
@@ -69,16 +69,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
     integration,
     intentQueue,
     contactService,
-    chatSession: {
-      getSessionMessages: async (sessionId, limit) => {
-        const rows = await chatSessionService.getSessionMessages(sessionId, limit);
-        return rows.map((m) => ({ role: m.role, content: m.content }));
-      },
-      listSessions: (userId, limit) =>
-        conversationDatabaseAdapter.listChatSessionSummaries(userId, limit),
-      getSession: (userId, sessionId, messageLimit) =>
-        conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
-    },
+    chatSession: chatSessionAdapter,
     enricher: { enrichUserProfile },
     negotiationDatabase: conversationDatabaseAdapter,
     integrationImporter: integrationService,
