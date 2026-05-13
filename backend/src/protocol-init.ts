@@ -58,7 +58,7 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
   ).replace(/\/+$/, '');
   const mintConnectLink: MintConnectLink = async ({ userId, opportunityId, kind, greeting }) => {
     const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
-    return { url: `${apiBaseUrl}/c/${code}` };
+    return { url: `${apiBaseUrl}/c/${code}?link_preview=false` };
   };
   return {
     database: chatDatabaseAdapter,
