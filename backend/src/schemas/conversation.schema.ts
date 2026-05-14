@@ -157,10 +157,11 @@ export const artifacts = pgTable(
 
 /**
  * Append-only rolling digest of a chat session (a conversation). Each row covers
- * messages from `fromMessageId` (earliest in the chain) through `toMessageId`
- * (latest at write time). Readers take the latest row by `toMessageId DESC` for
- * a session. New rows are inserted as the session grows; old rows are retained
- * for debug/replay.
+ * messages from `fromMessageId` (start of the range this digest covers) through
+ * `toMessageId` (end of the range at write time). Readers take the latest row
+ * by `createdAt DESC` for a session — note that `toMessageId` is a text UUID,
+ * so ordering by it is lexicographic, not chronological. New rows are inserted
+ * as the session grows; old rows are retained for debug/replay.
  */
 export const chatSessionSummaries = pgTable(
   'chat_session_summaries',
