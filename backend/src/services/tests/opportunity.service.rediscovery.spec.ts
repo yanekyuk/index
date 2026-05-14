@@ -14,6 +14,10 @@ mock.module("../../queues/opportunity/from-intent.queue", () => ({
   fromIntentQueue: { addJob: mock(() => Promise.resolve({ id: "job-1" })) },
 }));
 
+mock.module("../../queues/opportunity/from-introducer.queue", () => ({
+  fromIntroducerQueue: { addJob: mock(() => Promise.resolve({ id: "job-2" })) },
+}));
+
 const MockChatDatabaseAdapter = class {
   getHydeDocument() { return null; }
 };
