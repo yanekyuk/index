@@ -83,7 +83,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 ```
 
-The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters to these interfaces via `createDefaultProtocolDeps()`.
+The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/interfaces/`. The **composition root** (`src/controllers/mcp.controller.ts`) assembles `ProtocolDeps` inline and injects `ChatGraphFactory` into `ChatSessionService` at startup.
 
 ### Layer Responsibilities
 

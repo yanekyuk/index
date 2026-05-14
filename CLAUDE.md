@@ -249,7 +249,7 @@ Strict layering: **Controllers -> Services -> Adapters**. Dependencies always po
 
 1. **Controllers** import **services** (or protocol graph factories). Must not import adapters.
 2. **Services** import **adapters** for data access. Must not import other services -- use events, queues, or shared lib for cross-service orchestration.
-3. **Protocol layer** (`@indexnetwork/protocol`) is fully self-contained — zero imports from the app. Receives adapters via **constructor injection** through interfaces. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
+3. **Protocol layer** (`@indexnetwork/protocol`) is fully self-contained — zero imports from the app. Receives adapters via **constructor injection** through interfaces. The **composition root** (`src/controllers/mcp.controller.ts`) assembles `ProtocolDeps` inline and injects `ChatGraphFactory` into `ChatSessionService` at startup via `setFactory()`.
 4. **Adapters** must not import from `@indexnetwork/protocol` interfaces — they define their own aligned types.
 
 ### Template Files
