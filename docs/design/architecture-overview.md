@@ -397,9 +397,9 @@ These are assigned concrete handlers in `main.ts`. For example, `onCreated` enqu
 
 ```typescript
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  opportunityQueue.addJob(
+  fromIntentQueue.addJob(
     { intentId, userId },
-    { priority: 10, jobId: `rediscovery:${userId}:${intentId}:...` },
+    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-...` },
   );
 };
 ```
@@ -434,7 +434,7 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | Queue | Purpose |
 |-------|---------|
 | `intent.queue` | Intent indexing and generation jobs |
-| `opportunity.queue` | Matching intents with opportunities, cron-based rediscovery |
+| `opportunity/` | Family of opportunity queues: `from-intent` (intent-triggered discovery), `from-introducer` (introducer-triggered discovery), `expiration` (stale-opportunity expiry), `claim-timeout` (claim budget enforcement) |
 | `profile.queue` | User profile generation and HyDE document creation |
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
@@ -626,7 +626,7 @@ IntentEvents.onCreated(intentId, userId)
   |
   |  Enqueues job
   v
-opportunityQueue.addJob({intentId, userId})
+fromIntentQueue.addJob({intentId, userId})
   |
   |  Worker picks up job
   v
