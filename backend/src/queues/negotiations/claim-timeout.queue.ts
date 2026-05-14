@@ -313,7 +313,7 @@ export class NegotiationClaimTimeoutQueue {
     await database.updateTaskState(task.id, 'waiting_for_agent');
 
     // Import dynamically to avoid circular dependency; arm the park-window timeout for the next speaker
-    const { negotiationTimeoutQueue } = await import('../negotiation-timeout.queue');
+    const { negotiationTimeoutQueue } = await import('./timeout.queue');
     await negotiationTimeoutQueue.enqueueTimeout(negotiationId, newTurnCount, AMBIENT_PARK_WINDOW_MS);
 
     this.logger.info('[NegotiationClaimTimeoutJob] AI agent countered, armed timeout for next speaker', {

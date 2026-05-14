@@ -30,7 +30,7 @@ import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
+import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';

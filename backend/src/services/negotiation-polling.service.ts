@@ -4,7 +4,7 @@ import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
 import * as dbSchema from '../schemas/database.schema';
 import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
+import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiations/claim-timeout.queue';
 import { log } from '../lib/log';
 import type { NegotiationTurn, UserNegotiationContext, SeedAssessment } from '@indexnetwork/protocol';
