@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { generateMasterKey } from '../lib/experiment/master-key';
 import { validateKey } from '../lib/keys';
 import * as schema from '../schemas/database.schema';
 
@@ -57,17 +58,7 @@ export class NetworkService {
     logger.verbose('[NetworkService] Creating experiment network', { userId, title: data.title });
 
     // Generate master key
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const bytes = crypto.getRandomValues(new Uint8Array(64));
-    let masterKey = '';
-    for (let i = 0; i < 64; i++) {
-      masterKey += chars[bytes[i] % chars.length];
-    }
-
-    // Hash the key
-    const encoded = new TextEncoder().encode(masterKey);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
-    const masterKeyHash = Buffer.from(hashBuffer).toString('base64url');
+    const { key: masterKey, hash: masterKeyHash } = await generateMasterKey();
 
     // Create network with experiment flags
     const network = await this.adapter.createNetwork({
