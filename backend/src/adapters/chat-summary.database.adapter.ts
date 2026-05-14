@@ -91,10 +91,16 @@ export class ChatSummaryDatabaseAdapter {
   async getMessagesAfter(sessionId: string, cursorMessageId: string | null): Promise<MessageForSummarizer[]> {
     let cursorCreatedAt: Date | null = null;
     if (cursorMessageId) {
+      // Scope cursor lookup by (id, conversationId): a foreign cursor (one whose
+      // message belongs to a different conversation) is treated as null, so we
+      // return all session messages rather than filtering by an unrelated time.
       const cursorRow = await db
         .select({ createdAt: schema.messages.createdAt })
         .from(schema.messages)
-        .where(eq(schema.messages.id, cursorMessageId))
+        .where(and(
+          eq(schema.messages.id, cursorMessageId),
+          eq(schema.messages.conversationId, sessionId),
+        ))
         .limit(1);
       cursorCreatedAt = cursorRow[0]?.createdAt ?? null;
     }

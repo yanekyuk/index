@@ -63,6 +63,16 @@ describe("ChatSummaryDatabaseAdapter", () => {
     expect(msgs.map((m) => m.id)).toEqual([messageIds[2], messageIds[3]]);
   });
 
+  it("getMessagesAfter treats a foreign cursor (different conversation) as null", async () => {
+    const { sessionId: sessionA, messageIds: idsA } = await makeConversationWithMessages(3);
+    const { sessionId: sessionB } = await makeConversationWithMessages(2);
+    createdSessions.push(sessionA, sessionB);
+    // Pass a cursor from sessionA while querying sessionB — must not compute a
+    // wrong timestamp from sessionA's row; should return all of sessionB's messages.
+    const msgs = await adapter.getMessagesAfter(sessionB, idsA[1]);
+    expect(msgs).toHaveLength(2);
+  });
+
   it("insertSummary persists a row and getLatest returns it", async () => {
     const { sessionId, messageIds } = await makeConversationWithMessages(2);
     createdSessions.push(sessionId);
