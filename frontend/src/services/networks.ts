@@ -355,6 +355,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   ): Promise<{ rotated: boolean; email: string }> => {
     return api.post(`/networks/${networkId}/members/${memberId}/resend-invite`, {});
   },
+
+  // Rotate the master key on an experiment network. Plaintext is returned
+  // exactly once; the old key stops working immediately.
+  rotateMasterKey: async (networkId: string): Promise<{ masterKey: string }> => {
+    return api.post<{ masterKey: string }>(`/networks/${networkId}/rotate-master-key`, {});
+  },
 });
 
 // Non-authenticated service for public endpoints

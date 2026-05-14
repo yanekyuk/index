@@ -1593,6 +1593,27 @@ Soft-delete an index. Owner only.
 { "success": true }
 ```
 
+### POST /api/networks/:id/rotate-master-key
+
+Rotate the master key on an experiment network. Owner only. The plaintext is returned exactly once; the previous key stops working immediately. Every owner of the network also receives the new key by email.
+
+**Auth**: `AuthOrApiKeyGuard` (session or API key)
+
+**Path params**:
+- `id` — Network ID
+
+**Request body**: none
+
+**Response**:
+```json
+{
+  "masterKey": "<plaintext-64-chars>"
+}
+```
+
+**Errors**:
+- `403` — Caller is not an owner of an experiment network (covers both "not an experiment" and "not an owner" — the controller's pre-check returns 403 for both).
+
 ### GET /api/networks/:id/members
 
 Get members of an index. Owner only.

@@ -22,7 +22,7 @@ import {
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
@@ -30,7 +30,7 @@ import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
+import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
@@ -38,7 +38,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 
-import { BASE_URL } from '../lib/betterauth/betterauth';
+import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
@@ -92,8 +92,9 @@ const protocolDeps = {
   agentDispatcher,
   deliveryLedger: opportunityDeliveryService,
   negotiationTimeoutQueue,
-  queueNegotiateExisting: (opportunityId: string, userId: string) =>
-    opportunityQueue.addNegotiateJob({ opportunityId, userId }),
+  queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
+    await negotiationRunExistingQueue.addJob({ opportunityId, userId });
+  },
   mintConnectToken: signConnectToken,
   mintConnectLink,
   frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
@@ -162,7 +163,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const JWKS = createRemoteJWKSet(
-  new URL(`${BASE_URL}/api/auth/jwks`),
+  new URL('/api/auth/jwks', BASE_URL),
 );
 
 function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
@@ -192,7 +193,7 @@ const authResolver: McpAuthResolver = {
         // there is no network scope to compute; the field is explicitly null
         // (not omitted) so callers cannot conflate "no scope" with "scope unset".
         try {
-          const { payload } = await jwtVerify(token, JWKS);
+          const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
           if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
           if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
           throw new Error('JWT payload missing user ID');

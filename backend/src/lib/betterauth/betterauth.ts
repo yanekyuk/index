@@ -9,6 +9,8 @@ const logger = log.server.from("betterauth");
 export const BASE_URL =
   process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
 
+export const JWT_AUDIENCE = BASE_URL;
+
 export const APP_URL =
   process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
 
@@ -106,6 +108,7 @@ export function createAuth(deps: AuthDeps) {
       jwt({
         jwt: {
           issuer: BASE_URL,
+          audience: JWT_AUDIENCE,
           expirationTime: "1h",
           definePayload: ({ user }) => ({
             id: user.id,
