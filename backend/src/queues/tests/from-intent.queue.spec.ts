@@ -1,5 +1,5 @@
 /**
- * Unit tests for OpportunityQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
+ * Unit tests for FromIntentQueue. Use injected deps to avoid Redis/DB; QueueFactory is mocked.
  */
 import { config } from 'dotenv';
 config({ path: '.env.test' });
@@ -17,36 +17,40 @@ mock.module('../../lib/bullmq/bullmq', () => ({
   },
 }));
 
+// Stub the run-existing queue that from-intent imports
+mock.module('../negotiations/run-existing.queue', () => ({
+  negotiationRunExistingQueue: { addJob: async () => ({ id: 'neg-1' }) },
+}));
+
 import {
-  OpportunityQueue,
+  FromIntentQueue,
   QUEUE_NAME,
-  type OpportunityJobData,
-  type OpportunityQueueDatabase,
-  type OpportunityQueueDeps,
-  type OpportunityGraphInvokeOptions,
-} from '../opportunity.queue';
+  type FromIntentJobData,
+  type FromIntentDatabase,
+  type FromIntentGraphInvokeOptions,
+} from '../opportunity/from-intent.queue';
 
-const asOppDb = (db: unknown): OpportunityQueueDatabase => db as OpportunityQueueDatabase;
+const asDb = (db: unknown): FromIntentDatabase => db as FromIntentDatabase;
 
-describe('OpportunityQueue', () => {
+describe('FromIntentQueue', () => {
   describe('constructor and static', () => {
     it('exposes QUEUE_NAME on class', () => {
-      expect(OpportunityQueue.QUEUE_NAME).toBe(QUEUE_NAME);
-      expect(QUEUE_NAME).toBe('opportunity-discovery-queue');
+      expect(FromIntentQueue.QUEUE_NAME).toBe(QUEUE_NAME);
+      expect(QUEUE_NAME).toBe('opportunity-from-intent');
     });
 
     it('uses provided database when deps given', async () => {
-      const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<OpportunityQueueDatabase['getIntentForIndexing']>>);
+      const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>);
       const db = { getIntentForIndexing };
-      const queue = new OpportunityQueue({ database: asOppDb(db) });
+      const queue = new FromIntentQueue({ database: asDb(db) });
       await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
       expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
     });
   });
 
   describe('addJob', () => {
-    it('adds discover_opportunities job with data and options', async () => {
-      const queue = new OpportunityQueue();
+    it('adds discover job with data and options', async () => {
+      const queue = new FromIntentQueue();
       const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
@@ -62,7 +66,7 @@ describe('OpportunityQueue', () => {
     });
 
     it('supports jobId and priority options', async () => {
-      const queue = new OpportunityQueue();
+      const queue = new FromIntentQueue();
       await queue.addJob({ intentId: 'i1', userId: 'u1' }, { jobId: 'custom', priority: 1 });
       expect(mockAdd).toHaveBeenCalledWith(
         'discover_opportunities',
@@ -74,26 +78,26 @@ describe('OpportunityQueue', () => {
 
   describe('processJob', () => {
     it('unknown job name logs warning and does not throw', async () => {
-      const queue = new OpportunityQueue();
+      const queue = new FromIntentQueue();
       await expect(
         queue.processJob('unknown_job', { intentId: 'i1', userId: 'u1' })
       ).resolves.toBeUndefined();
     });
 
-    it('discover_opportunities: intent not found skips', async () => {
+    it('discover: intent not found skips', async () => {
       const db = {
-        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<OpportunityQueueDatabase['getIntentForIndexing']>>,
+        getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
       };
-      const queue = new OpportunityQueue({ database: asOppDb(db) });
+      const queue = new FromIntentQueue({ database: asDb(db) });
       await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
     });
 
-    it('discover_opportunities: intent found, invokeOpportunityGraph called when provided', async () => {
-      const invokeOpportunityGraph = mock(async (_opts: OpportunityGraphInvokeOptions) => {});
+    it('discover: intent found, invokeOpportunityGraph called when provided', async () => {
+      const invokeOpportunityGraph = mock(async (_opts: FromIntentGraphInvokeOptions) => {});
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
       };
-      const queue = new OpportunityQueue({ database: asOppDb(db), invokeOpportunityGraph });
+      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
@@ -111,12 +115,12 @@ describe('OpportunityQueue', () => {
       );
     });
 
-    it('discover_opportunities: uses networkIds[0] as networkId', async () => {
+    it('discover: uses networkIds[0] as networkId', async () => {
       const invokeOpportunityGraph = mock(async () => {});
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
       };
-      const queue = new OpportunityQueue({ database: asOppDb(db), invokeOpportunityGraph });
+      const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
       await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
@@ -127,11 +131,11 @@ describe('OpportunityQueue', () => {
       );
     });
 
-    it('discover_opportunities: without invokeOpportunityGraph uses real graph (may need Redis)', async () => {
+    it('discover: without invokeOpportunityGraph uses real graph (may need Redis)', async () => {
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
       };
-      const queue = new OpportunityQueue({ database: asOppDb(db) });
+      const queue = new FromIntentQueue({ database: asDb(db) });
       try {
         await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
       } catch {
@@ -142,20 +146,20 @@ describe('OpportunityQueue', () => {
 
   describe('startWorker', () => {
     it('is idempotent: second call does not create another worker', () => {
-      const queue = new OpportunityQueue();
+      const queue = new FromIntentQueue();
       queue.startWorker();
       queue.startWorker();
       expect(mockCreateWorker).toHaveBeenCalledTimes(1);
     });
 
     it('processor invokes processJob when worker runs a job', async () => {
-      let capturedProcessor: ((job: { id: string; name: string; data: OpportunityJobData }) => Promise<void>) | null = null;
+      let capturedProcessor: ((job: { id: string; name: string; data: FromIntentJobData }) => Promise<void>) | null = null;
       (mockCreateWorker as import('bun:test').Mock<(n: string, p: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
-        capturedProcessor = processor as (job: { id: string; name: string; data: OpportunityJobData }) => Promise<void>;
+        capturedProcessor = processor as (job: { id: string; name: string; data: FromIntentJobData }) => Promise<void>;
         return {};
       });
-      const db = { getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<OpportunityQueueDatabase['getIntentForIndexing']>> };
-      const queue = new OpportunityQueue({ database: asOppDb(db) });
+      const db = { getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>> };
+      const queue = new FromIntentQueue({ database: asDb(db) });
       queue.startWorker();
       expect(capturedProcessor).not.toBeNull();
       await capturedProcessor!({

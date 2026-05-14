@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
-import { log } from '../lib/log';
-import { QueueFactory } from '../lib/bullmq/bullmq';
-import { conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { log } from '../../lib/log';
+import { QueueFactory } from '../../lib/bullmq/bullmq';
+import { conversationDatabaseAdapter } from '../../adapters/database.adapter';
 import { IndexNegotiator, AMBIENT_PARK_WINDOW_MS } from '@indexnetwork/protocol';
 import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase } from '@indexnetwork/protocol';
 

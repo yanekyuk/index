@@ -397,9 +397,9 @@ These are assigned concrete handlers in `main.ts`. For example, `onCreated` enqu
 
 ```typescript
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  opportunityQueue.addJob(
+  fromIntentQueue.addJob(
     { intentId, userId },
-    { priority: 10, jobId: `rediscovery:${userId}:${intentId}:...` },
+    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-...` },
   );
 };
 ```
@@ -434,13 +434,16 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | Queue | Purpose |
 |-------|---------|
 | `intent.queue` | Intent indexing and generation jobs |
-| `opportunity.queue` | Matching intents with opportunities, cron-based rediscovery |
+| `opportunity/from-intent` | BullMQ queue: intent-triggered opportunity discovery |
+| `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
+| `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
+| `negotiations/run-existing` | BullMQ queue: enqueue bilateral negotiation for an existing opportunity (e.g. after introducer approval) |
+| `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
+| `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
 | `profile.queue` | User profile generation and HyDE document creation |
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
 | `notification.queue` | Notification delivery |
-| `negotiation-timeout` | Triggers the AI fallback agent when a personal agent does not respond to a parked negotiation turn within its timeout window |
-| `negotiation-claim-timeout` | Expires a stale claim (task stuck in `claimed`) and returns the turn to `waiting_for_agent` |
 
 ### Job Patterns
 
@@ -626,7 +629,7 @@ IntentEvents.onCreated(intentId, userId)
   |
   |  Enqueues job
   v
-opportunityQueue.addJob({intentId, userId})
+fromIntentQueue.addJob({intentId, userId})
   |
   |  Worker picks up job
   v

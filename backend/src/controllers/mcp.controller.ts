@@ -22,7 +22,7 @@ import {
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
@@ -30,7 +30,7 @@ import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
-import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
+import { negotiationTimeoutQueue } from '../queues/negotiations/timeout.queue';
 import { signConnectToken } from '../services/connect-token.service';
 import type { ConnectLinkKind } from '../services/connect-link.service';
 import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
@@ -92,8 +92,9 @@ const protocolDeps = {
   agentDispatcher,
   deliveryLedger: opportunityDeliveryService,
   negotiationTimeoutQueue,
-  queueNegotiateExisting: (opportunityId: string, userId: string) =>
-    opportunityQueue.addNegotiateJob({ opportunityId, userId }),
+  queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
+    await negotiationRunExistingQueue.addJob({ opportunityId, userId });
+  },
   mintConnectToken: signConnectToken,
   mintConnectLink,
   frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
