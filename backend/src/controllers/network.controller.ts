@@ -494,6 +494,40 @@ export class NetworkController {
     }
   }
 
+  /**
+   * Rotate the master key on an experiment network. Owner-only. The plaintext
+   * is returned in the response body exactly once; the previous key stops
+   * working immediately. Every owner of the network also receives the new
+   * key by email.
+   */
+  @Post('/:id/rotate-master-key')
+  @UseGuards(AuthOrApiKeyGuard)
+  async rotateMasterKey(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await assertAgentNetworkScope(req, params.id);
+      await this.assertExperimentOwner(params.id, user.id);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      throw err;
+    }
+
+    try {
+      const result = await networkService.rotateExperimentMasterKey(params.id, user.id);
+      logger.verbose('Master key rotated', { networkId: params.id, userId: user.id });
+      return Response.json({ masterKey: result.masterKey });
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      logger.error('Master key rotation failed', { networkId: params.id, error: msg });
+      if (msg.includes('Not an experiment network')) {
+        return Response.json({ error: msg }, { status: 400 });
+      }
+      if (msg.includes('Owner-only')) {
+        return Response.json({ error: msg }, { status: 403 });
+      }
+      throw err;
+    }
+  }
+
   private async assertExperimentOwner(networkId: string, userId: string): Promise<void> {
     let network: Awaited<ReturnType<typeof networkService.getNetworkById>>;
     try {
