@@ -8,7 +8,8 @@ import { and, eq } from 'drizzle-orm';
 import { ChatDatabaseAdapter, chatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { fromIntentQueue } from '../queues/opportunity/from-intent.queue';
+import { fromIntroducerQueue } from '../queues/opportunity/from-introducer.queue';
 import db from '../lib/drizzle/drizzle';
 import { userSocials } from '../schemas/database.schema';
 import { normalizeTelegramHandle } from '@indexnetwork/protocol';
@@ -107,7 +108,23 @@ export class OpportunityService {
     this.maintenanceGraph = new MaintenanceGraphFactory(
       this.db as unknown as MaintenanceGraphDatabase,
       this.cache as unknown as MaintenanceGraphCache,
-      opportunityQueue as unknown as MaintenanceGraphQueue,
+      {
+        addJob: (
+          data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
+          options?: { priority?: number; jobId?: string },
+        ) => {
+          if (data.contactUserId) {
+            return fromIntroducerQueue.addJob(
+              { userId: data.userId, contactUserId: data.contactUserId, networkIds: data.indexIds },
+              options,
+            );
+          }
+          return fromIntentQueue.addJob(
+            { intentId: data.intentId, userId: data.userId },
+            options,
+          );
+        },
+      } satisfies MaintenanceGraphQueue,
     ).createGraph();
   }
 

@@ -38,7 +38,10 @@ import { auth } from './lib/betterauth/auth.instance';
 import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
-import { opportunityQueue } from './queues/opportunity.queue';
+import { fromIntentQueue } from './queues/opportunity/from-intent.queue';
+import { fromIntroducerQueue } from './queues/opportunity/from-introducer.queue';
+import { negotiationRunExistingQueue } from './queues/negotiations/run-existing.queue';
+import { opportunityExpirationCron } from './queues/opportunity/expiration.queue';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
@@ -69,14 +72,24 @@ const backgroundNegotiationGraph = new NegotiationGraphFactory(
   backgroundAgentDispatcher,
   negotiationTimeoutQueue,
 ).createGraph();
-opportunityQueue.setRuntimeDeps({
+fromIntentQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
+fromIntroducerQueue.setRuntimeDeps({
+  negotiationGraph: backgroundNegotiationGraph,
+  agentDispatcher: backgroundAgentDispatcher,
+});
+negotiationRunExistingQueue.setRuntimeDeps({
   negotiationGraph: backgroundNegotiationGraph,
   agentDispatcher: backgroundAgentDispatcher,
 });
 
 intentQueue.startWorker();
-opportunityQueue.startWorker();
-opportunityQueue.startCrons();
+fromIntentQueue.startWorker();
+fromIntroducerQueue.startWorker();
+negotiationRunExistingQueue.startWorker();
+opportunityExpirationCron.start();
 notificationQueue.startWorker();
 profileQueue.startWorker();
 hydeQueue.startCrons();
@@ -92,7 +105,7 @@ NetworkMembershipEvents.onMemberAdded = (userId: string) => {
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
-  opportunityQueue.addJob(
+  fromIntentQueue.addJob(
     { intentId, userId },
     { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
@@ -404,7 +417,9 @@ const shutdown = async () => {
   await Promise.allSettled([
     profileQueue.close(),
     intentQueue.close(),
-    opportunityQueue.close(),
+    fromIntentQueue.close(),
+    fromIntroducerQueue.close(),
+    negotiationRunExistingQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
     negotiationTimeoutQueue.close(),

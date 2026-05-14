@@ -22,7 +22,7 @@ import {
 import { embedderAdapter } from '../adapters/embedder.adapter';
 import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
-import { opportunityQueue } from '../queues/opportunity.queue';
+import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
@@ -92,8 +92,9 @@ const protocolDeps = {
   agentDispatcher,
   deliveryLedger: opportunityDeliveryService,
   negotiationTimeoutQueue,
-  queueNegotiateExisting: (opportunityId: string, userId: string) =>
-    opportunityQueue.addNegotiateJob({ opportunityId, userId }),
+  queueNegotiateExisting: async (opportunityId: string, userId: string): Promise<void> => {
+    await negotiationRunExistingQueue.addJob({ opportunityId, userId });
+  },
   mintConnectToken: signConnectToken,
   mintConnectLink,
   frontendUrl: process.env.FRONTEND_URL ?? 'https://index.network',
