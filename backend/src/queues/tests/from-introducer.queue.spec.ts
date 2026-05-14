@@ -25,7 +25,6 @@ mock.module('../negotiations/run-existing.queue', () => ({
 import {
   FromIntroducerQueue,
   QUEUE_NAME,
-  type FromIntroducerJobData,
   type FromIntroducerDatabase,
   type FromIntroducerGraphInvokeOptions,
 } from '../opportunity/from-introducer.queue';
@@ -72,7 +71,6 @@ describe('FromIntroducerQueue', () => {
 
   describe('processJob', () => {
     it('unknown job name logs warning and does not throw', async () => {
-      const queue = new FromIntroducerQueue();
       const db = { getActiveIntents: async () => [ACTIVE_INTENT] };
       const queueWithDb = new FromIntroducerQueue({ database: asDb(db) });
       await expect(
@@ -142,6 +140,33 @@ describe('FromIntroducerQueue', () => {
       queue.setRuntimeDeps({ negotiationGraph });
       // No assertion needed — just verifying it does not throw and is idempotent
       queue.setRuntimeDeps({ negotiationGraph });
+    });
+  });
+
+  describe('startWorker', () => {
+    it('is idempotent: second call does not create another worker', () => {
+      mockCreateWorker.mockClear();
+      const queue = new FromIntroducerQueue();
+      queue.startWorker();
+      queue.startWorker();
+      expect(mockCreateWorker).toHaveBeenCalledTimes(1);
+    });
+
+    it('processor invokes processJob when worker runs a job', async () => {
+      let capturedProcessor: ((job: { id: string; name: string; data: unknown }) => Promise<void>) | null = null;
+      (mockCreateWorker as import('bun:test').Mock<(n: string, p: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
+        capturedProcessor = processor as (job: { id: string; name: string; data: unknown }) => Promise<void>;
+        return {};
+      });
+      const db = { getActiveIntents: async () => [] as Awaited<ReturnType<FromIntroducerDatabase['getActiveIntents']>> };
+      const queue = new FromIntroducerQueue({ database: asDb(db) });
+      queue.startWorker();
+      expect(capturedProcessor).not.toBeNull();
+      await capturedProcessor!({
+        id: 'job-1',
+        name: 'discover_opportunities',
+        data: { userId: 'u1', contactUserId: 'u2' },
+      });
     });
   });
 });

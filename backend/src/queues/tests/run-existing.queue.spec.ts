@@ -20,7 +20,7 @@ mock.module('../../lib/bullmq/bullmq', () => ({
 import {
   NegotiationRunExistingQueue,
   QUEUE_NAME,
-  type RunExistingJobData,
+  type RunExistingDeps,
   type RunExistingGraphInvokeOptions,
 } from '../negotiations/run-existing.queue';
 
@@ -103,8 +103,36 @@ describe('NegotiationRunExistingQueue', () => {
     it('merged invokeOpportunityGraph dep is used by processJob', async () => {
       const invokeOpportunityGraph = mock(async () => {});
       const queue = new NegotiationRunExistingQueue();
-      queue.setRuntimeDeps({ invokeOpportunityGraph } as RunExistingJobData & { invokeOpportunityGraph: typeof invokeOpportunityGraph });
+      queue.setRuntimeDeps({ invokeOpportunityGraph } as Partial<RunExistingDeps>);
       await queue.processJob('negotiate_existing', { opportunityId: 'opp-1', userId: 'u1' });
+      expect(invokeOpportunityGraph).toHaveBeenCalled();
+    });
+  });
+
+  describe('startWorker', () => {
+    it('is idempotent: second call does not create another worker', () => {
+      mockCreateWorker.mockClear();
+      const queue = new NegotiationRunExistingQueue();
+      queue.startWorker();
+      queue.startWorker();
+      expect(mockCreateWorker).toHaveBeenCalledTimes(1);
+    });
+
+    it('processor invokes processJob when worker runs a job', async () => {
+      let capturedProcessor: ((job: { id: string; name: string; data: unknown }) => Promise<void>) | null = null;
+      (mockCreateWorker as import('bun:test').Mock<(n: string, p: (job: unknown) => Promise<void>) => unknown>).mockImplementation((_name: string, processor: (job: unknown) => Promise<void>) => {
+        capturedProcessor = processor as (job: { id: string; name: string; data: unknown }) => Promise<void>;
+        return {};
+      });
+      const invokeOpportunityGraph = mock(async () => {});
+      const queue = new NegotiationRunExistingQueue({ invokeOpportunityGraph });
+      queue.startWorker();
+      expect(capturedProcessor).not.toBeNull();
+      await capturedProcessor!({
+        id: 'job-1',
+        name: 'negotiate_existing',
+        data: { opportunityId: 'opp-1', userId: 'u1' },
+      });
       expect(invokeOpportunityGraph).toHaveBeenCalled();
     });
   });
