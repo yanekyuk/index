@@ -32,7 +32,8 @@ import { ScopeViolationError } from './guards/agent-scope.guard';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
-import { mcpHandler } from './controllers/mcp.handler';
+import { mcpHandler, chatFactory } from './controllers/mcp.handler';
+import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
 import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
@@ -54,6 +55,9 @@ import { NegotiationGraphFactory } from '@indexnetwork/protocol';
 import { conversationDatabaseAdapter } from './adapters/database.adapter';
 import { agentService } from './services/agent.service';
 import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
+
+// Wire ChatGraphFactory into chat service at startup
+chatSessionService.setFactory(chatFactory);
 
 // Wire negotiation into the background discovery queue so latent opportunities
 // from the IntentEvents.onCreated path are negotiated, matching the chat/MCP paths.

@@ -4,7 +4,7 @@ import { enrichUserProfile as parallelEnrichUserProfile, type ParallelSearchRequ
  * Adapter that wraps the Parallel Chat API enrichment function.
  * Bridges ParallelSearchRequestStruct to ParallelEnrichmentResult.
  * Structural compatibility with the protocol ProfileEnricher interface is
- * verified at the composition root (protocol-init.ts) via TypeScript duck typing.
+ * verified at the composition root (mcp.handler.ts) via TypeScript duck typing.
  */
 export const enricherAdapter: { enrichUserProfile: (request: ParallelSearchRequestStruct) => Promise<ParallelEnrichmentResult | null> } = {
   async enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {

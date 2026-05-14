@@ -32,8 +32,8 @@ import { IntegrationService } from '../services/integration.service';
 import { opportunityDeliveryService } from '../services/opportunity-delivery.service';
 import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
 import { signConnectToken } from '../services/connect-token.service';
-import { apiBaseUrl, mintConnectLink } from '../adapters/connect-link.adapter';
-import { chatSessionService } from '../services/chat.service';
+import type { ConnectLinkKind } from '../services/connect-link.service';
+import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../services/connect-link.service';
 
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
@@ -51,6 +51,23 @@ const logger = log.server.from('mcp');
 const integration = new ComposioIntegrationAdapter();
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
+
+const apiBaseUrl = (
+  process.env.BASE_URL ||
+  process.env.API_BASE_URL ||
+  process.env.APP_URL ||
+  'http://localhost:3001'
+).replace(/\/+$/, '');
+
+const mintConnectLink = async ({ userId, opportunityId, kind, greeting }: {
+  userId: string;
+  opportunityId: string;
+  kind: ConnectLinkKind;
+  greeting?: string | null;
+}): Promise<{ url: string }> => {
+  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
+  return { url: buildConnectShortUrl(apiBaseUrl, code) };
+};
 
 const protocolDeps = {
   database: chatDatabaseAdapter,
@@ -83,15 +100,13 @@ const protocolDeps = {
   apiBaseUrl,
 };
 
-// Inject ChatGraphFactory into chatSessionService (controller orchestrates services)
 const chatSessionReader = {
-  getSessionMessages: (sessionId: string, limit?: number) => chatSessionService.getSessionMessages(sessionId, limit),
+  getSessionMessages: (sessionId: string, limit?: number) => conversationDatabaseAdapter.getChatSessionMessages(sessionId, limit),
   listSessions: (userId: string, limit?: number) => conversationDatabaseAdapter.listChatSessionSummaries(userId, limit),
   getSession: (userId: string, sessionId: string, messageLimit?: number) =>
     conversationDatabaseAdapter.getChatSessionDetail(userId, sessionId, messageLimit),
 };
-const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps);
-chatSessionService.setFactory(chatFactory);
+export const chatFactory = new ChatGraphFactory(chatDatabaseAdapter, embedderAdapter, scraperAdapter, chatSessionReader, protocolDeps);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GRAPH COMPILATION (lazy, cached)
