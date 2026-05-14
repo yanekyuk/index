@@ -23,6 +23,12 @@ export interface ChatSummarizerLike {
  * Backend implementation of {@link ChatSummaryReader}. Reads the latest persisted
  * digest for a session, runs incremental summarization over any new messages,
  * and appends a fresh row when summarization succeeds.
+ *
+ * @remarks Constructing this service with the default summarizer instantiates
+ * {@link ChatSummarizer}, which validates `OPENROUTER_API_KEY` at construction
+ * time. Importers of the composition root (`mcp.controller.ts`) therefore
+ * inherit a boot-time dependency on that env var. Inject a fake summarizer in
+ * tests or in environments where the LLM client must not be constructed.
  */
 export class ChatSummaryService implements ChatSummaryReader {
   constructor(
