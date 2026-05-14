@@ -351,6 +351,18 @@ export class NetworkService {
   }
 
   /**
+   * Check whether a user holds the `'owner'` permission on a network.
+   * Delegates to the adapter's permission-based check (network_members.permissions).
+   *
+   * @param networkId - The network ID
+   * @param userId - The user ID to check
+   * @returns `true` if the user is an owner, `false` otherwise
+   */
+  async isIndexOwner(networkId: string, userId: string): Promise<boolean> {
+    return this.adapter.isIndexOwner(networkId, userId);
+  }
+
+  /**
    * Assert that an index is not a personal index.
    * @throws Error if the index is personal.
    */
@@ -465,8 +477,8 @@ export class NetworkService {
 
     const actor = owners.find((o) => o.userId === actorUserId);
     const actorDisplay = actor?.name || actor?.email || 'an owner';
-    const appUrl = process.env.APP_URL || 'https://index.network';
-    const integrationsUrl = `${appUrl}/networks/${networkId}/integrations`;
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network').replace(/\/+$/, '');
+    const integrationsUrl = `${frontendUrl}/networks/${networkId}/integrations`;
 
     const rendered = networkMasterKeyRotatedTemplate({
       networkName,

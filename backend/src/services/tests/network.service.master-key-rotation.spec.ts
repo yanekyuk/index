@@ -96,6 +96,9 @@ describe('networkService.rotateExperimentMasterKey', () => {
     expect(after.hash).not.toBe(before.hash);
     const expectedHash = await hashMasterKey(result.masterKey);
     expect(after.hash).toBe(expectedHash);
+
+    // Drain the fire-and-forget dispatch before the next test mockClears the spy.
+    await new Promise((r) => setTimeout(r, 50));
   });
 
   test('emails every owner of the network', async () => {

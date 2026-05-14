@@ -516,14 +516,7 @@ export class NetworkController {
       logger.verbose('Master key rotated', { networkId: params.id, userId: user.id });
       return Response.json({ masterKey: result.masterKey });
     } catch (err: unknown) {
-      const msg = errorMessage(err);
-      logger.error('Master key rotation failed', { networkId: params.id, error: msg });
-      if (msg.includes('Not an experiment network')) {
-        return Response.json({ error: msg }, { status: 400 });
-      }
-      if (msg.includes('Owner-only')) {
-        return Response.json({ error: msg }, { status: 403 });
-      }
+      logger.error('Master key rotation failed', { networkId: params.id, error: errorMessage(err) });
       throw err;
     }
   }
@@ -541,8 +534,8 @@ export class NetworkController {
     if (!(network as Record<string, unknown>).isExperiment) {
       throw Response.json({ error: 'This operation is only available for experiment networks' }, { status: 403 });
     }
-    const owner = (network as Record<string, unknown>).user as { id: string } | undefined;
-    if (owner?.id !== userId) {
+    const isOwner = await networkService.isIndexOwner(networkId, userId);
+    if (!isOwner) {
       throw Response.json({ error: 'Owner-only operation' }, { status: 403 });
     }
   }
