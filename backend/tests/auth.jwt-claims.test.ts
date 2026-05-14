@@ -47,7 +47,7 @@ describe('jwtVerify claim validation', () => {
 
   it('rejects a token with wrong aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
-    const token = await signToken(privateKey, { iss: BASE_URL, aud: 'https://other-service.example.com' });
+    const token = await signToken(privateKey, { iss: BASE_URL, aud: `${JWT_AUDIENCE}-wrong` });
     let err: unknown;
     try { await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }); } catch (e) { err = e; }
     expect(err).toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
@@ -55,7 +55,7 @@ describe('jwtVerify claim validation', () => {
 
   it('rejects a token with wrong iss', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
-    const token = await signToken(privateKey, { iss: 'https://dev.index.network', aud: JWT_AUDIENCE });
+    const token = await signToken(privateKey, { iss: `${BASE_URL}-wrong`, aud: JWT_AUDIENCE });
     let err: unknown;
     try { await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }); } catch (e) { err = e; }
     expect(err).toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
