@@ -40,32 +40,32 @@ describe('jwtVerify claim validation', () => {
   it('rejects a token missing aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, { iss: BASE_URL });
-    expect(
-      jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
-    ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
+    let err: unknown;
+    try { await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
 
   it('rejects a token with wrong aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, { iss: BASE_URL, aud: 'https://other-service.example.com' });
-    expect(
-      jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
-    ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
+    let err: unknown;
+    try { await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
 
   it('rejects a token with wrong iss', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, { iss: 'https://dev.index.network', aud: JWT_AUDIENCE });
-    expect(
-      jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
-    ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
+    let err: unknown;
+    try { await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
 
   it('rejects a token missing both iss and aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, {});
-    expect(
-      jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
-    ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
+    let err: unknown;
+    try { await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
 });
