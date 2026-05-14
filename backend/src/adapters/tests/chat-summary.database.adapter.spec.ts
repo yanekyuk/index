@@ -15,6 +15,11 @@ async function makeConversationWithMessages(messageCount: number): Promise<{ ses
   const sessionId = crypto.randomUUID();
   await db.insert(schema.conversations).values({ id: sessionId });
   const ids: string[] = [];
+  // Use explicit, monotonically-increasing createdAt values (1s apart) so the
+  // order is deterministic regardless of clock resolution. Relying on the
+  // server-side default + setTimeout is flaky when PG `now()` doesn't advance
+  // between rapid inserts.
+  const baseTime = Date.now();
   for (let i = 0; i < messageCount; i++) {
     const mid = crypto.randomUUID();
     await db.insert(schema.messages).values({
@@ -23,10 +28,9 @@ async function makeConversationWithMessages(messageCount: number): Promise<{ ses
       senderId: 'sender-1',
       role: i % 2 === 0 ? 'user' : 'agent',
       parts: [{ type: 'text', text: `msg-${i}` }],
+      createdAt: new Date(baseTime + i * 1000),
     });
     ids.push(mid);
-    // Tiny stagger so createdAt orders deterministically (timestamps default to now()).
-    await new Promise((r) => setTimeout(r, 5));
   }
   return { sessionId, messageIds: ids };
 }
@@ -71,6 +75,39 @@ describe("ChatSummaryDatabaseAdapter", () => {
     // wrong timestamp from sessionA's row; should return all of sessionB's messages.
     const msgs = await adapter.getMessagesAfter(sessionB, idsA[1]);
     expect(msgs).toHaveLength(2);
+  });
+
+  it("getMessagesAfter returns same-createdAt siblings (tuple cursor)", async () => {
+    const sessionId = crypto.randomUUID();
+    createdSessions.push(sessionId);
+    await db.insert(schema.conversations).values({ id: sessionId });
+
+    // Two messages sharing the exact same createdAt (cursor + sibling).
+    // 'aaa' sorts before 'bbb' lexicographically, so 'aaa' is the cursor and
+    // 'bbb' must be returned after — the gt-only predicate would have dropped it.
+    const shared = new Date('2026-05-15T10:00:00.000Z');
+    await db.insert(schema.messages).values({
+      id: 'aaa-' + crypto.randomUUID(),
+      conversationId: sessionId,
+      senderId: 's',
+      role: 'user',
+      parts: [{ type: 'text', text: 'cursor' }],
+      createdAt: shared,
+    });
+    await db.insert(schema.messages).values({
+      id: 'bbb-' + crypto.randomUUID(),
+      conversationId: sessionId,
+      senderId: 's',
+      role: 'agent',
+      parts: [{ type: 'text', text: 'sibling' }],
+      createdAt: shared,
+    });
+
+    const all = await adapter.getMessagesAfter(sessionId, null);
+    expect(all).toHaveLength(2);
+    const [cursor, sibling] = all;
+    const afterCursor = await adapter.getMessagesAfter(sessionId, cursor.id);
+    expect(afterCursor.map((m) => m.id)).toEqual([sibling.id]);
   });
 
   it("insertSummary persists a row and getLatest returns it", async () => {

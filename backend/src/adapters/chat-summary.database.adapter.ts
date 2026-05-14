@@ -2,7 +2,7 @@
  * Drizzle-backed I/O for the chat_session_summaries table. Pure persistence;
  * no business logic. Wrapped by ChatSummaryService.
  */
-import { and, asc, desc, eq, gt, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ne, or } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -107,18 +107,29 @@ export class ChatSummaryDatabaseAdapter {
 
     const baseConds = [eq(schema.messages.conversationId, sessionId)];
     if (cursorCreatedAt && cursorMessageId) {
-      // gt() compares Postgres microsecond timestamps against a JS Date (ms precision),
-      // so the cursor row itself can slip through when its sub-millisecond fraction is
-      // non-zero. Exclude by id to guarantee strict-after semantics.
-      baseConds.push(gt(schema.messages.createdAt, cursorCreatedAt));
-      baseConds.push(ne(schema.messages.id, cursorMessageId));
+      // Tuple cursor on (createdAt, id): rows strictly after the cursor are either
+      // later in time OR at the same instant with a different id. The same-time
+      // branch protects against (a) Postgres-microsecond vs JS-millisecond cursor
+      // round-tripping leaking the cursor row through `gt`, and (b) silently
+      // dropping sibling messages that share the cursor's createdAt (possible
+      // when multiple messages land in the same millisecond).
+      const tupleAfter = or(
+        gt(schema.messages.createdAt, cursorCreatedAt),
+        and(
+          eq(schema.messages.createdAt, cursorCreatedAt),
+          ne(schema.messages.id, cursorMessageId),
+        ),
+      );
+      if (tupleAfter) baseConds.push(tupleAfter);
     }
 
     const rows = await db
       .select()
       .from(schema.messages)
       .where(and(...baseConds))
-      .orderBy(asc(schema.messages.createdAt));
+      // Deterministic secondary sort by id breaks ties when same-timestamp rows
+      // are returned, so callers see a stable order across runs.
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
 
     return rows.map((m) => ({
       id: m.id,

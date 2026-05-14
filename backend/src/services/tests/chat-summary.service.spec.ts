@@ -20,6 +20,9 @@ async function makeConversationWithMessages(messageCount: number): Promise<{ ses
   const sessionId = crypto.randomUUID();
   await db.insert(schema.conversations).values({ id: sessionId });
   const ids: string[] = [];
+  // Explicit, monotonically-increasing createdAt values so ordering is
+  // deterministic regardless of clock resolution.
+  const baseTime = Date.now();
   for (let i = 0; i < messageCount; i++) {
     const mid = crypto.randomUUID();
     await db.insert(schema.messages).values({
@@ -28,9 +31,9 @@ async function makeConversationWithMessages(messageCount: number): Promise<{ ses
       senderId: 'sender-1',
       role: i % 2 === 0 ? 'user' : 'agent',
       parts: [{ type: 'text', text: `msg-${i}` }],
+      createdAt: new Date(baseTime + i * 1000),
     });
     ids.push(mid);
-    await new Promise((r) => setTimeout(r, 5));
   }
   return { sessionId, messageIds: ids };
 }
@@ -101,12 +104,13 @@ describe("ChatSummaryService", () => {
     const { service: first } = makeService(async () => sampleDigest);
     await first.getDigest(sessionId);
 
-    // Add 2 more messages
+    // Add 2 more messages, each at an explicit time strictly after the seed batch
+    // (seed batch uses baseTime..baseTime + 1s; pad with +10s and +11s to be safe).
     const newMid1 = crypto.randomUUID();
     const newMid2 = crypto.randomUUID();
-    await db.insert(schema.messages).values({ id: newMid1, conversationId: sessionId, senderId: 's', role: 'user', parts: [{ type: 'text', text: 'new1' }] });
-    await new Promise((r) => setTimeout(r, 5));
-    await db.insert(schema.messages).values({ id: newMid2, conversationId: sessionId, senderId: 's', role: 'agent', parts: [{ type: 'text', text: 'new2' }] });
+    const padBase = Date.now() + 10_000;
+    await db.insert(schema.messages).values({ id: newMid1, conversationId: sessionId, senderId: 's', role: 'user', parts: [{ type: 'text', text: 'new1' }], createdAt: new Date(padBase) });
+    await db.insert(schema.messages).values({ id: newMid2, conversationId: sessionId, senderId: 's', role: 'agent', parts: [{ type: 'text', text: 'new2' }], createdAt: new Date(padBase + 1000) });
 
     const updatedDigest: ChatContextDigest = {
       statedFacts: ["Pre-revenue", "Updated fact"],
