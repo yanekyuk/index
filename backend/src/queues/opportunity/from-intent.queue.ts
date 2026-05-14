@@ -62,7 +62,7 @@ export class FromIntentQueue {
     data: FromIntentJobData,
     options?: { jobId?: string; priority?: number },
   ): Promise<Job<FromIntentJobData>> {
-    return this.queue.add('discover', data, {
+    return this.queue.add('discover_opportunities', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: { age: 24 * 60 * 60 },
@@ -72,7 +72,17 @@ export class FromIntentQueue {
     });
   }
 
-  async processJob(_name: string, data: FromIntentJobData): Promise<void> {
+  async processJob(name: string, data: FromIntentJobData): Promise<void> {
+    switch (name) {
+      case 'discover_opportunities':
+        await this.handleDiscover(data);
+        break;
+      default:
+        this.queueLogger.warn(`[FromIntentQueueProcessor] Unknown job name: ${name}`);
+    }
+  }
+
+  private async handleDiscover(data: FromIntentJobData): Promise<void> {
     const { intentId, userId, networkIds } = data;
     const db = this.deps?.database ?? this.database;
 

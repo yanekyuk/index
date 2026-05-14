@@ -15,9 +15,17 @@ export interface RunExistingJobData {
   userId: string;
 }
 
+export interface RunExistingGraphInvokeOptions {
+  userId: string;
+  operationMode: 'negotiate_existing';
+  opportunityId: string;
+  options: Record<string, unknown>;
+}
+
 export interface RunExistingDeps {
   negotiationGraph?: NegotiationGraphLike;
   agentDispatcher?: Pick<AgentDispatcher, 'hasPersonalAgent'>;
+  invokeOpportunityGraph?: (opts: RunExistingGraphInvokeOptions) => Promise<void>;
 }
 
 export class NegotiationRunExistingQueue {
@@ -42,7 +50,7 @@ export class NegotiationRunExistingQueue {
   }
 
   async addJob(data: RunExistingJobData): Promise<Job<RunExistingJobData>> {
-    return this.queue.add('negotiate', data, {
+    return this.queue.add('negotiate_existing', data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: { age: 24 * 60 * 60 },
@@ -50,9 +58,36 @@ export class NegotiationRunExistingQueue {
     });
   }
 
-  async processJob(_name: string, data: RunExistingJobData): Promise<void> {
+  async processJob(name: string, data: RunExistingJobData): Promise<void> {
+    switch (name) {
+      case 'negotiate_existing':
+        await this.handleNegotiate(data);
+        break;
+      default:
+        this.queueLogger.warn(`[RunExistingQueueProcessor] Unknown job name: ${name}`);
+    }
+  }
+
+  private async handleNegotiate(data: RunExistingJobData): Promise<void> {
     const { opportunityId, userId } = data;
+
+    if (!opportunityId) {
+      this.logger.warn('[RunExisting] Missing opportunityId, skipping', { userId });
+      return;
+    }
+
     this.logger.info('[RunExisting] Starting negotiation', { opportunityId, userId });
+
+    if (this.deps?.invokeOpportunityGraph) {
+      await this.deps.invokeOpportunityGraph({
+        userId,
+        operationMode: 'negotiate_existing',
+        opportunityId,
+        options: {},
+      });
+      this.logger.info('[RunExisting] Negotiation complete', { opportunityId, userId });
+      return;
+    }
 
     const embedder: Embedder = new EmbedderAdapter();
     const hydeGraph = { invoke: async () => ({ hydeEmbeddings: {} }) };

@@ -6,7 +6,7 @@ config({ path: '.env.test' });
 
 import { describe, expect, it, mock } from 'bun:test';
 
-const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover', data: {} }));
+const mockAdd = mock(async () => ({ id: 'job-1', name: 'discover_opportunities', data: {} }));
 const mockCreateWorker = mock(() => ({}));
 
 mock.module('../../lib/bullmq/bullmq', () => ({
@@ -43,7 +43,7 @@ describe('FromIntentQueue', () => {
       const getIntentForIndexing = mock(async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>);
       const db = { getIntentForIndexing };
       const queue = new FromIntentQueue({ database: asDb(db) });
-      await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+      await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
       expect(getIntentForIndexing).toHaveBeenCalledWith('i1');
     });
   });
@@ -54,7 +54,7 @@ describe('FromIntentQueue', () => {
       const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
-        'discover',
+        'discover_opportunities',
         { intentId: 'i1', userId: 'u1', networkIds: ['idx1'] },
         expect.objectContaining({
           attempts: 3,
@@ -69,7 +69,7 @@ describe('FromIntentQueue', () => {
       const queue = new FromIntentQueue();
       await queue.addJob({ intentId: 'i1', userId: 'u1' }, { jobId: 'custom', priority: 1 });
       expect(mockAdd).toHaveBeenCalledWith(
-        'discover',
+        'discover_opportunities',
         { intentId: 'i1', userId: 'u1' },
         expect.objectContaining({ jobId: 'custom', priority: 1 })
       );
@@ -89,7 +89,7 @@ describe('FromIntentQueue', () => {
         getIntentForIndexing: async () => null as unknown as Awaited<ReturnType<FromIntentDatabase['getIntentForIndexing']>>,
       };
       const queue = new FromIntentQueue({ database: asDb(db) });
-      await queue.processJob('discover', { intentId: 'missing', userId: 'u1' });
+      await queue.processJob('discover_opportunities', { intentId: 'missing', userId: 'u1' });
     });
 
     it('discover: intent found, invokeOpportunityGraph called when provided', async () => {
@@ -98,7 +98,7 @@ describe('FromIntentQueue', () => {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'Build a SaaS', userId: 'u1', sourceType: null, sourceId: null }),
       };
       const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
-      await queue.processJob('discover', {
+      await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
         networkIds: ['idx1'],
@@ -121,7 +121,7 @@ describe('FromIntentQueue', () => {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
       };
       const queue = new FromIntentQueue({ database: asDb(db), invokeOpportunityGraph });
-      await queue.processJob('discover', {
+      await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
         networkIds: ['idx-a', 'idx-b'],
@@ -137,7 +137,7 @@ describe('FromIntentQueue', () => {
       };
       const queue = new FromIntentQueue({ database: asDb(db) });
       try {
-        await queue.processJob('discover', { intentId: 'i1', userId: 'u1' });
+        await queue.processJob('discover_opportunities', { intentId: 'i1', userId: 'u1' });
       } catch {
         // Real graph can fail without Redis/DB
       }
@@ -164,7 +164,7 @@ describe('FromIntentQueue', () => {
       expect(capturedProcessor).not.toBeNull();
       await capturedProcessor!({
         id: 'job-1',
-        name: 'discover',
+        name: 'discover_opportunities',
         data: { intentId: 'i1', userId: 'u1' },
       });
     });
