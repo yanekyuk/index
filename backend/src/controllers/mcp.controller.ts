@@ -38,7 +38,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 
-import { BASE_URL } from '../lib/betterauth/betterauth';
+import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
@@ -193,7 +193,7 @@ const authResolver: McpAuthResolver = {
         // there is no network scope to compute; the field is explicitly null
         // (not omitted) so callers cannot conflate "no scope" with "scope unset".
         try {
-          const { payload } = await jwtVerify(token, JWKS);
+          const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
           if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
           if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
           throw new Error('JWT payload missing user ID');
