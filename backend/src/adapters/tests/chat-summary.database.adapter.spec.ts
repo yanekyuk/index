@@ -84,7 +84,7 @@ describe("ChatSummaryDatabaseAdapter", () => {
     expect(latest!.digest.statedFacts).toEqual(["Pre-revenue"]);
   });
 
-  it("getLatest returns the row with the most recent toMessageId after multiple inserts", async () => {
+  it("getLatest returns the most recently inserted row (ordered by createdAt) after multiple inserts", async () => {
     const { sessionId, messageIds } = await makeConversationWithMessages(4);
     createdSessions.push(sessionId);
     await adapter.insertSummary({
