@@ -32,7 +32,7 @@ import { ScopeViolationError } from './guards/agent-scope.guard';
 import { log } from './lib/log';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
-import { mcpHandler, chatFactory } from './controllers/mcp.handler';
+import { mcpHandler, chatFactory } from './controllers/mcp.controller';
 import { chatSessionService } from './services/chat.service';
 import { auth } from './lib/betterauth/auth.instance';
 import { getStats } from './lib/performance';

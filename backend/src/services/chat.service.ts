@@ -43,7 +43,7 @@ export class ChatSessionService {
   /**
    * Inject the ChatGraphFactory after construction.
    * Must be called before any method that uses the factory (processMessage, getGraphFactory, etc.).
-   * Called by the composition root (mcp.handler.ts) during module initialization.
+   * Called by the composition root (mcp.controller.ts) during module initialization.
    *
    * @param factory - The ChatGraphFactory instance to use
    */
