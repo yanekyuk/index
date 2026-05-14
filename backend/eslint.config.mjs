@@ -31,7 +31,7 @@ export default tseslint.config(
         { type: "services", pattern: "src/services/*", mode: "file" },
         { type: "adapters", pattern: "src/adapters/*", mode: "file" },
         { type: "protocol", pattern: "src/lib/protocol/**/*", mode: "file" },
-        { type: "queues", pattern: "src/queues/*", mode: "file" },
+        { type: "queues", pattern: "src/queues/**/*", mode: "file" },
         { type: "events", pattern: "src/events/*", mode: "file" },
         { type: "guards", pattern: "src/guards/*", mode: "file" },
         { type: "schemas", pattern: "src/schemas/*", mode: "file" },
