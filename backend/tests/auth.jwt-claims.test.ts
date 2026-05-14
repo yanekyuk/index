@@ -8,8 +8,7 @@ import {
   errors as joseErrors,
 } from 'jose';
 
-const BASE_URL = 'http://localhost:3001';
-const JWT_AUDIENCE = BASE_URL;
+import { BASE_URL, JWT_AUDIENCE } from '../src/lib/betterauth/betterauth';
 
 async function makeTestJWKS() {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
@@ -41,7 +40,7 @@ describe('jwtVerify claim validation', () => {
   it('rejects a token missing aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, { iss: BASE_URL });
-    await expect(
+    expect(
       jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
     ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
@@ -49,7 +48,7 @@ describe('jwtVerify claim validation', () => {
   it('rejects a token with wrong aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, { iss: BASE_URL, aud: 'https://other-service.example.com' });
-    await expect(
+    expect(
       jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
     ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
@@ -57,7 +56,7 @@ describe('jwtVerify claim validation', () => {
   it('rejects a token with wrong iss', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, { iss: 'https://dev.index.network', aud: JWT_AUDIENCE });
-    await expect(
+    expect(
       jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
     ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
@@ -65,7 +64,7 @@ describe('jwtVerify claim validation', () => {
   it('rejects a token missing both iss and aud', async () => {
     const { privateKey, JWKS } = await makeTestJWKS();
     const token = await signToken(privateKey, {});
-    await expect(
+    expect(
       jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE }),
     ).rejects.toBeInstanceOf(joseErrors.JWTClaimValidationFailed);
   });
