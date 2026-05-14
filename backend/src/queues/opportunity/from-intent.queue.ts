@@ -125,11 +125,24 @@ export class FromIntentQueue {
       throw new Error(typeof result.error === 'string' ? result.error : 'from-intent graph failed');
     }
 
+    const trace = Array.isArray(result.trace) ? result.trace : [];
+    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+    const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
+
     this.logger.info('[FromIntent] Graph complete', {
       intentId,
       userId,
-      candidatesFound: (result.candidates ?? []).length,
-      opportunitiesCreated: (result.opportunities ?? []).length,
+      candidatesFound: candidates.length,
+      opportunitiesCreated: opportunitiesArr.length,
+    });
+    this.logger.verbose('[FromIntent] Graph trace', {
+      intentId,
+      userId,
+      trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
+        node: t.node,
+        detail: t.detail,
+        ...(t.data ? { data: t.data } : {}),
+      })),
     });
   }
 

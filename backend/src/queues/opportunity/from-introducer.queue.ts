@@ -82,6 +82,9 @@ export class FromIntroducerQueue {
       return;
     }
 
+    if (networkIds && networkIds.length > 1) {
+      this.logger.warn('[FromIntroducer] Multiple networkIds provided, only first used', { userId, contactUserId, networkIds });
+    }
     this.logger.info('[FromIntroducer] Starting discovery', { userId, contactUserId, networkIds });
 
     const invokeOpts: FromIntroducerGraphInvokeOptions = {
@@ -122,11 +125,24 @@ export class FromIntroducerQueue {
       throw new Error(typeof result.error === 'string' ? result.error : 'from-introducer graph failed');
     }
 
+    const trace = Array.isArray(result.trace) ? result.trace : [];
+    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+    const opportunitiesArr = Array.isArray(result.opportunities) ? result.opportunities : [];
+
     this.logger.info('[FromIntroducer] Graph complete', {
       userId,
       contactUserId,
-      candidatesFound: (result.candidates ?? []).length,
-      opportunitiesCreated: (result.opportunities ?? []).length,
+      candidatesFound: candidates.length,
+      opportunitiesCreated: opportunitiesArr.length,
+    });
+    this.logger.verbose('[FromIntroducer] Graph trace', {
+      userId,
+      contactUserId,
+      trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
+        node: t.node,
+        detail: t.detail,
+        ...(t.data ? { data: t.data } : {}),
+      })),
     });
   }
 
