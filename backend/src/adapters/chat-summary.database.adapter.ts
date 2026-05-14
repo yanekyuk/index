@@ -8,6 +8,17 @@ import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 
 /**
+ * Upper bound on rows returned by a single `getMessagesAfter` call. Caps the
+ * size of any one summarization pass so large sessions or bursty inserts
+ * cannot blow the LLM context window. The service walks the cursor forward,
+ * so multiple calls converge on a fully-summarized session.
+ *
+ * Sized conservatively: 200 messages × 240-char content cap ≈ 48 KB of raw
+ * content, well within typical chat-model context budgets after JSON encoding.
+ */
+export const MAX_MESSAGES_PER_FETCH = 200;
+
+/**
  * The digest payload shape stored in the `digest` jsonb column. Mirrors
  * the protocol-side `ChatContextDigest` but is declared locally per the
  * layering rule (adapters do not import protocol types).
@@ -107,29 +118,45 @@ export class ChatSummaryDatabaseAdapter {
 
     const baseConds = [eq(schema.messages.conversationId, sessionId)];
     if (cursorCreatedAt && cursorMessageId) {
-      // Tuple cursor on (createdAt, id): rows strictly after the cursor are either
-      // later in time OR at the same instant with a different id. The same-time
-      // branch protects against (a) Postgres-microsecond vs JS-millisecond cursor
-      // round-tripping leaking the cursor row through `gt`, and (b) silently
-      // dropping sibling messages that share the cursor's createdAt (possible
-      // when multiple messages land in the same millisecond).
+      // Keyset cursor over (createdAt, id): a row is "strictly after" the cursor
+      // when its tuple sorts after the cursor's tuple under (createdAt asc, id asc).
+      //   gt-branch:  createdAt > X  (and id != cursorId, to defend against the
+      //               cursor row leaking through when PG microsecond precision
+      //               vs JS millisecond precision causes its PG createdAt to
+      //               compare strictly greater than the round-tripped X).
+      //   eq-branch:  createdAt = X AND id > cursorId  (proper tuple ordering —
+      //               same-createdAt siblings with id < cursorId sort BEFORE the
+      //               cursor and must NOT be returned).
       const tupleAfter = or(
-        gt(schema.messages.createdAt, cursorCreatedAt),
+        and(
+          gt(schema.messages.createdAt, cursorCreatedAt),
+          ne(schema.messages.id, cursorMessageId),
+        ),
         and(
           eq(schema.messages.createdAt, cursorCreatedAt),
-          ne(schema.messages.id, cursorMessageId),
+          gt(schema.messages.id, cursorMessageId),
         ),
       );
       if (tupleAfter) baseConds.push(tupleAfter);
     }
 
+    // Cap the batch size so a long-running session or a large burst can't blow
+    // the LLM context. Incremental cursor advancement converges across calls:
+    // each pass summarizes up to MAX_MESSAGES_PER_FETCH rows and the next call
+    // picks up where this one left off.
     const rows = await db
-      .select()
+      .select({
+        id: schema.messages.id,
+        createdAt: schema.messages.createdAt,
+        role: schema.messages.role,
+        parts: schema.messages.parts,
+      })
       .from(schema.messages)
       .where(and(...baseConds))
       // Deterministic secondary sort by id breaks ties when same-timestamp rows
       // are returned, so callers see a stable order across runs.
-      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id));
+      .orderBy(asc(schema.messages.createdAt), asc(schema.messages.id))
+      .limit(MAX_MESSAGES_PER_FETCH);
 
     return rows.map((m) => ({
       id: m.id,

@@ -110,6 +110,52 @@ describe("ChatSummaryDatabaseAdapter", () => {
     expect(afterCursor.map((m) => m.id)).toEqual([sibling.id]);
   });
 
+  it("getMessagesAfter excludes same-createdAt rows with id sorting before the cursor (keyset order)", async () => {
+    const sessionId = crypto.randomUUID();
+    createdSessions.push(sessionId);
+    await db.insert(schema.conversations).values({ id: sessionId });
+
+    // Two messages share the same createdAt. 'aaa' sorts BEFORE 'mmm', so when
+    // we ask for messages after 'mmm', 'aaa' is "before" mmm in (createdAt, id)
+    // tuple order and must NOT be returned. A predicate of `id != cursorId` only
+    // would incorrectly include 'aaa'.
+    const shared = new Date('2026-05-15T11:00:00.000Z');
+    const aaaId = 'aaa-' + crypto.randomUUID();
+    const mmmId = 'mmm-' + crypto.randomUUID();
+    await db.insert(schema.messages).values([
+      { id: aaaId, conversationId: sessionId, senderId: 's', role: 'user', parts: [{ type: 'text', text: 'earlier-id' }], createdAt: shared },
+      { id: mmmId, conversationId: sessionId, senderId: 's', role: 'user', parts: [{ type: 'text', text: 'cursor' }], createdAt: shared },
+    ]);
+
+    const afterMmm = await adapter.getMessagesAfter(sessionId, mmmId);
+    expect(afterMmm).toEqual([]);
+  });
+
+  it("getMessagesAfter caps the batch at MAX_MESSAGES_PER_FETCH (200)", async () => {
+    const sessionId = crypto.randomUUID();
+    createdSessions.push(sessionId);
+    await db.insert(schema.conversations).values({ id: sessionId });
+
+    // Batch-insert 250 messages with explicit, monotonic createdAt so ordering
+    // is deterministic and we hit the 200-row cap.
+    const baseTime = Date.now();
+    const rows = Array.from({ length: 250 }, (_, i) => ({
+      id: crypto.randomUUID(),
+      conversationId: sessionId,
+      senderId: 's',
+      role: 'user' as const,
+      parts: [{ type: 'text', text: `m-${i}` }],
+      createdAt: new Date(baseTime + i),
+    }));
+    await db.insert(schema.messages).values(rows);
+
+    const all = await adapter.getMessagesAfter(sessionId, null);
+    expect(all).toHaveLength(200);
+    // First 200 are returned (oldest), in createdAt-ascending order.
+    expect(all[0].content).toBe('m-0');
+    expect(all[199].content).toBe('m-199');
+  });
+
   it("insertSummary persists a row and getLatest returns it", async () => {
     const { sessionId, messageIds } = await makeConversationWithMessages(2);
     createdSessions.push(sessionId);
