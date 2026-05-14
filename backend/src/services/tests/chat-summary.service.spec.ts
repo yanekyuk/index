@@ -155,4 +155,22 @@ describe("ChatSummaryService", () => {
 
     expect(result).toEqual(sampleDigest);
   });
+
+  it("getDigest does not throw when summarizer throws; falls back to previous digest", async () => {
+    const { sessionId } = await makeConversationWithMessages(2);
+    created.push(sessionId);
+    const { service: first } = makeService(async () => sampleDigest);
+    await first.getDigest(sessionId);
+
+    const newMid = crypto.randomUUID();
+    await db.insert(schema.messages).values({ id: newMid, conversationId: sessionId, senderId: 's', role: 'user', parts: [{ type: 'text', text: 'new' }] });
+
+    const { service: second } = makeService(async () => {
+      throw new Error("summarizer crash");
+    });
+
+    // Must not throw — contract is `getDigest` never throws.
+    const result = await second.getDigest(sessionId);
+    expect(result).toEqual(sampleDigest);
+  });
 });

@@ -24,17 +24,28 @@ export interface ChatSummarizerLike {
  * digest for a session, runs incremental summarization over any new messages,
  * and appends a fresh row when summarization succeeds.
  *
- * @remarks Constructing this service with the default summarizer instantiates
- * {@link ChatSummarizer}, which validates `OPENROUTER_API_KEY` at construction
- * time. Importers of the composition root (`mcp.controller.ts`) therefore
- * inherit a boot-time dependency on that env var. Inject a fake summarizer in
- * tests or in environments where the LLM client must not be constructed.
+ * @remarks The default {@link ChatSummarizer} is constructed lazily on first
+ * use of {@link getDigest}, not at service construction. This keeps module-load
+ * free of `OPENROUTER_API_KEY` validation; callers that never invoke
+ * summarization (or inject a fake summarizer) do not depend on the env var.
  */
 export class ChatSummaryService implements ChatSummaryReader {
+  private summarizer: ChatSummarizerLike | undefined;
+
   constructor(
     private readonly adapter: ChatSummaryDatabaseAdapter,
-    private readonly summarizer: ChatSummarizerLike = new ChatSummarizer(),
-  ) {}
+    injectedSummarizer?: ChatSummarizerLike,
+  ) {
+    this.summarizer = injectedSummarizer;
+  }
+
+  /** Lazily constructs the default summarizer on first use. */
+  private getSummarizer(): ChatSummarizerLike {
+    if (!this.summarizer) {
+      this.summarizer = new ChatSummarizer();
+    }
+    return this.summarizer;
+  }
 
   /**
    * Returns the freshest digest for a session, running summarization if needed.
@@ -64,10 +75,16 @@ export class ChatSummaryService implements ChatSummaryReader {
       return digestOf(prev);
     }
 
-    const digest = await this.summarizer.summarize({
-      previousDigest: digestOf(prev),
-      newMessages: newMessages.map((m) => ({ role: m.role, content: m.content })),
-    });
+    let digest: ChatContextDigest | null;
+    try {
+      digest = await this.getSummarizer().summarize({
+        previousDigest: digestOf(prev),
+        newMessages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+      });
+    } catch (err) {
+      logger.warn('chat-summary summarizer threw', { sessionId, error: errString(err) });
+      return digestOf(prev);
+    }
 
     if (!digest) {
       return digestOf(prev);
