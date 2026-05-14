@@ -163,7 +163,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const JWKS = createRemoteJWKSet(
-  new URL(`${BASE_URL}/api/auth/jwks`),
+  new URL('/api/auth/jwks', BASE_URL),
 );
 
 function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {

@@ -12,7 +12,7 @@ export interface AuthenticatedUser {
 }
 
 const JWKS = createRemoteJWKSet(
-  new URL(`${BASE_URL}/api/auth/jwks`)
+  new URL('/api/auth/jwks', BASE_URL)
 );
 
 /**
