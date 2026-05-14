@@ -3,7 +3,7 @@
  * Orchestrates read-from-DB → summarize → write-to-DB on every call so callers
  * always get an up-to-date digest (or null if the session has no content yet).
  */
-import { ChatSummarizer, getModelName } from '@indexnetwork/protocol';
+import { ChatContextDigestSchema, ChatSummarizer, getModelName } from '@indexnetwork/protocol';
 import type { ChatContextDigest, ChatSummaryReader } from '@indexnetwork/protocol';
 
 import { log } from '../lib/log';
@@ -63,37 +63,45 @@ export class ChatSummaryService implements ChatSummaryReader {
       return null;
     }
 
+    // Validate prev once. If the persisted digest is malformed, treat the session
+    // as if there were no prior summary at all: re-summarize from the first
+    // message (cursor=null, fromAnchor=null) rather than appending onto a `null`
+    // previousDigest with an outdated cursor.
+    const previousDigest = digestOf(prev);
+    const cursor = previousDigest ? prev?.toMessageId ?? null : null;
+    const fromAnchor = previousDigest ? prev?.fromMessageId ?? null : null;
+
     let newMessages: Awaited<ReturnType<ChatSummaryDatabaseAdapter['getMessagesAfter']>>;
     try {
-      newMessages = await this.adapter.getMessagesAfter(sessionId, prev?.toMessageId ?? null);
+      newMessages = await this.adapter.getMessagesAfter(sessionId, cursor);
     } catch (err) {
       logger.warn('chat-summary getMessagesAfter failed', { sessionId, error: errString(err) });
-      return digestOf(prev);
+      return previousDigest;
     }
 
     if (newMessages.length === 0) {
-      return digestOf(prev);
+      return previousDigest;
     }
 
     let digest: ChatContextDigest | null;
     try {
       digest = await this.getSummarizer().summarize({
-        previousDigest: digestOf(prev),
+        previousDigest,
         newMessages: newMessages.map((m) => ({ role: m.role, content: m.content })),
       });
     } catch (err) {
       logger.warn('chat-summary summarizer threw', { sessionId, error: errString(err) });
-      return digestOf(prev);
+      return previousDigest;
     }
 
     if (!digest) {
-      return digestOf(prev);
+      return previousDigest;
     }
 
     try {
       await this.adapter.insertSummary({
         sessionId,
-        fromMessageId: prev?.fromMessageId ?? newMessages[0].id,
+        fromMessageId: fromAnchor ?? newMessages[0].id,
         toMessageId: newMessages[newMessages.length - 1].id,
         digest,
         model: getModelName('chatContextSummarizer'),
@@ -114,8 +122,20 @@ function errString(err: unknown): string {
 /**
  * Bridge the adapter's local `SummaryDigestRow` type to the protocol's
  * `ChatContextDigest`. Adapters cannot import protocol types (layering rule),
- * so we declare them as structurally identical and cast at this boundary.
+ * so we validate via Zod at this boundary instead of trusting the raw JSONB.
+ * Malformed rows (older data, manual edits, partial writes) yield `null`, which
+ * callers treat as "no usable previous digest" — fresh summarization will run.
  */
 function digestOf(row: ChatSummaryRow | null): ChatContextDigest | null {
-  return (row?.digest as ChatContextDigest | undefined) ?? null;
+  if (!row) return null;
+  const parsed = ChatContextDigestSchema.safeParse(row.digest);
+  if (!parsed.success) {
+    logger.warn('chat-summary digest failed schema validation', {
+      summaryId: row.id,
+      conversationId: row.conversationId,
+      error: parsed.error.message,
+    });
+    return null;
+  }
+  return parsed.data;
 }

@@ -177,4 +177,33 @@ describe("ChatSummaryService", () => {
     const result = await second.getDigest(sessionId);
     expect(result).toEqual(sampleDigest);
   });
+
+  it("getDigest treats a malformed persisted digest as 'no previous summary' (fresh re-summarization from message 0)", async () => {
+    const { sessionId, messageIds } = await makeConversationWithMessages(2);
+    created.push(sessionId);
+
+    // Insert a row whose digest violates the schema (wrong shape).
+    await db.insert(schema.chatSessionSummaries).values({
+      conversationId: sessionId,
+      fromMessageId: messageIds[0],
+      toMessageId: messageIds[1],
+      digest: { not_a_digest_field: 123 } as unknown as ChatContextDigest,
+      model: 'google/gemini-2.5-flash',
+    });
+
+    // The summarizer should receive previousDigest = null AND newMessages
+    // covering both seeded messages (cursor reset because prev digest was
+    // unusable). Without the reset, the cursor would still point at messageIds[1]
+    // and the summarizer would see zero new messages.
+    let captured: { previousDigest: unknown; newMessages: Array<{ content: string }> } | null = null;
+    const { service } = makeService(async (input) => {
+      captured = input as typeof captured;
+      return sampleDigest;
+    });
+
+    const result = await service.getDigest(sessionId);
+    expect(result).toEqual(sampleDigest);
+    expect(captured!.previousDigest).toBeNull();
+    expect(captured!.newMessages.map((m) => m.content)).toEqual(['msg-0', 'msg-1']);
+  });
 });
