@@ -5873,13 +5873,14 @@ export function createSystemDatabase(
       verifyScope(opportunityIndexId);
       return acceptedBy ? db.updateOpportunityStatus(id, status, acceptedBy) : db.updateOpportunityStatus(id, status);
     },
-    /**
-     * Stamps actor `actedAt` and updates status atomically without scope check.
-     * @remarks Intentionally unscoped — called by negotiation and opportunity graphs
-     * that stamp actor actions as part of the discovery pipeline.
-     */
-    stampOpportunityActorAction: (id: string, actorUserId: string, status: Parameters<ChatDatabaseAdapter['stampOpportunityActorAction']>[2], acceptedBy?: string) =>
-      db.stampOpportunityActorAction(id, actorUserId, status, acceptedBy),
+    stampOpportunityActorAction: async (id: string, actorUserId: string, status: Parameters<ChatDatabaseAdapter['stampOpportunityActorAction']>[2], acceptedBy?: string) => {
+      const opportunity = await db.getOpportunity(id);
+      if (!opportunity) throw new Error('Opportunity not found');
+      const opportunityIndexId = opportunity.context?.networkId;
+      if (!opportunityIndexId) throw new Error('Opportunity not found');
+      verifyScope(opportunityIndexId);
+      return db.stampOpportunityActorAction(id, actorUserId, status, acceptedBy);
+    },
     opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);
       return db.opportunityExistsBetweenActors(actorIds, networkId);
