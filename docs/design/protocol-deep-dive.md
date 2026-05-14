@@ -370,7 +370,7 @@ Scoring bands:
 
 ### 4.9 Negotiation Insights Generator
 
-**File:** `negotiation/negotiation.insights.generator.ts`
+**File:** `negotiation/insight.generator.ts`
 **Role:** Post-negotiation generator that synthesizes the full transcript into a short, presenter-ready summary of what was agreed, what was objected to, and where the match landed. Used by the opportunity presenter for post-negotiation cards (accepted/rejected/stalled).
 **Model:** `createModel("negotiationInsights")`.
 

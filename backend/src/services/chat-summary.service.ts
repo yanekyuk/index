@@ -44,7 +44,7 @@ export class ChatSummaryService implements ChatSummaryReader {
    *   warrants an update, or `null` when there is nothing to summarize.
    */
   async getDigest(sessionId: string): Promise<ChatContextDigest | null> {
-    let prev: ChatSummaryRow | null = null;
+    let prev: ChatSummaryRow | null;
     try {
       prev = await this.adapter.getLatest(sessionId);
     } catch (err) {
