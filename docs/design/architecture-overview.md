@@ -434,8 +434,12 @@ BullMQ (backed by Redis) handles all asynchronous processing. Queue definitions 
 | Queue | Purpose |
 |-------|---------|
 | `intent.queue` | Intent indexing and generation jobs |
-| `opportunity/` | Family of opportunity queues: `from-intent` (intent-triggered discovery), `from-introducer` (introducer-triggered discovery), `expiration` (stale-opportunity expiry) |
-| `negotiations/` | Family of negotiation queues: `run-existing` (process active negotiation turns), `timeout` (AI fallback when personal agent lacks heartbeat), `claim-timeout` (expire stale claims stuck in `claimed` state) |
+| `opportunity/from-intent` | BullMQ queue: intent-triggered opportunity discovery |
+| `opportunity/from-introducer` | BullMQ queue: introducer-triggered opportunity discovery |
+| `opportunity/expiration` | **node-cron task** (not a BullMQ queue — does not appear in Bull-Board): scans and expires stale opportunities on a schedule |
+| `negotiations/run-existing` | BullMQ queue: enqueue bilateral negotiation for an existing opportunity (e.g. after introducer approval) |
+| `negotiations/timeout` | BullMQ queue: AI fallback when personal agent lacks heartbeat |
+| `negotiations/claim-timeout` | BullMQ queue: expire stale claims stuck in `claimed` state |
 | `profile.queue` | User profile generation and HyDE document creation |
 | `hyde.queue` | HyDE document generation and cron-based refresh |
 | `email.queue` | Email delivery via Resend |
