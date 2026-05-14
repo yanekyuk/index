@@ -183,7 +183,7 @@ export const chatSessionSummaries = pgTable(
   (table) => ({
     sessionLatestIdx: index('chat_session_summaries_session_latest_idx').on(
       table.conversationId,
-      table.toMessageId,
+      table.createdAt.desc(),
     ),
   }),
 );
