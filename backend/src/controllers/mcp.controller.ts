@@ -28,6 +28,7 @@ import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.ad
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
 import { ChatSummaryService } from '../services/chat-summary.service';
+import { QuestionGeneratorService } from '../services/question-generator.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
@@ -53,6 +54,7 @@ const logger = log.server.from('mcp');
 const integration = new ComposioIntegrationAdapter();
 const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
 const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
+const questionGeneratorService = new QuestionGeneratorService();
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
@@ -85,6 +87,7 @@ const protocolDeps = {
   contactService,
   chatSession: chatSessionAdapter,
   chatSummary: chatSummaryService,
+  questionGenerator: questionGeneratorService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
   integrationImporter,
