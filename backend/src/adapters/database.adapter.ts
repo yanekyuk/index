@@ -2836,6 +2836,12 @@ export class ChatDatabaseAdapter {
   async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
+  async findOpportunitiesByActors(
+    actorIds: string[],
+    options?: Parameters<OpportunityDatabaseAdapter['findOpportunitiesByActors']>[1]
+  ): Promise<OpportunityRow[]> {
+    return this.opportunityAdapter.findOpportunitiesByActors(actorIds, options);
+  }
   async getOpportunityBetweenActors(
     actorIds: string[],
     networkId: string
@@ -4397,6 +4403,45 @@ export class OpportunityDatabaseAdapter {
     return rows.length > 0;
   }
 
+  async findOpportunitiesByActors(
+    actorIds: string[],
+    options?: {
+      includeIntroducers?: boolean;
+      statuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+      excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'stalled' | 'accepted' | 'rejected' | 'expired')[];
+    }
+  ): Promise<OpportunityRow[]> {
+    if (actorIds.length === 0) return [];
+    const includeIntroducers = options?.includeIntroducers ?? false;
+
+    const containmentConditions = includeIntroducers
+      ? actorIds.map(
+          (uid) => sql`${opportunities.actors} @> ${JSON.stringify([{ userId: uid }])}::jsonb`
+        )
+      : actorIds.map(
+          (uid) => sql`EXISTS (
+            SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
+            WHERE elem->>'userId' = ${uid}
+              AND elem->>'role' IS DISTINCT FROM 'introducer'
+          )`
+        );
+
+    const conditions = [and(...containmentConditions)!];
+    if (options?.statuses && options.statuses.length > 0) {
+      conditions.push(inArray(opportunities.status, options.statuses));
+    }
+    if (options?.excludeStatuses && options.excludeStatuses.length > 0) {
+      conditions.push(notInArray(opportunities.status, options.excludeStatuses));
+    }
+
+    const rows = await db
+      .select()
+      .from(opportunities)
+      .where(and(...conditions))
+      .orderBy(desc(opportunities.updatedAt));
+    return rows.map(toOpportunityRow);
+  }
+
   async getOpportunityBetweenActors(
     actorIds: string[],
     networkId: string
@@ -5885,6 +5930,8 @@ export function createSystemDatabase(
       verifyScope(networkId);
       return db.opportunityExistsBetweenActors(actorIds, networkId);
     },
+    findOpportunitiesByActors: (actorIds: string[], options?: Parameters<ChatDatabaseAdapter['findOpportunitiesByActors']>[1]) =>
+      db.findOpportunitiesByActors(actorIds, options),
     getOpportunityBetweenActors: (actorIds: string[], networkId: string) => {
       verifyScope(networkId);
       return db.getOpportunityBetweenActors(actorIds, networkId);

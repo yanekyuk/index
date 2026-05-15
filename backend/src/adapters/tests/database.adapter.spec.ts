@@ -895,11 +895,13 @@ describe('OpportunityDatabaseAdapter', () => {
     it('matches opportunities containing all given actorIds (superset allowed)', async () => {
       const rows = await adapter.findOpportunitiesByActors([actorAId, actorBId]);
       const ids = new Set(rows.map((r) => r.id));
-      // Pair, accepted-pair, and trio all contain both A and B (intro-opp excluded by introducer filter)
+      // Pair, accepted-pair, trio, AND intro-opp all contain both A and B in non-introducer
+      // roles. The introducer filter only excludes when the SEARCHED-FOR userId itself has
+      // the introducer role in that opp — A and B are not introducers in the intro-opp.
       expect(ids.has(oppPairId)).toBe(true);
       expect(ids.has(oppPairAcceptedId)).toBe(true);
       expect(ids.has(oppThreeActorId)).toBe(true);
-      expect(ids.has(oppWithIntroducerId)).toBe(false);
+      expect(ids.has(oppWithIntroducerId)).toBe(true);
     });
 
     it('statuses include-filter narrows results', async () => {
