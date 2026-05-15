@@ -854,7 +854,7 @@ export class OpportunityService {
     logger.verbose('[OpportunityService] Getting chat context', { userId, peerUserId });
 
     const [allRows, peerUser] = await Promise.all([
-      this.db.getAcceptedOpportunitiesBetweenActors(userId, peerUserId),
+      this.db.findOpportunitiesByActors([userId, peerUserId], { includeIntroducers: true, statuses: ['accepted'] }),
       this.db.getUser(peerUserId),
     ]);
 
