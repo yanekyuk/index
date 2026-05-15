@@ -24,8 +24,10 @@ import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
+import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
+import { ChatSummaryService } from '../services/chat-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
@@ -38,7 +40,7 @@ import { mintConnectLink as mintConnectLinkSvc, buildConnectShortUrl } from '../
 import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer, ChatGraphFactory } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory, Embedder, ChatGraphCompositeDatabase } from '@indexnetwork/protocol';
 
-import { BASE_URL } from '../lib/betterauth/betterauth';
+import { BASE_URL, JWT_AUDIENCE } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 import { resolveAgentNetworkScopeById } from '../guards/agent-scope.guard';
 
@@ -49,6 +51,8 @@ const logger = log.server.from('mcp');
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const integration = new ComposioIntegrationAdapter();
+const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
+const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
@@ -59,13 +63,14 @@ const apiBaseUrl = (
   'http://localhost:3001'
 ).replace(/\/+$/, '');
 
-const mintConnectLink = async ({ userId, opportunityId, kind, greeting }: {
+const mintConnectLink = async ({ userId, opportunityId, kind, greeting, preferredSurface }: {
   userId: string;
   opportunityId: string;
   kind: ConnectLinkKind;
   greeting?: string | null;
+  preferredSurface?: 'telegram' | 'web';
 }): Promise<{ url: string }> => {
-  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting });
+  const { code } = await mintConnectLinkSvc({ userId, opportunityId, kind, greeting, preferredSurface });
   return { url: buildConnectShortUrl(apiBaseUrl, code) };
 };
 
@@ -79,6 +84,7 @@ const protocolDeps = {
   intentQueue,
   contactService,
   chatSession: chatSessionAdapter,
+  chatSummary: chatSummaryService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
   integrationImporter,
@@ -163,7 +169,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const JWKS = createRemoteJWKSet(
-  new URL(`${BASE_URL}/api/auth/jwks`),
+  new URL('/api/auth/jwks', BASE_URL),
 );
 
 function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
@@ -179,8 +185,38 @@ function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string
   }
 }
 
+// Module-scope on purpose: dedupes the warn across the process lifetime so an
+// unknown header value only logs once per server process, not once per request.
+const seenInvalidSurfaces = new Set<string>();
+
+/**
+ * Normalize the `x-index-surface` request header to one of the two values the
+ * connect-link click handler understands.
+ *
+ * Absent or unrecognized values collapse to `'web'` — the new default. Only
+ * `'telegram'` activates the t.me redirect path at click time.
+ *
+ * @param raw - The raw header value (case-insensitive; whitespace-trimmed).
+ * @returns `'telegram'` if and only if the trimmed lower-case value is exactly
+ *   `'telegram'`; `'web'` otherwise (including for `null`, `''`, and unknowns).
+ */
+export function parseClientSurface(raw: string | null): 'telegram' | 'web' {
+  if (raw === null) return 'web';
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '') return 'web';
+  if (normalized === 'telegram') return 'telegram';
+  // Short-circuit for the known-valid value so explicit `web` doesn't trigger the unknown-value warn.
+  if (normalized === 'web') return 'web';
+  if (!seenInvalidSurfaces.has(normalized)) {
+    seenInvalidSurfaces.add(normalized);
+    console.warn(`[mcp] unknown x-index-surface value "${normalized}" — coercing to "web"`);
+  }
+  return 'web';
+}
+
 const authResolver: McpAuthResolver = {
-  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null }> {
+  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string; isSessionAuth?: boolean; networkScopeId?: string | null; clientSurface?: 'telegram' | 'web' }> {
+    const clientSurface = parseClientSurface(request.headers.get('x-index-surface'));
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
 
@@ -193,9 +229,9 @@ const authResolver: McpAuthResolver = {
         // there is no network scope to compute; the field is explicitly null
         // (not omitted) so callers cannot conflate "no scope" with "scope unset".
         try {
-          const { payload } = await jwtVerify(token, JWKS);
-          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null };
-          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null };
+          const { payload } = await jwtVerify(token, JWKS, { issuer: BASE_URL, audience: JWT_AUDIENCE });
+          if (typeof payload.id === 'string') return { userId: payload.id, isSessionAuth: true, networkScopeId: null, clientSurface };
+          if (typeof payload.sub === 'string') return { userId: payload.sub, isSessionAuth: true, networkScopeId: null, clientSurface };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -214,7 +250,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null };
+            if (data?.userId) return { userId: data.userId, isSessionAuth: true, networkScopeId: null, clientSurface };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -280,12 +316,13 @@ const authResolver: McpAuthResolver = {
               userId,
               ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
               networkScopeId,
+              clientSurface,
             };
           }
         }
 
         if (sessionUserId) {
-          return { userId: sessionUserId, networkScopeId: null };
+          return { userId: sessionUserId, networkScopeId: null, clientSurface };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

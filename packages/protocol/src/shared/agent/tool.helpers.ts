@@ -17,6 +17,7 @@ import type { ContactServiceAdapter } from "../interfaces/contact.interface.js";
 import type { ProfileEnricher } from "../interfaces/enrichment.interface.js";
 import type { IntentGraphQueue } from "../interfaces/queue.interface.js";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface.js";
+import type { ChatSummaryReader } from "../interfaces/chat-summary.interface.js";
 import type { Embedder } from "../interfaces/embedder.interface.js";
 import type { AgentDatabase } from "../interfaces/agent.interface.js";
 import type { NegotiationTimeoutQueue } from "../interfaces/negotiation-events.interface.js";
@@ -74,6 +75,14 @@ export interface ResolvedToolContext {
   isMcp?: boolean;
   /** Agent ID when the request originates from an API key linked to an agent. */
   agentId?: string;
+  /**
+   * Receiver's rendering surface declared by the MCP client via the
+   * `x-index-surface` request header. `'telegram'` means the MCP response is
+   * being rendered inside a Telegram chat (today, only EdgeClaw); anything
+   * else (including `undefined`) is treated as web. Forwarded into
+   * `mintConnectLink` so the click-time redirect can branch.
+   */
+  clientSurface?: 'telegram' | 'web';
 }
 
 /**
@@ -111,6 +120,8 @@ export interface ToolContext {
   contactService: ContactServiceAdapter;
   /** Chat session reader for loading conversation history. */
   chatSession: ChatSessionReader;
+  /** Read-through chat-session digest. Optional; consumers fall back to undefined `chatContext`. */
+  chatSummary?: ChatSummaryReader;
   /** Profile enrichment from external data sources. */
   enricher: ProfileEnricher;
   /** Database adapter for negotiation/conversation operations. */
