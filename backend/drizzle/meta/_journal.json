@@ -484,6 +484,13 @@
       "when": 1778793654646,
       "tag": "0068_replace_chat_session_summaries_index",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1778852025988,
+      "tag": "0069_add_connect_link_preferred_surface",
+      "breakpoints": true
     }
   ]
 }
