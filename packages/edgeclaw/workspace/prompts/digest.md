@@ -6,13 +6,13 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 # Job
 Send a morning brief to the user via the `message` tool.
 
-1. **Read dedup state.** Read `memory/heartbeat-state.json`. Treat a missing file or malformed JSON as `{}`. Resolve `deliveredToday`: if it exists and `deliveredToday.date` equals today's host-local date (`YYYY-MM-DD`), keep `deliveredToday.ids` as the dedup set; otherwise treat the dedup set as empty (the date will roll forward when you write the file back at the end).
+1. **Read dedup state.** Read `memory/heartbeat-state.json`. Treat a missing file or malformed JSON as `{}`. Resolve the dedup set: if `deliveredToday.date` equals today's host-local date (`YYYY-MM-DD`) AND `deliveredToday.ids` is an array, use that array as the dedup set; in every other case (no `deliveredToday`, date mismatch, missing `ids`, `ids` not an array, any other unexpected shape) treat the dedup set as empty (the date will roll forward when you write the file back at the end).
 
 2. Call `list_opportunities(status="pending", limit=10)`.
 
 3. **Filter against dedup state.** Drop any returned opportunity whose `id` is in the dedup set from step 1. Use the filtered set for everything that follows. (Filtering happens before the quality bar so the LLM does not waste evaluation budget on candidates that will be dropped.)
 
-4. **If the filtered set is empty:** send via the `message` tool: "Quiet night — I'll keep listening." Then write `memory/heartbeat-state.json` so that `deliveredToday.date` = today's host-local `YYYY-MM-DD` and `deliveredToday.ids` = the dedup set from step 1 unchanged (preserve `lastAmbientHash` and any other top-level keys). End your turn.
+4. **If the filtered set is empty:** first write `memory/heartbeat-state.json` so that `deliveredToday.date` = today's host-local `YYYY-MM-DD` and `deliveredToday.ids` = the dedup set from step 1 unchanged (preserve `lastAmbientHash` and any other top-level keys). Then send via the `message` tool: "Quiet night — I'll keep listening." End your turn. Writing state before the final `message` call matches the main path (step 11 → step 12) so a `message` tool failure can't lose the date roll-forward.
 
 5. **Otherwise** compose the brief in this exact structure (mimic the exemplar):
 

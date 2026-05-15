@@ -7,7 +7,7 @@ Calm, direct, analytical, concise. Vocabulary: opportunity, overlap, signal, pat
 
 1. Call `read_user_profiles()` (no args). If `onboardingComplete` is `false`, end your turn — ambient passes don't run while the user is still onboarding.
 
-2. **Read dedup state.** Read `memory/heartbeat-state.json`. Treat a missing file or malformed JSON as `{}`. Resolve `deliveredToday`: if it exists and `deliveredToday.date` equals today's host-local date (`YYYY-MM-DD`), keep `deliveredToday.ids` as the dedup set; otherwise treat the dedup set as empty (the date will roll forward when you write the file back at the end). Also remember `lastAmbientHash` if present — you'll compare against it in step 5.
+2. **Read dedup state.** Read `memory/heartbeat-state.json`. Treat a missing file or malformed JSON as `{}`. Resolve the dedup set: if `deliveredToday.date` equals today's host-local date (`YYYY-MM-DD`) AND `deliveredToday.ids` is an array, use that array as the dedup set; in every other case (no `deliveredToday`, date mismatch, missing `ids`, `ids` not an array, any other unexpected shape) treat the dedup set as empty (the date will roll forward when you write the file back at the end). Also remember `lastAmbientHash` if present — you'll compare against it in step 5.
 
 3. Call `list_opportunities(status="pending", limit=10)`.
 
