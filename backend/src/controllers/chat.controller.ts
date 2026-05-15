@@ -297,11 +297,9 @@ export class ChatController {
                   ...(event.orchestratorNegotiations !== undefined && { orchestratorNegotiations: event.orchestratorNegotiations }),
                 };
               } else if (event.type === "decision_questions") {
+                // Event was already forwarded by the default enqueue above; just
+                // capture so the final `done` event can include `decisionQuestions`.
                 decisionQuestions = (event as { questions: import("@indexnetwork/protocol").Question[] }).questions;
-                // Re-emit verbatim so the frontend can begin rendering immediately
-                // without waiting for the `done` payload.
-                controller.enqueue(encoder.encode(formatSSEEvent(event)));
-                continue;
               }
             }
           }
