@@ -65,11 +65,7 @@ describe('GET /c/:code/go — surface-aware redirect', () => {
     const personalNetworkRows = await db
       .select({ networkId: personalNetworks.networkId })
       .from(personalNetworks)
-      .where(
-        and(
-          eq(personalNetworks.userId, CALLER_ID),
-        ),
-      );
+      .where(eq(personalNetworks.userId, CALLER_ID));
     const counterpartPersonalNetworkRows = await db
       .select({ networkId: personalNetworks.networkId })
       .from(personalNetworks)

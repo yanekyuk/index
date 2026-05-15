@@ -174,7 +174,14 @@ export async function resolveConnectLink(code: string): Promise<ResolvedLink | n
     opportunityId: row.opportunityId,
     kind: row.kind as ConnectLinkKind,
     greeting: row.greeting,
-    preferredSurface: row.preferredSurface as 'telegram' | 'web' | null,
+    // The DB column is unconstrained text — narrow defensively so any non-
+    // canonical value (a new surface added without normalization, a hand-edited
+    // row, a typo) collapses to null rather than silently passing through the
+    // type-cast and being interpreted later as `'telegram' | 'web'`.
+    preferredSurface:
+      row.preferredSurface === 'telegram' || row.preferredSurface === 'web'
+        ? row.preferredSurface
+        : null,
   };
 }
 
