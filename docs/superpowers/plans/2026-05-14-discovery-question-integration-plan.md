@@ -49,6 +49,52 @@
 
 ---
 
+## Shipped deviations (post-merge)
+
+This plan was the implementation blueprint, but the shipped code diverges from
+several snippets after multiple Copilot review rounds. The implementation
+(merged via PR #781) is canonical; treat the plan as historical context, not
+a re-implementation guide. Material deviations:
+
+- **Strip behavior** (`chat.agent.ts` `normalizeToolResult`): the shipped code
+  strips only `_discoveryQuestionsDebug` from the LLM-facing tool result;
+  `questions` is kept visible so the agent can mention decision prompts per
+  the prompt addendum. The plan snippet showing `delete obj.questions` is
+  obsolete.
+- **`ChatSummarizerEndEvent` payload**: simplified to `{ durationMs }` only.
+  The plan's `{ newMessageCount, model, fromCached, durationMs }` shape was
+  fabricated (the `ChatSummaryReader` contract doesn't expose those signals).
+- **`QuestionGeneratorEndEvent` / `DebugMetaDiscoveryQuestions`**:
+  `droppedCount` was removed — the generator doesn't expose a reliable
+  guardrail-drop count, so reporting `0` was misleading.
+- **`maybeBuildQuestions` failure tolerance**: the generator call is wrapped
+  in `try/catch`; failures suppress questions but return cleanly. The plan
+  snippet showing a bare `await questionGenerator.generate(...)` is obsolete.
+- **`maybeBuildQuestions` position**: the call was hoisted above the three
+  early-return paths in `runDiscoverFromQuery` (no-opps + existing connections,
+  no-opps + nothing, createIntentSuggested) so questions are produced even
+  when discovery finds zero candidates — the master spec's primary use case.
+- **`tool.factory.ts` deps forwarding**: composition root deps `chatSummary`
+  and `questionGenerator` are now spread into `toolDeps` (plan omitted this).
+- **`opportunity.tools.ts` orchestrator-path success envelope**:
+  `questions` + `_discoveryQuestionsDebug` are surfaced on ALL `success(...)`
+  branches that return after a successful `runDiscoverFromQuery` (including
+  the no-results envelopes), not just the happy path.
+- **`OnNegotiationResolved` payload**: widened with `turns` + `outcome`;
+  `negotiateNode` now uses an unconditional hook with the orchestrator
+  streaming work gated by an early-return on non-orchestrator triggers.
+- **Hallucination-recovery path**: also captures `discoveryQuestionsDebug`
+  and emits `decision_questions` writer events (mirror of the main tool loop).
+- **Trace-event sessionId**: `maybeBuildQuestions` emits with an empty-string
+  `sessionId`; the streamer re-stamps the real session id at relay time.
+- **`counterpartyHint`**: bio is trimmed before fallback; empty bios fall
+  through to `interests.join(", ")` (the plan's bare `??` chain treated `""`
+  as valid bio).
+
+See PR #781 for the full commit trail.
+
+---
+
 ## Task 1: Extend negotiation hook payload
 
 **Files:**
