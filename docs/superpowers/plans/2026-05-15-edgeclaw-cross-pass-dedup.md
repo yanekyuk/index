@@ -22,7 +22,7 @@ Files modified by this plan:
 - `packages/edgeclaw/README.md` — one-line update to the row describing `ambient.md`'s dedup.
 - `packages/edgeclaw/package.json` — version bump.
 
-No new files. No deletions.
+This plan's implementation tasks neither add nor delete files — only the five files above are modified. (The spec and plan markdown under `docs/superpowers/` were committed earlier in the workflow and are not in scope here.)
 
 ---
 
@@ -377,4 +377,4 @@ No commit — the verification is the deliverable. If any scenario fails, return
 - [x] Version bump → Task 4.
 - [x] Manual scenario verification → Task 5.
 
-No spec requirements left unaddressed. No tasks reference undefined symbols. Step counts in `ambient.md` (12 = 1 onboarding + 1 read + 1 list + 1 filter + 1 hash + 1 cap + 1 quality + 1 nothing-qualifies + 1 surface + 1 confirm + 1 write — wait, that's 11) — recount in Task 1: steps 1–11, matching the spec. Step counts in `digest.md`: 1–12. Both consistent with the body of each task.
+No spec requirements left unaddressed. No tasks reference undefined symbols. Step counts: `ambient.md` has steps 1–11; `digest.md` has steps 1–12. Both match the bodies of Tasks 1 and 2 respectively.
