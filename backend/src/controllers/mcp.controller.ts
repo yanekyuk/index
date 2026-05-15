@@ -24,8 +24,10 @@ import { scraperAdapter } from '../adapters/scraper.adapter';
 import { intentQueue } from '../queues/intent.queue';
 import { negotiationRunExistingQueue } from '../queues/negotiations/run-existing.queue';
 import { chatSessionAdapter } from '../adapters/chat-session.adapter';
+import { ChatSummaryDatabaseAdapter } from '../adapters/chat-summary.database.adapter';
 import { enricherAdapter } from '../adapters/enricher.adapter';
 import { agentService } from '../services/agent.service';
+import { ChatSummaryService } from '../services/chat-summary.service';
 import { AgentDispatcherImpl } from '../services/agent-dispatcher.service';
 import { contactService } from '../services/contact.service';
 import { IntegrationService } from '../services/integration.service';
@@ -49,6 +51,8 @@ const logger = log.server.from('mcp');
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const integration = new ComposioIntegrationAdapter();
+const chatSummaryAdapter = new ChatSummaryDatabaseAdapter();
+const chatSummaryService = new ChatSummaryService(chatSummaryAdapter);
 const integrationImporter = new IntegrationService(integration, contactService);
 const agentDispatcher = new AgentDispatcherImpl(agentService, negotiationTimeoutQueue);
 
@@ -79,6 +83,7 @@ const protocolDeps = {
   intentQueue,
   contactService,
   chatSession: chatSessionAdapter,
+  chatSummary: chatSummaryService,
   enricher: enricherAdapter,
   negotiationDatabase: conversationDatabaseAdapter,
   integrationImporter,
