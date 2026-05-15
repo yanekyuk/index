@@ -403,7 +403,6 @@ export interface DebugMetaOrchestratorNegotiations {
 export interface DebugMetaDiscoveryQuestions {
   inputMode: "transcripts" | "insights";
   finalCount: number;
-  droppedCount: number;
   strategies: QuestionStrategy[];
   durationMs: number;
 }
@@ -505,9 +504,6 @@ export interface ChatSummarizerStartEvent extends ChatStreamEventBase {
 export interface ChatSummarizerEndEvent extends ChatStreamEventBase {
   type: "chat_summarizer_end";
   payload: {
-    newMessageCount: number;
-    model: string;
-    fromCached: boolean;
     durationMs: number;
   };
 }
@@ -526,7 +522,6 @@ export interface QuestionGeneratorEndEvent extends ChatStreamEventBase {
   type: "question_generator_end";
   payload: {
     finalCount: number;
-    droppedCount: number;
     strategies: QuestionStrategy[];
     durationMs: number;
     inputMode: "transcripts" | "insights";
