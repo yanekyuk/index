@@ -250,6 +250,7 @@ export class ChatController {
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
           let debugMeta: { graph: string; iterations: number; tools: unknown[]; llm?: unknown; orchestratorNegotiations?: unknown } | undefined;
+          let decisionQuestions: import("@indexnetwork/protocol").Question[] | undefined;
 
           // Use context-aware streaming to load previous messages
           // checkpointer is PostgresSaver from the local install; the package expects
@@ -295,6 +296,12 @@ export class ChatController {
                   llm: event.llm,
                   ...(event.orchestratorNegotiations !== undefined && { orchestratorNegotiations: event.orchestratorNegotiations }),
                 };
+              } else if (event.type === "decision_questions") {
+                decisionQuestions = (event as { questions: import("@indexnetwork/protocol").Question[] }).questions;
+                // Re-emit verbatim so the frontend can begin rendering immediately
+                // without waiting for the `done` payload.
+                controller.enqueue(encoder.encode(formatSSEEvent(event)));
+                continue;
               }
             }
           }
@@ -389,6 +396,7 @@ export class ChatController {
                     subgraphResults,
                     title: sessionTitle,
                     suggestions,
+                    ...(decisionQuestions !== undefined ? { decisionQuestions } : {}),
                   }),
                 ),
               ),
