@@ -24,6 +24,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useOpportunities } from "@/contexts/APIContext";
 import { validateFiles } from "@/lib/file-validation";
 import InlineDiscoveryCard from "@/components/chat/InlineDiscoveryCard";
+import { DecisionQuestions } from "@/components/DecisionQuestions";
 import InviteMessageModal from "@/components/InviteMessageModal";
 import OpportunityCard, {
   type OpportunityCardData,
@@ -366,6 +367,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [decisionQuestionsSubmittedIds, setDecisionQuestionsSubmittedIds] = useState<
+    Set<string>
+  >(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1776,6 +1780,25 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         );
                       })}
                     </div>
+                  )}
+                {msg.role === "assistant" &&
+                  msg.decisionQuestions &&
+                  msg.decisionQuestions.length > 0 && (
+                    <DecisionQuestions
+                      questions={msg.decisionQuestions}
+                      submitted={
+                        msg.decisionQuestionsSubmitted ??
+                        decisionQuestionsSubmittedIds.has(msg.id)
+                      }
+                      onSubmit={(flattened) => {
+                        setDecisionQuestionsSubmittedIds((prev) => {
+                          const next = new Set(prev);
+                          next.add(msg.id);
+                          return next;
+                        });
+                        sendMessage(flattened);
+                      }}
+                    />
                   )}
               </div>
             ))}
