@@ -3,6 +3,7 @@ import { BaseCheckpointSaver } from "@langchain/langgraph";
 import { protocolLogger } from "../shared/observability/protocol.logger.js";
 import type {
   ChatStreamEvent,
+  DebugMetaDiscoveryQuestions,
   DebugMetaToolCall,
   DebugMetaLlm,
   DebugMetaOrchestratorNegotiations,
@@ -11,6 +12,7 @@ import {
   createAgentEndEvent,
   createAgentStartEvent,
   createDebugMetaEvent,
+  createDecisionQuestionsEvent,
   createErrorEvent,
   createGraphEndEvent,
   createGraphStartEvent,
@@ -23,6 +25,10 @@ import {
   createStatusEvent,
   createTokenEvent,
   createToolActivityEvent,
+  createChatSummarizerStartEvent,
+  createChatSummarizerEndEvent,
+  createQuestionGeneratorStartEvent,
+  createQuestionGeneratorEndEvent,
 } from "./chat-streaming.types.js";
 import type { AgentStreamEvent } from "./chat.agent.js";
 
@@ -253,6 +259,26 @@ export class ChatStreamer {
           if (event.type === "agent_end") {
             yield createAgentEndEvent(sessionId, event.name, event.durationMs, event.summary);
           }
+
+          if (event.type === "decision_questions") {
+            yield createDecisionQuestionsEvent(sessionId, { questions: event.questions });
+          }
+
+          if (event.type === "chat_summarizer_start") {
+            yield createChatSummarizerStartEvent(sessionId, event.payload);
+          }
+
+          if (event.type === "chat_summarizer_end") {
+            yield createChatSummarizerEndEvent(sessionId, event.payload);
+          }
+
+          if (event.type === "question_generator_start") {
+            yield createQuestionGeneratorStartEvent(sessionId, event.payload);
+          }
+
+          if (event.type === "question_generator_end") {
+            yield createQuestionGeneratorEndEvent(sessionId, event.payload);
+          }
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -282,7 +308,7 @@ export class ChatStreamer {
           yield createResponseCompleteEvent(sessionId, responseText);
 
           const debugMeta = agentOutput?.debugMeta as
-            | { graph: string; iterations: number; tools?: DebugMetaToolCall[]; llm?: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations }
+            | { graph: string; iterations: number; tools?: DebugMetaToolCall[]; llm?: DebugMetaLlm; orchestratorNegotiations?: DebugMetaOrchestratorNegotiations; discoveryQuestions?: DebugMetaDiscoveryQuestions }
             | undefined;
           if (
             debugMeta?.graph != null &&
@@ -296,6 +322,7 @@ export class ChatStreamer {
               Array.isArray(debugMeta.tools) ? debugMeta.tools : [],
               debugMeta.llm ?? llmFallback,
               debugMeta.orchestratorNegotiations,
+              debugMeta.discoveryQuestions,
             );
           }
 

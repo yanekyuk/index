@@ -5,6 +5,8 @@
  * Events are sent as Server-Sent Events (SSE) with JSON payloads.
  */
 
+import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
+
 // Event type discriminator
 export type ChatStreamEventType =
   | "status"
@@ -39,7 +41,13 @@ export type ChatStreamEventType =
   | "negotiation_session_start"
   | "negotiation_session_end"
   | "negotiation_turn"
-  | "negotiation_outcome";
+  | "negotiation_outcome"
+  // Discovery decision-question events
+  | "chat_summarizer_start"
+  | "chat_summarizer_end"
+  | "question_generator_start"
+  | "question_generator_end"
+  | "decision_questions";
 
 /**
  * Base interface for all chat stream events.
@@ -187,6 +195,8 @@ export interface DoneEvent extends ChatStreamEventBase {
   suggestions?: ChatSuggestion[];
   /** Optional rich opportunity cards returned by tools */
   opportunityCards?: OpportunityCardPayload[];
+  /** Decision questions to render (orchestrator flow only). */
+  decisionQuestions?: Question[];
 }
 
 /**
@@ -392,6 +402,16 @@ export interface DebugMetaOrchestratorNegotiations {
 }
 
 /**
+ * Decision-question generation debug data (orchestrator path only).
+ */
+export interface DebugMetaDiscoveryQuestions {
+  inputMode: "transcripts" | "insights";
+  finalCount: number;
+  strategies: QuestionStrategy[];
+  durationMs: number;
+}
+
+/**
  * Debug meta event - per-turn graph and tool usage for copy debug.
  */
 export interface DebugMetaEvent extends ChatStreamEventBase {
@@ -401,6 +421,8 @@ export interface DebugMetaEvent extends ChatStreamEventBase {
   tools: DebugMetaToolCall[];
   llm: DebugMetaLlm;
   orchestratorNegotiations?: DebugMetaOrchestratorNegotiations;
+  /** Decision-question generation debug data (orchestrator path only). */
+  discoveryQuestions?: DebugMetaDiscoveryQuestions;
 }
 
 /** Graph start event — emitted when a LangGraph sub-graph begins inside a tool. */
@@ -478,6 +500,43 @@ export interface NegotiationOutcomeEvent extends ChatStreamEventBase {
   agreedRoles?: { ownUser?: string; otherUser?: string };
 }
 
+export interface ChatSummarizerStartEvent extends ChatStreamEventBase {
+  type: "chat_summarizer_start";
+  payload: { sessionId: string };
+}
+
+export interface ChatSummarizerEndEvent extends ChatStreamEventBase {
+  type: "chat_summarizer_end";
+  payload: {
+    durationMs: number;
+  };
+}
+
+export interface QuestionGeneratorStartEvent extends ChatStreamEventBase {
+  type: "question_generator_start";
+  payload: {
+    inputMode: "transcripts" | "insights";
+    negotiationCount: number;
+    hasChatContext: boolean;
+    truncated?: { originalCount: number; keptCount: number };
+  };
+}
+
+export interface QuestionGeneratorEndEvent extends ChatStreamEventBase {
+  type: "question_generator_end";
+  payload: {
+    finalCount: number;
+    strategies: QuestionStrategy[];
+    durationMs: number;
+    inputMode: "transcripts" | "insights";
+  };
+}
+
+export interface DecisionQuestionsEvent extends ChatStreamEventBase {
+  type: "decision_questions";
+  questions: Question[];
+}
+
 /**
  * Union type of all chat stream events.
  */
@@ -514,7 +573,12 @@ export type ChatStreamEvent =
   | NegotiationSessionStartEvent
   | NegotiationSessionEndEvent
   | NegotiationTurnEvent
-  | NegotiationOutcomeEvent;
+  | NegotiationOutcomeEvent
+  | ChatSummarizerStartEvent
+  | ChatSummarizerEndEvent
+  | QuestionGeneratorStartEvent
+  | QuestionGeneratorEndEvent
+  | DecisionQuestionsEvent;
 
 /**
  * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
@@ -649,6 +713,7 @@ export interface CreateDoneEventOptions {
   title?: string;
   suggestions?: ChatSuggestion[];
   opportunityCards?: OpportunityCardPayload[];
+  decisionQuestions?: Question[];
 }
 
 /**
@@ -858,6 +923,7 @@ export function createDebugMetaEvent(
   tools: DebugMetaToolCall[],
   llm: DebugMetaLlm,
   orchestratorNegotiations?: DebugMetaOrchestratorNegotiations,
+  discoveryQuestions?: DebugMetaDiscoveryQuestions,
 ): DebugMetaEvent {
   return createStreamEvent<DebugMetaEvent>("debug_meta", sessionId, {
     graph,
@@ -865,6 +931,7 @@ export function createDebugMetaEvent(
     tools,
     llm,
     ...(orchestratorNegotiations !== undefined && { orchestratorNegotiations }),
+    ...(discoveryQuestions !== undefined && { discoveryQuestions }),
   });
 }
 
@@ -943,4 +1010,39 @@ export function createNegotiationOutcomeEvent(
     sessionId,
     payload,
   );
+}
+
+export function createChatSummarizerStartEvent(
+  sessionId: string,
+  payload: ChatSummarizerStartEvent["payload"],
+): ChatSummarizerStartEvent {
+  return createStreamEvent<ChatSummarizerStartEvent>("chat_summarizer_start", sessionId, { payload });
+}
+
+export function createChatSummarizerEndEvent(
+  sessionId: string,
+  payload: ChatSummarizerEndEvent["payload"],
+): ChatSummarizerEndEvent {
+  return createStreamEvent<ChatSummarizerEndEvent>("chat_summarizer_end", sessionId, { payload });
+}
+
+export function createQuestionGeneratorStartEvent(
+  sessionId: string,
+  payload: QuestionGeneratorStartEvent["payload"],
+): QuestionGeneratorStartEvent {
+  return createStreamEvent<QuestionGeneratorStartEvent>("question_generator_start", sessionId, { payload });
+}
+
+export function createQuestionGeneratorEndEvent(
+  sessionId: string,
+  payload: QuestionGeneratorEndEvent["payload"],
+): QuestionGeneratorEndEvent {
+  return createStreamEvent<QuestionGeneratorEndEvent>("question_generator_end", sessionId, { payload });
+}
+
+export function createDecisionQuestionsEvent(
+  sessionId: string,
+  payload: { questions: Question[] },
+): DecisionQuestionsEvent {
+  return createStreamEvent<DecisionQuestionsEvent>("decision_questions", sessionId, payload);
 }

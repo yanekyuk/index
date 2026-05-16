@@ -11,7 +11,8 @@
 
 import type { Opportunity, ChatGraphCompositeDatabase, UserRecord } from "../shared/interfaces/database.interface.js";
 import type { Cache } from "../shared/interfaces/cache.interface.js";
-import type { OpportunityGraphOptions, CandidateMatch } from "./opportunity.state.js";
+import type { OpportunityGraphOptions, CandidateMatch, SourceProfileData } from "./opportunity.state.js";
+import type { DiscoveryNegotiation, DiscoverySummary } from "./question.prompt.js";
 import {
   OpportunityPresenter,
   gatherPresenterContext,
@@ -23,6 +24,18 @@ import {
 import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.labels.js";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.presentation.js";
 import { protocolLogger, withCallLogging } from "../shared/observability/protocol.logger.js";
+import type { ChatSummaryReader } from "../shared/interfaces/chat-summary.interface.js";
+import type { ChatContextDigest } from "../shared/schemas/chat-context.schema.js";
+import type { QuestionGeneratorReader } from "../shared/interfaces/question-generator.interface.js";
+import type { Question, QuestionStrategy } from "../shared/schemas/question.schema.js";
+import { requestContext } from "../shared/observability/request-context.js";
+import {
+  createChatSummarizerStartEvent,
+  createChatSummarizerEndEvent,
+  createQuestionGeneratorStartEvent,
+  createQuestionGeneratorEndEvent,
+} from "../chat/chat-streaming.types.js";
+import { buildDiscoveryQuestionInput } from "./discovery-question.helper.js";
 
 const logger = protocolLogger("OpportunityDiscover");
 
@@ -77,6 +90,16 @@ export interface DiscoverInput {
    * Chat, ambient queue, and all other callers omit this — existing behavior.
    */
   negotiateTimeoutMs?: number;
+  /** Optional read-through chat-session digest reader. Required for chatContext enrichment. */
+  chatSummary?: ChatSummaryReader;
+  /** Optional decision-question generator. When omitted, no questions are produced. */
+  questionGenerator?: QuestionGeneratorReader;
+  /**
+   * Master switch for decision-question generation. When false, this code path
+   * is skipped entirely regardless of trigger. The composition root passes
+   * `process.env.ENABLE_DISCOVERY_QUESTIONS === "true"`.
+   */
+  enableQuestions?: boolean;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -179,6 +202,15 @@ export interface DiscoverResult {
     discoveryId: string;
     evaluated: number;
     remaining: number;
+  };
+  /** 0–3 decision questions produced by the orchestrator path. Omitted when none. */
+  questions?: Question[];
+  /** Debug metadata for `debugMeta.discoveryQuestions` plumbing. */
+  discoveryQuestionsDebug?: {
+    inputMode: "transcripts" | "insights";
+    finalCount: number;
+    strategies: QuestionStrategy[];
+    durationMs: number;
   };
 }
 
@@ -671,6 +703,19 @@ export async function runDiscoverFromQuery(
         }
       }
 
+      // Build decision questions early so they can be attached to all return paths
+      // (including the "no opportunities found" cases — questions are especially
+      // useful when the user gets zero results and needs to refine their query).
+      const questionPayload = await maybeBuildQuestions({
+        trigger,
+        enableQuestions: input.enableQuestions ?? false,
+        chatSummary: input.chatSummary,
+        questionGenerator: input.questionGenerator,
+        chatSessionId,
+        graphResult: result,
+        query: queryOrEmpty,
+      });
+
       if (result.createIntentSuggested && result.suggestedIntentDescription) {
         if (chatSessionId) {
           return {
@@ -678,6 +723,8 @@ export async function runDiscoverFromQuery(
             count: 0,
             message: "No matching opportunities found. Try a different query.",
             pagination,
+            ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+            ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
           };
         }
         return {
@@ -689,6 +736,8 @@ export async function runDiscoverFromQuery(
             "No matching opportunities; add an intent with the suggested description to improve discovery.",
           debugSteps,
           pagination,
+          ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+          ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
         };
       }
 
@@ -765,6 +814,7 @@ export async function runDiscoverFromQuery(
         step: "opportunity_graph",
         detail: `${opportunities.length} opportunity(ies)${existingConnections.length > 0 ? `, ${existingConnections.length} existing` : ""}`,
       });
+
       if (opportunities.length === 0) {
         if (existingConnections.length > 0) {
           return {
@@ -779,6 +829,8 @@ export async function runDiscoverFromQuery(
             ...(alreadyAcceptedPairs.length > 0 && { alreadyAcceptedPairs }),
             debugSteps,
             pagination,
+            ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+            ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
           };
         }
         return {
@@ -789,6 +841,8 @@ export async function runDiscoverFromQuery(
           ...(alreadyAcceptedPairs.length > 0 && { alreadyAcceptedPairs }),
           debugSteps,
           pagination,
+          ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+          ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
         };
       }
 
@@ -814,6 +868,8 @@ export async function runDiscoverFromQuery(
         ...(alreadyAcceptedPairs.length > 0 ? { alreadyAcceptedPairs } : {}),
         debugSteps,
         pagination,
+        ...(questionPayload.questions !== undefined ? { questions: questionPayload.questions } : {}),
+        ...(questionPayload.debug !== undefined ? { discoveryQuestionsDebug: questionPayload.debug } : {}),
       };
     },
     { context: { userId }, logOutput: false },
@@ -824,6 +880,124 @@ export async function runDiscoverFromQuery(
       message: "Failed to find opportunities. Please try again.",
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DECISION-QUESTION HELPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+type GraphResultLike = {
+  sourceProfile?: SourceProfileData | null;
+  discoveryNegotiations?: DiscoveryNegotiation[];
+  discoverySummary?: DiscoverySummary | null;
+};
+
+interface MaybeBuildQuestionsInput {
+  trigger: 'ambient' | 'orchestrator' | undefined;
+  enableQuestions: boolean;
+  chatSummary: ChatSummaryReader | undefined;
+  questionGenerator: QuestionGeneratorReader | undefined;
+  chatSessionId: string | undefined;
+  graphResult: GraphResultLike;
+  query: string;
+}
+
+async function maybeBuildQuestions(args: MaybeBuildQuestionsInput): Promise<{
+  questions?: Question[];
+  debug?: DiscoverResult["discoveryQuestionsDebug"];
+}> {
+  if (!args.enableQuestions) return {};
+  if (args.trigger !== 'orchestrator') return {};
+  if (!args.questionGenerator) return {};
+
+  // Use a wide-cast emitter so the new event types don't require touching TraceEmitter.
+  // This follows the same pattern used in negotiation.graph.ts (emitWide).
+  const rawEmitter = requestContext.getStore()?.traceEmitter;
+  const emitWide = (event: Record<string, unknown>) =>
+    (rawEmitter as ((e: Record<string, unknown>) => void) | undefined)?.(event);
+
+  // Slice 3 supports only the `transcripts` input mode; `insights` is planned
+  // for a later slice. We hardcode here so the trace event accurately reflects
+  // what was used. If the env var is set to "insights", log a warning so
+  // operators aren't surprised when reporting still says "transcripts".
+  if (process.env.DISCOVERY_QUESTIONS_INPUT_MODE === "insights") {
+    logger.warn("DISCOVERY_QUESTIONS_INPUT_MODE=insights is not yet implemented; falling back to transcripts");
+  }
+  const inputMode: "transcripts" | "insights" = "transcripts";
+
+  let chatContext: ChatContextDigest | undefined;
+  if (args.chatSummary && args.chatSessionId) {
+    const summarizerStart = Date.now();
+    emitWide(createChatSummarizerStartEvent("", { sessionId: args.chatSessionId }) as unknown as Record<string, unknown>);
+    try {
+      chatContext = (await args.chatSummary.getDigest(args.chatSessionId)) ?? undefined;
+    } catch (err) {
+      logger.warn("chatSummary.getDigest threw — proceeding without digest", {
+        sessionId: args.chatSessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      chatContext = undefined;
+    }
+    emitWide(createChatSummarizerEndEvent("", {
+      durationMs: Date.now() - summarizerStart,
+    }) as unknown as Record<string, unknown>);
+  }
+
+  const negotiations = args.graphResult.discoveryNegotiations ?? [];
+  const summary = args.graphResult.discoverySummary ?? {
+    totalCandidates: 0,
+    opportunitiesFound: 0,
+    noOpportunityCount: 0,
+    timeoutCount: 0,
+    roleDistribution: {},
+  };
+
+  const generatorStart = Date.now();
+  emitWide(createQuestionGeneratorStartEvent("", {
+    inputMode,
+    negotiationCount: negotiations.length,
+    hasChatContext: chatContext !== undefined,
+  }) as unknown as Record<string, unknown>);
+
+  const input = buildDiscoveryQuestionInput({
+    query: args.query,
+    sourceProfile: args.graphResult.sourceProfile ?? null,
+    negotiations,
+    summary,
+    chatContext,
+    now: new Date().toISOString(),
+  });
+
+  let genResult: Awaited<ReturnType<typeof args.questionGenerator.generate>> = null;
+  try {
+    genResult = await args.questionGenerator.generate(input);
+  } catch (err) {
+    logger.warn("questionGenerator.generate threw — suppressing questions, recording debug duration only", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    genResult = null;
+  }
+  const durationMs = Date.now() - generatorStart;
+
+  const finalCount = genResult?.questions?.length ?? 0;
+  const strategies: QuestionStrategy[] = genResult?.strategies ?? [];
+
+  emitWide(createQuestionGeneratorEndEvent("", {
+    finalCount,
+    strategies,
+    durationMs,
+    inputMode,
+  }) as unknown as Record<string, unknown>);
+
+  return {
+    ...(genResult && genResult.questions.length > 0 ? { questions: genResult.questions } : {}),
+    debug: {
+      inputMode,
+      finalCount,
+      strategies,
+      durationMs,
+    },
+  };
 }
 
 /**

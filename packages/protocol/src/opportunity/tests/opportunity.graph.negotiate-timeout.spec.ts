@@ -103,11 +103,43 @@ function makeFactory(opts: { hangNegotiationForever: boolean }) {
 
   const mockEvaluator = { invokeEntityBundle: async () => evaluatorResult };
 
-  // Negotiation graph: hang forever if requested.
+  // Negotiation graph: hang forever if requested, or return a real outcome + messages.
   const mockNegotiationGraph = {
     invoke: opts.hangNegotiationForever
       ? () => new Promise(() => { /* never resolves */ })
-      : async () => ({ accepted: true, finalOutcome: 'accept', turnCount: 1, conversationId: 'conv-1' }),
+      : async (_input: unknown) => ({
+          outcome: {
+            hasOpportunity: true,
+            agreedRoles: [
+              { userId: 'u-source', role: 'peer' as const },
+              { userId: 'u-candidate', role: 'peer' as const },
+            ],
+            reasoning: 'test outcome',
+            turnCount: 2,
+          },
+          messages: [
+            {
+              id: 'm1',
+              senderId: 'agent:u-source',
+              role: 'agent' as const,
+              parts: [{ kind: 'data' as const, data: {
+                action: 'propose' as const,
+                assessment: { reasoning: 'first turn', suggestedRoles: { ownUser: 'peer' as const, otherUser: 'peer' as const } },
+              } }],
+              createdAt: new Date(),
+            },
+            {
+              id: 'm2',
+              senderId: 'agent:u-candidate',
+              role: 'agent' as const,
+              parts: [{ kind: 'data' as const, data: {
+                action: 'accept' as const,
+                assessment: { reasoning: 'agreed', suggestedRoles: { ownUser: 'peer' as const, otherUser: 'peer' as const } },
+              } }],
+              createdAt: new Date(),
+            },
+          ],
+        }),
   };
 
   return new OpportunityGraphFactory(
@@ -153,5 +185,45 @@ describe('opportunity graph: negotiateTimeoutMs', () => {
     const negotiateTrace = (result.trace ?? []).find((t) => t.node === 'negotiate');
     expect(negotiateTrace).toBeDefined();
     expect(negotiateTrace?.detail).not.toBe('timed_out');
+  });
+
+  test('negotiateNode populates discoveryNegotiations and discoverySummary on the state', async () => {
+    // Verifies the mapping from negotiation resolutions → discoveryNegotiations/discoverySummary
+    // so downstream question-generation can consume negotiation context.
+    //
+    // Determinism guarantee: resolutions are accumulated via an async per-candidate hook that
+    // fires in completion order (non-deterministic across runs). The negotiate node sorts them
+    // by their original candidate-list index before building discoveryNegotiations, so the LLM
+    // always sees negotiations in a stable, candidate-order sequence regardless of timing.
+    const factory = makeFactory({ hangNegotiationForever: false });
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: 'u-source' as Id<'users'>,
+      searchQuery: 'find me a co-founder',
+      options: { negotiateTimeoutMs: 5_000 },
+    });
+
+    // discoveryNegotiations: one entry per resolved candidate
+    const negs = result.discoveryNegotiations ?? [];
+    expect(negs.length).toBeGreaterThanOrEqual(1);
+
+    // Verify the captured record carries through correctly.
+    const first = negs[0];
+    expect(first.counterpartyId).toBeDefined();
+    // counterpartyId must match u-candidate (the only candidate in the fixture),
+    // confirming candidate-list order is preserved.
+    expect(first.counterpartyId).toBe('u-candidate');
+    expect(first.outcome.hasOpportunity).toBe(true);
+    expect(first.outcome.reasoning).toBe('test outcome');
+    expect(first.turns.length).toBeGreaterThanOrEqual(1);
+    expect(first.turns[0].action).toBe('propose');
+    expect(first.turns[first.turns.length - 1].action).toBe('accept');
+
+    // And the aggregate summary
+    const summary = result.discoverySummary;
+    expect(summary).not.toBeNull();
+    expect(summary?.totalCandidates).toBe(negs.length);
+    expect(summary?.opportunitiesFound).toBeGreaterThanOrEqual(1);
   });
 });

@@ -884,6 +884,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(context.isMcp ? { negotiateTimeoutMs: 20_000 } : {}),
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         ...(runDiscoveryOrchestrator && { trigger: 'orchestrator' as const }),
+        ...(deps.chatSummary && { chatSummary: deps.chatSummary }),
+        ...(deps.questionGenerator && { questionGenerator: deps.questionGenerator }),
+        // Decision questions add an uncapped LLM call after the negotiation phase.
+        // For MCP we'd blow the 20s budget documented above. Restrict to chat.
+        enableQuestions: process.env.ENABLE_DISCOVERY_QUESTIONS === "true" && !!context.sessionId,
       });
       const _discoverGraphMs = Date.now() - _discoverGraphStart;
       _discoverTraceEmitter?.({ type: "graph_end", name: "opportunity", durationMs: _discoverGraphMs });
@@ -922,6 +927,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
+          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
 
@@ -934,6 +941,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(result.pagination ? { pagination: result.pagination } : {}),
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
+          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
 
@@ -952,6 +961,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           summary: "No new matches (existing connections only)",
           debugSteps: allDebugSteps,
           _graphTimings: _allGraphTimings,
+          ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+          ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         });
       }
 
@@ -1131,6 +1142,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               suggestedIntentDescription: searchQuery,
             }
           : {}),
+        ...(result.questions && result.questions.length > 0 ? { questions: result.questions } : {}),
+        ...(result.discoveryQuestionsDebug ? { _discoveryQuestionsDebug: result.discoveryQuestionsDebug } : {}),
         _graphTimings: _allGraphTimings,
       });
     },
