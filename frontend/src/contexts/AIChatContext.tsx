@@ -9,6 +9,7 @@ import { useLocation } from "react-router";
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
 import type { Suggestion } from "@/hooks/useSuggestions";
+import type { Question } from "@/components/DecisionQuestions/types";
 
 export interface DiscoveryOpportunity {
   candidateId: string;
@@ -121,6 +122,10 @@ interface ChatMessage {
    */
   streamingDrafts?: StreamingDraft[];
   traceEvents?: TraceEvent[];
+  /** Decision questions to render below this assistant message (orchestrator path). */
+  decisionQuestions?: Question[];
+  /** True once the user has submitted answers; disables/mutes the renderer. */
+  decisionQuestionsSubmitted?: boolean;
 }
 
 interface AIChatContextType {
@@ -649,6 +654,20 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     );
                     break;
                   }
+                  case "decision_questions": {
+                    const incoming = (event.questions ?? []) as Question[];
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const existing = msg.decisionQuestions ?? [];
+                        return {
+                          ...msg,
+                          decisionQuestions: [...existing, ...incoming],
+                        };
+                      }),
+                    );
+                    break;
+                  }
                   case "done":
                     setMessages((prev) =>
                       prev.map((msg) => {
@@ -659,10 +678,18 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                         const finalContent = msg.content.trim()
                           ? msg.content
                           : event.response || msg.content;
+                        const fromDone = Array.isArray(event.decisionQuestions)
+                          ? (event.decisionQuestions as Question[])
+                          : undefined;
+                        const decisionQuestions =
+                          msg.decisionQuestions && msg.decisionQuestions.length > 0
+                            ? msg.decisionQuestions
+                            : fromDone;
                         return {
                           ...msg,
                           content: finalContent,
                           isStreaming: false,
+                          ...(decisionQuestions ? { decisionQuestions } : {}),
                         };
                       }),
                     );
@@ -808,6 +835,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           createdAt: string;
           traceEvents?: TraceEvent[];
           streamingDrafts?: StreamingDraft[] | null;
+          decisionQuestions?: Question[] | null;
+          decisionQuestionsSubmitted?: boolean | null;
           debugMeta?: {
             tools?: Array<{
               name: string;
@@ -836,6 +865,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
           ...(Array.isArray(m.streamingDrafts) && m.streamingDrafts.length > 0
             ? { streamingDrafts: m.streamingDrafts }
+            : {}),
+          ...(Array.isArray(m.decisionQuestions) && m.decisionQuestions.length > 0
+            ? { decisionQuestions: m.decisionQuestions }
+            : {}),
+          ...(m.decisionQuestionsSubmitted
+            ? { decisionQuestionsSubmitted: true }
             : {}),
         })),
       );
