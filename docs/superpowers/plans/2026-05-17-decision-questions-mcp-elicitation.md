@@ -44,7 +44,7 @@ The spec is one tightly-coupled subsystem (MCP elicitation flow for one tool). O
 
 ## Open assumption (surfaced in plan, decided by user prior)
 
-**"Post into chat session" target:** the user's most-recently-updated chat session for `userId`. If they have no session, `ChatMessageWriter.addUserMessage` returns `null` and we **skip the post but still keep the JSON envelope on the tool result** — the LLM still sees the answer through that channel. No new session is created.
+**"Post into chat session" target:** the user's most-recently-updated chat session for `userId`. If they have no session, `ChatMessageWriter.addUserMessage` returns `null`. The accepted answer is dropped on this path — the JSON envelope only carries the original `questions[]`, not the user's choices, so it does not preserve the answer. A future iteration could extend the envelope to include accepted choices for the no-session path; out of scope here. No new session is created.
 
 ---
 
@@ -1207,10 +1207,10 @@ Expected: all green.
 - [ ] **Step 4: Backend slice 5 tests**
 
 ```bash
-cd backend && bun test src/adapters/tests/chat-message-writer.adapter.test.ts src/controllers/tests/mcp.handler.elicitation.spec.ts 2>&1 | tail -10
+cd backend && bun test src/adapters/tests/chat-message-writer.adapter.test.ts 2>&1 | tail -10
 ```
 
-Expected: all green.
+Expected: all green. (The controller-level integration test `src/controllers/tests/mcp.handler.elicitation.spec.ts` is Task 10 which is deferred — do not include it in this command.)
 
 - [ ] **Step 5: If anything fails, fix and re-commit before moving on.**
 
@@ -1249,4 +1249,4 @@ Connect from a stub MCP client without the elicitation capability. Run `discover
 - **Sequential timing under slow users.** Sequential is the spec's day-one rule. Parallel is a future iteration.
 - **"Other" affordance missing in MCP.** Enums are closed. Day-one accepts only listed options on MCP clients.
 - **Capability declaration accuracy.** We trust what the client declares at init. A client that declares elicitation but silently fails to render means we lose elicitations to the spec's `try/catch break` path; the envelope still survives in the tool result.
-- **Most-recent session as target for posts.** The user picked "post into index.network chat session." If the user has multiple unrelated chat sessions, the answer lands in whichever was most-recently updated. If they have none, the answer is preserved only in the tool result envelope. This may be revisited if observed problematic.
+- **Most-recent session as target for posts.** The user picked "post into index.network chat session." If the user has multiple unrelated chat sessions, the answer lands in whichever was most-recently updated. If they have none, the accepted answer is **dropped** on this path — `chat_message_write_skipped_no_session` is logged, and the JSON envelope on the tool result carries only the original `questions[]` (not the accepted choices). Extending the envelope to include answer preservation is a worthwhile follow-up but is out of scope here.
