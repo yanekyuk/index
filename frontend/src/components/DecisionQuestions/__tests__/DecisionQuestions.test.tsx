@@ -92,4 +92,47 @@ describe('DecisionQuestions', () => {
     expect(screen.queryByRole('button', { name: /submit/i })).not.toBeInTheDocument();
     expect(screen.getAllByLabelText(/Pre-revenue \(Recommended\)/)[0]).toBeDisabled();
   });
+
+  it('multiple instances do not share radio-group names', () => {
+    render(
+      <>
+        <DecisionQuestions
+          questions={[questions[0]]}
+          submitted={false}
+          onSubmit={vi.fn()}
+        />
+        <DecisionQuestions
+          questions={[questions[0]]}
+          submitted={false}
+          onSubmit={vi.fn()}
+        />
+      </>,
+    );
+    const radios = screen.getAllByLabelText(
+      /Pre-revenue \(Recommended\)/,
+    ) as HTMLInputElement[];
+    expect(radios).toHaveLength(2);
+    expect(radios[0].name).not.toBe(radios[1].name);
+  });
+
+  it('submit stays disabled when questions array grows past current answers', () => {
+    const { rerender } = render(
+      <DecisionQuestions
+        questions={[questions[0]]}
+        submitted={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/Pre-revenue \(Recommended\)/));
+    expect(screen.getByRole('button', { name: /submit/i })).toBeEnabled();
+
+    rerender(
+      <DecisionQuestions
+        questions={questions}
+        submitted={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /submit/i })).toBeDisabled();
+  });
 });

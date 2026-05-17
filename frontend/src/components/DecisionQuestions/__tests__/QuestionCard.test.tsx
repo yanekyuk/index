@@ -101,4 +101,23 @@ describe('QuestionCard', () => {
     );
     expect(screen.getByLabelText(/Pre-revenue \(Recommended\)/)).toBeDisabled();
   });
+
+  it('multi-select: unchecking Other restores a selection answer with current selections', () => {
+    const multi: Question = { ...q, multiSelect: true };
+    const onChange = vi.fn();
+    render(
+      <QuestionCard
+        questionId="q0"
+        question={multi}
+        answer={{ kind: 'other', text: 'something' }}
+        disabled={false}
+        onAnswerChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(/Other \(specify\)/));
+    expect(onChange).toHaveBeenLastCalledWith({
+      kind: 'selection',
+      selectedLabels: [],
+    } satisfies Answer);
+  });
 });

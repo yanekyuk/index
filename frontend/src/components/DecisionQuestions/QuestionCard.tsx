@@ -89,6 +89,8 @@ export function QuestionCard({
             setLocalOtherSelected(checked);
             if (checked) {
               onAnswerChange({ kind: 'other', text: otherText });
+            } else {
+              onAnswerChange({ kind: 'selection', selectedLabels });
             }
           }}
         />
