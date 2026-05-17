@@ -1180,13 +1180,13 @@ git -c commit.gpgsign=false commit -m "test(backend): controller-level MCP elici
 
 ## Task 11: Lint + cross-suite test pass
 
-- [ ] **Step 1: Protocol lint**
+- [ ] **Step 1: Protocol typecheck (no lint script — `tsc` enforces type-level rules)**
 
 ```bash
-cd packages/protocol && bun run lint
+cd packages/protocol && bun run build
 ```
 
-Expected: clean for all changed files.
+Expected: clean (no tsc errors).
 
 - [ ] **Step 2: Backend lint**
 
