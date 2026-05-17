@@ -30,10 +30,10 @@ The spec is one tightly-coupled subsystem (MCP elicitation flow for one tool). O
 - `packages/protocol/src/mcp/mcp.server.ts` — capture `McpServer.server` ref; in tool handler post-process the result for `discover_opportunities`: parse `questions[]`, append JSON envelope content block, dispatch elicitations
 - `packages/protocol/src/shared/agent/tool.helpers.ts` — extend `ToolDeps` with optional `chatMessageWriter?: ChatMessageWriter`
 - `packages/protocol/src/index.ts` — export `ChatMessageWriter` and the new helpers
-- `packages/protocol/src/mcp/tests/mcp.server.spec.ts` — extend with envelope + elicitation behavior tests
+- `packages/protocol/src/mcp/tests/mcp.server.elicitation.spec.ts` — new file with unit tests for `extractDecisionQuestions` and `renderQuestionsEnvelope`
 
 **New backend files:**
-- `backend/src/adapters/chat-message-writer.adapter.ts` — implements `ChatMessageWriter` using existing `ChatSessionService` (finds most-recent session via `listUserChatSessions` / `getUserChatSessions`; if none, returns `null`)
+- `backend/src/adapters/chat-message-writer.adapter.ts` — implements `ChatMessageWriter` using `ChatSessionService.getUserSessions(userId, 1)` to find the most-recent session; if none, returns `null`
 - `backend/src/adapters/tests/chat-message-writer.adapter.test.ts`
 
 **Modified backend files:**
@@ -699,12 +699,12 @@ git -c commit.gpgsign=false commit -m "feat(protocol): thread ChatMessageWriter 
 - Create: `backend/src/adapters/chat-message-writer.adapter.ts`
 - Test: `backend/src/adapters/tests/chat-message-writer.adapter.test.ts`
 
-Adapter implements the interface by finding the user's most-recent session via `ChatSessionService.listUserChatSessions(userId, 1)` and calling `addMessage`. If the user has zero sessions, returns `null`.
+Adapter implements the interface by finding the user's most-recent session via `ChatSessionService.getUserSessions(userId, 1)` and calling `addMessage`. If the user has zero sessions, returns `null`.
 
-- [ ] **Step 1: Find the actual method name on ChatSessionService**
+- [ ] **Step 1: Verify the method name on ChatSessionService**
 
 ```bash
-grep -n "listUserChatSessions\|getUserChatSessions\|listSessions" backend/src/services/chat.service.ts
+grep -n "getUserSessions\|addMessage" backend/src/services/chat.service.ts
 ```
 
 Use whichever name is present — likely `getUserChatSessions(userId, limit)` per the earlier grep. The plan below uses `getUserChatSessions`; rename to match the codebase.
@@ -777,12 +777,33 @@ Expected: FAIL, module not found.
 
 ```ts
 // backend/src/adapters/chat-message-writer.adapter.ts
-import type { ChatMessageWriter } from "@indexnetwork/protocol";
-import type { ChatSessionService } from "../services/chat.service";
+/**
+ * Local structural type matching ChatMessageWriter from @indexnetwork/protocol.
+ * Defined here to keep adapters free of cross-layer imports.
+ *
+ * NOTE: per the backend ESLint config (`backend/eslint.config.mjs` lines
+ * 87-92, 206-224), adapters must not import from `@indexnetwork/protocol`
+ * or from the services layer. The interfaces below are duck-typed to match
+ * the protocol's `ChatMessageWriter` and the subset of `ChatSessionService`
+ * we actually use; alignment is enforced at the composition root.
+ */
+interface ChatMessageWriter {
+  addUserMessage(
+    userId: string,
+    content: string,
+  ): Promise<{ sessionId: string } | null>;
+}
 
 interface ChatSessionServiceLike {
-  getUserChatSessions: ChatSessionService["getUserChatSessions"];
-  addMessage: ChatSessionService["addMessage"];
+  getUserSessions(
+    userId: string,
+    limit: number,
+  ): Promise<Array<{ id: string }>>;
+  addMessage(params: {
+    sessionId: string;
+    role: "user" | "assistant" | "system";
+    content: string;
+  }): Promise<string>;
 }
 
 /**
@@ -1069,7 +1090,7 @@ cd packages/protocol && bun test src/mcp/tests/mcp.server.elicitation.spec.ts
 
 Expected: PASS, 4 tests.
 
-> A full end-to-end test of the elicitation loop driven through `createMcpServer` requires standing up a mock MCP transport and is substantially heavier — Task 10's controller-level test covers it instead.
+> A full end-to-end test of the elicitation loop driven through `createMcpServer` requires standing up a mock MCP transport and is substantially heavier. **Task 10 is deferred in this slice** (see below) — these helper unit tests are the only Slice 5 coverage of the post-result hook; the loop state machine itself is covered by `elicitation.dispatcher.spec.ts`.
 
 - [ ] **Step 3: Commit**
 
